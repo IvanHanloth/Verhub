@@ -1,0 +1,8 @@
+node_modules
+.pnp
+.pnp.js
+.next
+.turbo
+dist
+coverage
+pnpm-lock.yaml

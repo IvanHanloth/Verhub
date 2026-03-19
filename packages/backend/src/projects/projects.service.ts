@@ -24,6 +24,11 @@ type ProjectListResponse = {
 export class ProjectsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getStatistics(): Promise<{ count: number }> {
+    const count = await this.prisma.project.count()
+    return { count }
+  }
+
   async findAll(query: QueryProjectsDto): Promise<ProjectListResponse> {
     const [total, data] = await this.prisma.$transaction([
       this.prisma.project.count(),
@@ -44,6 +49,15 @@ export class ProjectsService {
 
   async findOne(id: string): Promise<ProjectItem> {
     const project = await this.prisma.project.findUnique({ where: { id } })
+    if (!project) {
+      throw new NotFoundException("Project not found")
+    }
+
+    return this.toProjectItem(project)
+  }
+
+  async findOneByProjectKey(projectKey: string): Promise<ProjectItem> {
+    const project = await this.prisma.project.findUnique({ where: { projectKey } })
     if (!project) {
       throw new NotFoundException("Project not found")
     }

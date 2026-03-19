@@ -23,6 +23,18 @@ type AnnouncementListResponse = {
 export class AnnouncementsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getStatistics(): Promise<{ count: number; pinned_count: number }> {
+    const [count, pinnedCount] = await Promise.all([
+      this.prisma.announcement.count(),
+      this.prisma.announcement.count({ where: { isPinned: true } }),
+    ])
+
+    return {
+      count,
+      pinned_count: pinnedCount,
+    }
+  }
+
   async findAll(
     projectId: string,
     query: QueryAnnouncementsDto,
@@ -59,6 +71,41 @@ export class AnnouncementsService {
     return this.toAnnouncementItem(announcement)
   }
 
+  async findAllByProjectKey(
+    projectKey: string,
+    query: QueryAnnouncementsDto,
+  ): Promise<AnnouncementListResponse> {
+    const project = await this.prisma.project.findUnique({
+      where: { projectKey },
+      select: { id: true },
+    })
+    if (!project) {
+      throw new NotFoundException("Project not found")
+    }
+
+    return this.findAll(project.id, query)
+  }
+
+  async findLatestByProjectKey(projectKey: string): Promise<AnnouncementItem> {
+    const project = await this.prisma.project.findUnique({
+      where: { projectKey },
+      select: { id: true },
+    })
+    if (!project) {
+      throw new NotFoundException("Project not found")
+    }
+
+    const latest = await this.prisma.announcement.findFirst({
+      where: { projectId: project.id },
+      orderBy: { createdAt: "desc" },
+    })
+    if (!latest) {
+      throw new NotFoundException("Announcement not found")
+    }
+
+    return this.toAnnouncementItem(latest)
+  }
+
   async create(projectId: string, dto: CreateAnnouncementDto): Promise<AnnouncementItem> {
     await this.ensureProjectExists(projectId)
 
@@ -72,6 +119,21 @@ export class AnnouncementsService {
     })
 
     return this.toAnnouncementItem(created)
+  }
+
+  async createByProjectKey(
+    projectKey: string,
+    dto: CreateAnnouncementDto,
+  ): Promise<AnnouncementItem> {
+    const project = await this.prisma.project.findUnique({
+      where: { projectKey },
+      select: { id: true },
+    })
+    if (!project) {
+      throw new NotFoundException("Project not found")
+    }
+
+    return this.create(project.id, dto)
   }
 
   async update(
@@ -113,6 +175,30 @@ export class AnnouncementsService {
     }
 
     await this.prisma.announcement.delete({ where: { id } })
+  }
+
+  async updateById(id: string, dto: UpdateAnnouncementDto): Promise<AnnouncementItem> {
+    const announcement = await this.prisma.announcement.findUnique({
+      where: { id },
+      select: { projectId: true },
+    })
+    if (!announcement) {
+      throw new NotFoundException("Announcement not found")
+    }
+
+    return this.update(announcement.projectId, id, dto)
+  }
+
+  async removeById(id: string): Promise<void> {
+    const announcement = await this.prisma.announcement.findUnique({
+      where: { id },
+      select: { projectId: true },
+    })
+    if (!announcement) {
+      throw new NotFoundException("Announcement not found")
+    }
+
+    await this.remove(announcement.projectId, id)
   }
 
   getStatus(): { module: string; implemented: boolean } {

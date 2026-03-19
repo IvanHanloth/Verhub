@@ -24,6 +24,30 @@ type LogListResponse = {
 export class LogsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getStatistics(): Promise<{
+    count: number
+    debug_count: number
+    info_count: number
+    warning_count: number
+    error_count: number
+  }> {
+    const [count, debugCount, infoCount, warningCount, errorCount] = await Promise.all([
+      this.prisma.log.count(),
+      this.prisma.log.count({ where: { level: LogLevel.DEBUG } }),
+      this.prisma.log.count({ where: { level: LogLevel.INFO } }),
+      this.prisma.log.count({ where: { level: LogLevel.WARN } }),
+      this.prisma.log.count({ where: { level: LogLevel.ERROR } }),
+    ])
+
+    return {
+      count,
+      debug_count: debugCount,
+      info_count: infoCount,
+      warning_count: warningCount,
+      error_count: errorCount,
+    }
+  }
+
   async findAll(projectId: string, query: QueryLogsDto): Promise<LogListResponse> {
     await this.ensureProjectExistsById(projectId)
 

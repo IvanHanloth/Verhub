@@ -34,30 +34,66 @@ model User {
   role         UserRole @default(ADMIN)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  apiKeys      ApiKey[]
 }
 
 model ApiKey {
   id          String   @id @default(cuid())
   name        String
   keyHash     String   @unique
+  scopes      String[] @default([])
   isActive    Boolean  @default(true)
   lastUsedAt  DateTime?
+  expiresAt   DateTime?
   createdAt   DateTime @default(now())
   revokedAt   DateTime?
+  createdById String?
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([isActive, expiresAt])
 }
 
 model Project {
-  id           String         @id @default(cuid())
-  projectKey   String         @unique
-  name         String
-  repoUrl      String?
-  description  String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  versions     Version[]
+  id            String         @id @default(cuid())
+  projectKey    String         @unique
+  name          String
+  repoUrl       String?
+  description   String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  versions      Version[]
   announcements Announcement[]
-  feedbacks    Feedback[]
-  logs         Log[]
+  feedbacks     Feedback[]
+  logs          Log[]
+  actions       Action[]
+}
+
+model Action {
+  id          String         @id @default(cuid())
+  projectId   String
+  name        String
+  description String
+  customData  Json?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  records     ActionRecord[]
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}
+
+model ActionRecord {
+  id         String   @id @default(cuid())
+  actionId   String
+  http       Json?
+  customData Json?
+  createdAt  DateTime @default(now())
+
+  action Action @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  @@index([actionId, createdAt])
 }
 
 model Version {

@@ -21,6 +21,12 @@ export class LogsController {
     return this.logsService.createByProjectKey(projectKey, dto)
   }
 
+  @Get("admin/logs/statistics")
+  @UseGuards(JwtAdminGuard)
+  async getStatistics() {
+    return this.logsService.getStatistics()
+  }
+
   @Get("logs/_status")
   getModuleStatus(): { module: string; implemented: boolean } {
     return this.logsService.getStatus()

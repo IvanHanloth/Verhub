@@ -67,6 +67,211 @@ paths:
               schema:
                 $ref: "#/components/schemas/ModuleStatusResponse"
 
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: 获取当前管理员信息
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminProfileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/admin-profile:
+    get:
+      tags: [Auth]
+      summary: 获取管理员资料
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminProfileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Auth]
+      summary: 更新管理员资料
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAdminProfileDto"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminProfileResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/password:
+    patch:
+      tags: [Auth]
+      summary: 修改管理员密码
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordDto"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSuccessResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/account:
+    patch:
+      tags: [Auth]
+      summary: 修改管理员账号（用户名）
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAdminAccountDto"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSuccessResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: 用户名冲突
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/tokens:
+    get:
+      tags: [Auth]
+      summary: 获取长期 Token 列表
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ApiTokenItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Auth]
+      summary: 创建长期 Token
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApiTokenDto"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateApiTokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/api-keys:
+    get:
+      tags: [Auth]
+      summary: 获取长期 Token 列表（包装响应）
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiTokenListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Auth]
+      summary: 创建长期 Token（包装响应）
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateApiTokenDto"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateApiTokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/tokens/{id}:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    delete:
+      tags: [Auth]
+      summary: 撤销长期 Token
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSuccessResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /auth/api-keys/{id}:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    delete:
+      tags: [Auth]
+      summary: 撤销长期 Token（包装响应）
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSuccessResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /admin/projects:
     get:
       tags: [Projects]
@@ -109,6 +314,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/projects/statistics:
+    get:
+      tags: [Projects]
+      summary: 获取项目统计信息
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /admin/projects/{id}:
     parameters:
@@ -315,6 +539,128 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /admin/projects/versions:
+    post:
+      tags: [Versions]
+      summary: 通过 project_key 创建版本（兼容路径）
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectVersionDto"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/versions/{version_id}:
+    parameters:
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Versions]
+      summary: 按版本ID获取版本（兼容路径）
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Versions]
+      summary: 按版本ID更新版本（兼容路径）
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVersionDto"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: 同项目 version 冲突
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags: [Versions]
+      summary: 按版本ID删除版本（兼容路径）
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSuccessResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/versions/statistics:
+    get:
+      tags: [Versions]
+      summary: 获取版本统计信息
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  [
+                    total_versions,
+                    total_projects,
+                    forced_versions,
+                    latest_version_time,
+                    first_version_time,
+                  ]
+                properties:
+                  total_versions:
+                    type: integer
+                  total_projects:
+                    type: integer
+                  forced_versions:
+                    type: integer
+                  latest_version_time:
+                    type: [integer, "null"]
+                  first_version_time:
+                    type: [integer, "null"]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /admin/projects/{projectId}/announcements:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -431,6 +777,94 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /admin/projects/announcements:
+    post:
+      tags: [Announcements]
+      summary: 通过 project_key 创建公告（兼容路径）
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectAnnouncementDto"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnouncementItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/announcements/{announcement_id}:
+    parameters:
+      - name: announcement_id
+        in: path
+        required: true
+        schema:
+          type: string
+    patch:
+      tags: [Announcements]
+      summary: 按公告ID更新公告（兼容路径）
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAnnouncementDto"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnouncementItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Announcements]
+      summary: 按公告ID删除公告（兼容路径）
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSuccessResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/announcements/statistics:
+    get:
+      tags: [Announcements]
+      summary: 获取公告统计信息
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, pinned_count]
+                properties:
+                  count:
+                    type: integer
+                  pinned_count:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /admin/projects/{projectId}/feedbacks:
     parameters:
       - $ref: "#/components/parameters/ProjectId"
@@ -472,9 +906,40 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /admin/feedbacks/statistics:
+    get:
+      tags: [Feedbacks]
+      summary: 获取反馈统计信息
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, rate_count, rate_avg]
+                properties:
+                  count:
+                    type: integer
+                  rate_count:
+                    type: integer
+                  rate_avg:
+                    type: [number, "null"]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/feedbacks/{feedback_id}:
+    parameters:
+      - name: feedback_id
+        in: path
+        required: true
+        schema:
+          type: string
     patch:
       tags: [Feedbacks]
-      summary: 更新反馈
+      summary: 按反馈ID更新反馈（兼容路径）
       security:
         - BearerAuth: []
       requestBody:
@@ -495,7 +960,7 @@ paths:
           $ref: "#/components/responses/NotFound"
     delete:
       tags: [Feedbacks]
-      summary: 删除反馈
+      summary: 按反馈ID删除反馈（兼容路径）
       security:
         - BearerAuth: []
       responses:
@@ -506,6 +971,87 @@ paths:
                 $ref: "#/components/schemas/DeleteSuccessResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /public/{projectKey}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [Projects]
+      summary: 按 project_key 获取项目信息
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /public/{projectKey}/versions:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [Versions]
+      summary: 按 project_key 获取版本列表
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /public/{projectKey}/versions/latest:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [Versions]
+      summary: 按 project_key 获取最新版本
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /public/{projectKey}/announcements:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [Announcements]
+      summary: 按 project_key 获取公告列表
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnouncementListResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /public/{projectKey}/announcements/latest:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [Announcements]
+      summary: 按 project_key 获取最新公告
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnouncementItem"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -572,6 +1118,33 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /admin/logs/statistics:
+    get:
+      tags: [Logs]
+      summary: 获取日志统计信息
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, debug_count, info_count, warning_count, error_count]
+                properties:
+                  count:
+                    type: integer
+                  debug_count:
+                    type: integer
+                  info_count:
+                    type: integer
+                  warning_count:
+                    type: integer
+                  error_count:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /public/{projectKey}/logs:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
@@ -603,6 +1176,206 @@ paths:
     get:
       tags: [Logs]
       summary: Logs 模块状态
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModuleStatusResponse"
+
+  /admin/projects/{projectId}/actions:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      tags: [Actions]
+      summary: 获取项目行为分类列表
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/projects/actions:
+    post:
+      tags: [Actions]
+      summary: 创建项目行为分类
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateActionDto"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/actions/{action_id}:
+    parameters:
+      - name: action_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Actions]
+      summary: 获取行为分类下的行为记录
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionRecordListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Actions]
+      summary: 更新行为分类
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateActionDto"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Actions]
+      summary: 删除行为分类
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSuccessResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/actions/record/{action_record_id}:
+    parameters:
+      - name: action_record_id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags: [Actions]
+      summary: 获取单条行为记录
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionRecordItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/actions/statistics:
+    get:
+      tags: [Actions]
+      summary: 获取行为分类统计
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/actions/record/statistics:
+    get:
+      tags: [Actions]
+      summary: 获取行为记录统计
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /public/{projectKey}/actions:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    post:
+      tags: [Actions]
+      summary: 上报行为记录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateActionRecordDto"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActionRecordItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /actions/_status:
+    get:
+      tags: [Actions]
+      summary: Actions 模块状态
       responses:
         "200":
           content:
@@ -760,13 +1533,148 @@ components:
 
     LoginResponse:
       type: object
-      required: [access_token, expires_in]
+      required: [access_token, expires_in, user]
       properties:
         access_token:
           type: string
         expires_in:
           type: integer
           description: JWT 剩余秒数
+        user:
+          $ref: "#/components/schemas/AuthUser"
+
+    AuthUser:
+      type: object
+      required: [id, username, role, must_change_password]
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+          maxLength: 64
+        role:
+          type: string
+          enum: [ADMIN]
+        must_change_password:
+          type: boolean
+
+    AdminProfileResponse:
+      $ref: "#/components/schemas/AuthUser"
+
+    UpdateAdminProfileDto:
+      type: object
+      required: [current_password]
+      properties:
+        current_password:
+          type: string
+          minLength: 6
+          maxLength: 128
+        username:
+          type: string
+          maxLength: 64
+        new_password:
+          type: string
+          minLength: 6
+          maxLength: 128
+
+    ChangePasswordDto:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+          minLength: 6
+          maxLength: 128
+        new_password:
+          type: string
+          minLength: 6
+          maxLength: 128
+
+    UpdateAdminAccountDto:
+      type: object
+      required: [current_password, username]
+      properties:
+        current_password:
+          type: string
+          minLength: 6
+          maxLength: 128
+        username:
+          type: string
+          maxLength: 64
+
+    CreateApiTokenDto:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 64
+        scopes:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+        expires_in_days:
+          type: integer
+          minimum: 1
+          maximum: 365
+
+    ApiTokenListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApiTokenItem"
+
+    ApiTokenItem:
+      type: object
+      required: [id, name, scopes, is_active, created_at, expires_at, revoked_at, last_used_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+        revoked_at:
+          type: [string, "null"]
+          format: date-time
+        last_used_at:
+          type: [string, "null"]
+          format: date-time
+
+    CreateApiTokenResponse:
+      type: object
+      required: [id, name, token, scopes, expires_at, created_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        token:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
 
     CreateProjectDto:
       type: object
@@ -861,6 +1769,16 @@ components:
           type: object
           additionalProperties: true
 
+    CreateProjectVersionDto:
+      allOf:
+        - $ref: "#/components/schemas/CreateVersionDto"
+        - type: object
+          required: [project_key]
+          properties:
+            project_key:
+              type: string
+              maxLength: 64
+
     UpdateVersionDto:
       type: object
       properties:
@@ -886,7 +1804,8 @@ components:
 
     VersionItem:
       type: object
-      required: [id, version, title, content, download_url, forced, platform, custom_data, created_at]
+      required:
+        [id, version, title, content, download_url, forced, platform, custom_data, created_at]
       properties:
         id:
           type: string
@@ -936,6 +1855,16 @@ components:
           maxLength: 4096
         is_pinned:
           type: boolean
+
+    CreateProjectAnnouncementDto:
+      allOf:
+        - $ref: "#/components/schemas/CreateAnnouncementDto"
+        - type: object
+          required: [project_key]
+          properties:
+            project_key:
+              type: string
+              maxLength: 64
 
     UpdateAnnouncementDto:
       type: object
@@ -1108,3 +2037,107 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/LogItem"
+
+    CreateActionDto:
+      type: object
+      required: [project_key, name, description]
+      properties:
+        project_key:
+          type: string
+          maxLength: 64
+        name:
+          type: string
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 512
+        custom_data:
+          type: object
+          additionalProperties: true
+
+    UpdateActionDto:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 128
+        description:
+          type: string
+          maxLength: 512
+        custom_data:
+          type: object
+          additionalProperties: true
+
+    ActionItem:
+      type: object
+      required: [action_id, project_key, name, description, custom_data, created_time]
+      properties:
+        action_id:
+          type: string
+        project_key:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        custom_data:
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: "null"
+        created_time:
+          type: integer
+
+    ActionListResponse:
+      type: object
+      required: [total, data]
+      properties:
+        total:
+          type: integer
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActionItem"
+
+    CreateActionRecordDto:
+      type: object
+      required: [action_id]
+      properties:
+        action_id:
+          type: string
+          maxLength: 64
+        custom_data:
+          type: object
+          additionalProperties: true
+
+    ActionRecordItem:
+      type: object
+      required: [action_record_id, action_id, created_time, http, custom_data]
+      properties:
+        action_record_id:
+          type: string
+        action_id:
+          type: string
+        created_time:
+          type: integer
+        http:
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: "null"
+        custom_data:
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: "null"
+
+    ActionRecordListResponse:
+      type: object
+      required: [total, data]
+      properties:
+        total:
+          type: integer
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActionRecordItem"

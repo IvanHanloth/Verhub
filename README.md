@@ -48,6 +48,21 @@ cp packages/backend/.env.example packages/backend/.env
 pnpm dev
 ```
 
+## Modern Admin Auth Flow
+
+- Admin pages are under `/dashboard` with left sidebar navigation.
+- Unauthenticated access to `/dashboard` is redirected to `/` (password login page).
+- Login supports username/password only; direct token input login is disabled.
+- Successful login issues a short-lived JWT session and redirects back to the original path.
+- Long-lived API tokens can be created/revoked in `Dashboard -> Token 管理`.
+
+## Bootstrap Admin Behavior
+
+- Backend stores admin credentials in database (`User` table).
+- On first startup with empty database, backend auto-creates `admin` with a random password.
+- The bootstrap credential is written to a temporary file `verhub.bootstrap-admin.txt`.
+- After first successful login, this temporary credential file is removed automatically.
+
 ## Quality Commands
 
 - Lint all workspaces: `pnpm -r lint`
@@ -63,6 +78,26 @@ pnpm dev
 - Run Prisma migrations: `pnpm --filter @workspace/backend prisma:migrate`
 - Unit tests: `pnpm --filter @workspace/backend test`
 - E2E tests: `pnpm --filter @workspace/backend test:e2e`
+
+## Docker Deployment
+
+The repository includes production-ready Docker artifacts:
+
+- `docker-compose.yml`
+- `docker/backend.Dockerfile`
+- `docker/web.Dockerfile`
+- `.env.example`
+
+Quick start:
+
+```bash
+cp .env.example .env
+docker compose --env-file .env up -d --build
+```
+
+For both deployment methods (Compose and direct Docker), see:
+
+- `docs/DOCKER-DEPLOYMENT.md`
 
 ## Commit Gate
 

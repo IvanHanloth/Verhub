@@ -4,13 +4,14 @@ import { JwtService } from "@nestjs/jwt"
 
 @Injectable()
 export class JwtAdminGuard implements CanActivate {
-  constructor(
-    private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
-  ) {}
+  private readonly jwtService = new JwtService()
+
+  constructor(private readonly configService: ConfigService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<{ headers: Record<string, string>; user?: unknown }>()
+    const request = context
+      .switchToHttp()
+      .getRequest<{ headers: Record<string, string>; user?: unknown }>()
     const authHeader = request.headers.authorization
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -24,7 +25,10 @@ export class JwtAdminGuard implements CanActivate {
     }
 
     try {
-      const payload = await this.jwtService.verifyAsync(token, { secret })
+      const payload = await this.jwtService.verifyAsync<{ role?: string }>(token, { secret })
+      if (payload.role !== "admin") {
+        throw new UnauthorizedException("Admin role is required")
+      }
       request.user = payload
       return true
     } catch {

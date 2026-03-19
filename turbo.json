@@ -7,8 +7,9 @@
     "DATABASE_URL",
     "JWT_SECRET",
     "JWT_EXPIRES_IN",
-    "ADMIN_USERNAME",
-    "ADMIN_PASSWORD_HASH",
+    "ADMIN_PASSWORD",
+    "BOOTSTRAP_SECRET_DIR",
+    "CORS_ORIGIN",
     "API_KEY_SALT"
   ],
   "tasks": {

@@ -28,3 +28,40 @@
 - [x] 编写开发文档（本地运行、环境变量、提交规范）
 - [x] 编写架构文档补充（模块边界、扩展策略、部署说明）
 - [x] CI 基线：lint + typecheck + test
+
+## 2026-03-19 后台现代化与权限治理（已完成）
+
+- [x] TDD: 为认证与管理员初始化补齐后端单测（含首次登录删除临时文件）
+- [x] TDD: 为 token scope 与过期校验补齐后端单测/集成测
+- [x] TDD: 为前端登录守卫与登录回跳补齐测试
+- [x] 扩展 Prisma：ApiKey 增加 scope、expiresAt、createdBy 等字段
+- [x] 后端实现管理员首启初始化（admin + 随机密码）并写入临时文件
+- [x] 后端实现首次登录成功自动删除临时文件
+- [x] Docker 场景下将临时文件写入挂载卷路径
+- [x] 后端新增管理员信息查询/修改接口（含改账号、改密码）
+- [x] 后端新增长期 Token 生成/列表/撤销接口（scope + 30 天默认过期）
+- [x] 前端新增登录页（仅账密登录）与登录状态管理
+- [x] 前端实现后台路由保护与未登录跳首页+登录回跳
+- [x] 前端构建后台壳层：侧边栏、顶部栏、页面过渡动画、响应式布局
+- [x] 前端新增后台首页（统计卡片 + 图表）
+- [x] 前端新增权限与 Token 管理页面（生成、显示一次明文、撤销）
+- [x] 前端新增管理员设置页（修改管理员账号密码）
+- [x] 新增 docker compose 模板与一键启动说明
+- [x] 更新主 API 文档 verhub.openapi.yaml，参考默认模块覆盖能力
+- [x] 更新 README/docs 开发与部署文档
+- [x] 执行并记录 lint/typecheck/test/e2e 验证结果
+
+## 2026-03-19 默认模块能力补齐（第二阶段）
+
+- [x] 盘点默认模块与主 OpenAPI 的真实路径差异（按参数占位归一）
+- [x] 补齐统计接口：/admin/projects/statistics
+- [x] 补齐统计接口：/admin/versions/statistics
+- [x] 补齐统计接口：/admin/announcements/statistics
+- [x] 补齐统计接口：/admin/feedbacks/statistics
+- [x] 补齐统计接口：/admin/logs/statistics
+- [x] 同步更新 verhub.openapi.yaml 统计接口文档
+- [x] 补齐默认模块兼容路由：/admin/versions/{version_id}（GET/PUT/DELETE）
+- [x] 补齐默认模块兼容路由：/admin/announcements/{announcement_id}（PUT/DELETE）
+- [x] 补齐默认模块兼容路由：/admin/feedbacks/{feedback_id}（PUT/DELETE）
+- [x] 补齐默认模块公开接口：project 基础信息/versions 列表与 latest/announcements 列表与 latest
+- [x] 补齐默认模块公开接口：actions 上报与管理端 actions 系列接口

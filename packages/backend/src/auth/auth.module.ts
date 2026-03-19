@@ -25,6 +25,6 @@ import { parseExpiresInToSeconds } from "./utils/jwt-expiration"
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtAdminGuard, ApiKeyGuard, AdminOrApiKeyGuard],
-  exports: [AuthService, JwtAdminGuard, ApiKeyGuard, AdminOrApiKeyGuard],
+  exports: [JwtModule, AuthService, JwtAdminGuard, ApiKeyGuard, AdminOrApiKeyGuard],
 })
 export class AuthModule {}

@@ -17,6 +17,11 @@ export class ProjectsController {
     return this.projectsService.findAll(query)
   }
 
+  @Get("statistics")
+  async getStatistics() {
+    return this.projectsService.getStatistics()
+  }
+
   @Get(":id")
   async findOne(@Param("id") id: string) {
     return this.projectsService.findOne(id)

@@ -43,8 +43,17 @@ export class FeedbacksController {
   }
 
   @Post("public/:projectKey/feedbacks")
-  async createByProjectKey(@Param("projectKey") projectKey: string, @Body() dto: CreateFeedbackDto) {
+  async createByProjectKey(
+    @Param("projectKey") projectKey: string,
+    @Body() dto: CreateFeedbackDto,
+  ) {
     return this.feedbacksService.createByProjectKey(projectKey, dto)
+  }
+
+  @Get("admin/feedbacks/statistics")
+  @UseGuards(JwtAdminGuard)
+  async getStatistics() {
+    return this.feedbacksService.getStatistics()
   }
 
   @Get("feedbacks/_status")

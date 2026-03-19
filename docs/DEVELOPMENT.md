@@ -55,9 +55,10 @@ pnpm dev
 - `DATABASE_URL`：PostgreSQL 连接串
 - `JWT_SECRET`：管理员 JWT 签名密钥，必须使用高强度随机值
 - `JWT_EXPIRES_IN`：JWT 过期时间，例如 `2h`
-- `ADMIN_USERNAME`：初始管理员用户名
-- `ADMIN_PASSWORD_HASH`：管理员密码哈希（bcrypt）
+- `ADMIN_PASSWORD`：首次引导管理员密码（可选；不填则自动生成随机密码）
+- `BOOTSTRAP_SECRET_DIR`：首次管理员临时凭据文件输出目录（Docker 建议挂载卷）
 - `API_KEY_SALT`：API Key 校验盐值
+- `CORS_ORIGIN`：允许跨域来源，多个值用逗号分隔
 
 前端变量（`web/.env.local`，按需新增）：
 
@@ -115,9 +116,20 @@ pnpm --filter @workspace/backend test:e2e
 
 ### 5.1 登录失败（401）
 
-- 检查 `ADMIN_USERNAME` 是否正确
-- 确认 `ADMIN_PASSWORD_HASH` 与输入密码匹配
+- 首次启动后请先查看 `verhub.bootstrap-admin.txt` 中引导密码
+- 确认管理员账号是否已在后台设置页面被修改
 - 检查请求是否使用最新 JWT
+
+### 5.1.1 首次管理员引导文件
+
+- 默认写入仓库根目录：`verhub.bootstrap-admin.txt`
+- 在 Docker 下建议设置 `BOOTSTRAP_SECRET_DIR=/bootstrap` 并挂载卷
+- 首次登录成功后，后端会自动删除该文件
+
+## 6. Docker 部署
+
+- Docker 环境变量模板：`/.env.example`
+- Docker 与 Compose 部署步骤：`docs/DOCKER-DEPLOYMENT.md`
 
 ### 5.2 Prisma 迁移失败
 

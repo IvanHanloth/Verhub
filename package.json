@@ -6,6 +6,7 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
+    "lint-staged": "lint-staged",
     "typecheck": "turbo typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -23,9 +24,17 @@
     "typescript": "5.9.3"
   },
   "lint-staged": {
-    "*.{js,cjs,mjs,ts,tsx,jsx}": [
-      "eslint --fix --max-warnings=0",
-      "prettier --write"
+    "packages/backend/**/*.{js,cjs,mjs,ts,tsx,jsx}": [
+      "pnpm --filter @workspace/backend exec eslint --fix --max-warnings=0",
+      "pnpm --filter @workspace/backend exec prettier --write"
+    ],
+    "web/**/*.{js,cjs,mjs,ts,tsx,jsx}": [
+      "pnpm --filter web exec eslint --fix --max-warnings=0",
+      "pnpm --filter web exec prettier --write"
+    ],
+    "packages/ui/**/*.{js,cjs,mjs,ts,tsx,jsx}": [
+      "pnpm --filter @workspace/ui exec eslint --fix --max-warnings=0",
+      "pnpm --filter @workspace/ui exec prettier --write"
     ],
     "*.{json,md,css,scss,yaml,yml}": [
       "prettier --write"

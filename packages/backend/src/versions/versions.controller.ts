@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common"
 
 import { AdminOrApiKeyGuard } from "../auth/guards/admin-or-api-key.guard"
+import { RequireApiScope } from "../auth/guards/api-scope.decorator"
 import { JwtAdminGuard } from "../auth/guards/jwt-admin.guard"
 
 import { CreateVersionDto } from "./dto/create-version.dto"
@@ -32,6 +33,7 @@ export class VersionsController {
 
   @Post()
   @UseGuards(AdminOrApiKeyGuard)
+  @RequireApiScope("versions:write")
   async create(@Param("projectId") projectId: string, @Body() dto: CreateVersionDto) {
     return this.versionsService.create(projectId, dto)
   }

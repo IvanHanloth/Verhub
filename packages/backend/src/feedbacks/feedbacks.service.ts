@@ -26,6 +26,26 @@ type FeedbackListResponse = {
 export class FeedbacksService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getStatistics(): Promise<{ count: number; rate_count: number; rate_avg: number | null }> {
+    const [count, rated] = await Promise.all([
+      this.prisma.feedback.count(),
+      this.prisma.feedback.findMany({
+        where: { rating: { not: null } },
+        select: { rating: true },
+      }),
+    ])
+
+    const rateCount = rated.length
+    const totalScore = rated.reduce((sum, item) => sum + (item.rating ?? 0), 0)
+    const rateAvg = rateCount > 0 ? totalScore / rateCount : null
+
+    return {
+      count,
+      rate_count: rateCount,
+      rate_avg: rateAvg,
+    }
+  }
+
   async findAll(projectId: string, query: QueryFeedbacksDto): Promise<FeedbackListResponse> {
     await this.ensureProjectExistsById(projectId)
 
@@ -119,6 +139,30 @@ export class FeedbacksService {
     }
 
     await this.prisma.feedback.delete({ where: { id } })
+  }
+
+  async updateById(id: string, dto: UpdateFeedbackDto): Promise<FeedbackItem> {
+    const feedback = await this.prisma.feedback.findUnique({
+      where: { id },
+      select: { projectId: true },
+    })
+    if (!feedback) {
+      throw new NotFoundException("Feedback not found")
+    }
+
+    return this.update(feedback.projectId, id, dto)
+  }
+
+  async removeById(id: string): Promise<void> {
+    const feedback = await this.prisma.feedback.findUnique({
+      where: { id },
+      select: { projectId: true },
+    })
+    if (!feedback) {
+      throw new NotFoundException("Feedback not found")
+    }
+
+    await this.remove(feedback.projectId, id)
   }
 
   getStatus(): { module: string; implemented: boolean } {

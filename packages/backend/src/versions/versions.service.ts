@@ -28,6 +28,40 @@ type VersionListResponse = {
 export class VersionsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getStatistics(): Promise<{
+    total_versions: number
+    total_projects: number
+    forced_versions: number
+    latest_version_time: number | null
+    first_version_time: number | null
+  }> {
+    const [totalVersions, totalProjects, forcedVersions, latestVersion, firstVersion] =
+      await Promise.all([
+        this.prisma.version.count(),
+        this.prisma.version.findMany({
+          select: { projectId: true },
+          distinct: ["projectId"],
+        }),
+        this.prisma.version.count({ where: { forced: true } }),
+        this.prisma.version.findFirst({
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true },
+        }),
+        this.prisma.version.findFirst({
+          orderBy: { createdAt: "asc" },
+          select: { createdAt: true },
+        }),
+      ])
+
+    return {
+      total_versions: totalVersions,
+      total_projects: totalProjects.length,
+      forced_versions: forcedVersions,
+      latest_version_time: latestVersion ? latestVersion.createdAt.getTime() : null,
+      first_version_time: firstVersion ? firstVersion.createdAt.getTime() : null,
+    }
+  }
+
   async findAll(projectId: string, query: QueryVersionsDto): Promise<VersionListResponse> {
     await this.ensureProjectExists(projectId)
 
@@ -61,6 +95,52 @@ export class VersionsService {
     return this.toVersionItem(version)
   }
 
+  async findOneById(id: string): Promise<VersionItem> {
+    const version = await this.prisma.version.findUnique({
+      where: { id },
+    })
+    if (!version) {
+      throw new NotFoundException("Version not found")
+    }
+
+    return this.toVersionItem(version)
+  }
+
+  async findAllByProjectKey(
+    projectKey: string,
+    query: QueryVersionsDto,
+  ): Promise<VersionListResponse> {
+    const project = await this.prisma.project.findUnique({
+      where: { projectKey },
+      select: { id: true },
+    })
+    if (!project) {
+      throw new NotFoundException("Project not found")
+    }
+
+    return this.findAll(project.id, query)
+  }
+
+  async findLatestByProjectKey(projectKey: string): Promise<VersionItem> {
+    const project = await this.prisma.project.findUnique({
+      where: { projectKey },
+      select: { id: true },
+    })
+    if (!project) {
+      throw new NotFoundException("Project not found")
+    }
+
+    const latest = await this.prisma.version.findFirst({
+      where: { projectId: project.id },
+      orderBy: { createdAt: "desc" },
+    })
+    if (!latest) {
+      throw new NotFoundException("Version not found")
+    }
+
+    return this.toVersionItem(latest)
+  }
+
   async create(projectId: string, dto: CreateVersionDto): Promise<VersionItem> {
     await this.ensureProjectExists(projectId)
 
@@ -86,6 +166,18 @@ export class VersionsService {
 
       throw error
     }
+  }
+
+  async createByProjectKey(projectKey: string, dto: CreateVersionDto): Promise<VersionItem> {
+    const project = await this.prisma.project.findUnique({
+      where: { projectKey },
+      select: { id: true },
+    })
+    if (!project) {
+      throw new NotFoundException("Project not found")
+    }
+
+    return this.create(project.id, dto)
   }
 
   async update(projectId: string, id: string, dto: UpdateVersionDto): Promise<VersionItem> {
@@ -123,6 +215,15 @@ export class VersionsService {
     }
   }
 
+  async updateById(id: string, dto: UpdateVersionDto): Promise<VersionItem> {
+    const version = await this.prisma.version.findUnique({ where: { id } })
+    if (!version) {
+      throw new NotFoundException("Version not found")
+    }
+
+    return this.update(version.projectId, id, dto)
+  }
+
   async remove(projectId: string, id: string): Promise<void> {
     const version = await this.prisma.version.findFirst({
       where: {
@@ -135,6 +236,15 @@ export class VersionsService {
     }
 
     await this.prisma.version.delete({ where: { id } })
+  }
+
+  async removeById(id: string): Promise<void> {
+    const version = await this.prisma.version.findUnique({ where: { id } })
+    if (!version) {
+      throw new NotFoundException("Version not found")
+    }
+
+    await this.remove(version.projectId, id)
   }
 
   getStatus(): { module: string; implemented: boolean } {

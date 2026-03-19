@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+.git
+.github
+.vscode
+.idea
+coverage
+**/coverage
+**/.cache
+tmp
+**/*.log
+README.md
+TODO
+docs

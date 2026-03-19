@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common"
 import { ConfigModule } from "@nestjs/config"
 
+import { ActionsModule } from "./actions/actions.module"
 import { AnnouncementsModule } from "./announcements/announcements.module"
 import { AuthModule } from "./auth/auth.module"
 import { DatabaseModule } from "./database/database.module"
@@ -23,6 +24,7 @@ import { VersionsModule } from "./versions/versions.module"
     AnnouncementsModule,
     FeedbacksModule,
     LogsModule,
+    ActionsModule,
   ],
 })
 export class AppModule {}

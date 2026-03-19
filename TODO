@@ -1,0 +1,30 @@
+# TODO
+
+- [x] 项目任务规范：使用 [ ] [x] [~] 标识任务状态
+- [x] 初始化 Monorepo 根配置（pnpm-workspace、root package scripts）
+- [x] 接入并验证 Prettier（根配置、忽略文件、全仓格式化脚本）
+- [x] 接入并验证 ESLint（根执行入口、各包脚本统一）
+- [x] 接入并验证 Husky + lint-staged（pre-commit 自动检查）
+- [x] 修正并统一 workspace 路径与命名（消除模板遗留 apps/web 语义）
+- [x] 设计并创建后端 NestJS 基础工程结构（app/module/main/config）
+- [x] 引入 PostgreSQL 与 ORM（Prisma）并完成本地连接配置
+- [x] 设计并实现 Project 实体与 CRUD API（含分页）
+- [x] 设计并实现 Version 实体与 CRUD API（含发布能力）
+- [x] 设计并实现 Announcement 实体与 CRUD API
+- [x] 设计并实现 Feedback 实体与 CRUD API
+- [x] 设计并实现 Log 上报与查询 API（先用 PostgreSQL，后续可扩展 Mongo）
+- [x] 实现 Auth 模块（管理员 JWT 登录 + API Key 校验）
+- [x] 对齐并完善 OpenAPI 文档与后端 DTO/响应结构
+- [x] 前端初始化页面框架（Next.js App Router + shadcn + Tailwind）
+- [x] 前端实现项目管理页面（列表/创建/编辑）
+- [x] 前端实现版本管理页面（列表/发布）
+- [x] 前端实现公告管理页面
+- [x] 前端实现反馈管理页面
+- [x] 前端实现日志查询页面（筛选 + 分页）
+- [x] 前后端联调（接口错误态、空态、加载态）
+- [x] 增加后端单元测试（核心 service + auth）
+- [x] 增加后端 e2e 测试（关键 API 流程）
+- [x] 增加前端基础测试（关键组件与页面交互）
+- [x] 编写开发文档（本地运行、环境变量、提交规范）
+- [x] 编写架构文档补充（模块边界、扩展策略、部署说明）
+- [x] CI 基线：lint + typecheck + test

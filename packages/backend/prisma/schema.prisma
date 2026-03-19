@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  GUEST
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+enum ClientPlatform {
+  IOS
+  ANDROID
+  WINDOWS
+  MAC
+  WEB
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         UserRole @default(ADMIN)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ApiKey {
+  id          String   @id @default(cuid())
+  name        String
+  keyHash     String   @unique
+  isActive    Boolean  @default(true)
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  revokedAt   DateTime?
+}
+
+model Project {
+  id           String         @id @default(cuid())
+  projectKey   String         @unique
+  name         String
+  repoUrl      String?
+  description  String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  versions     Version[]
+  announcements Announcement[]
+  feedbacks    Feedback[]
+  logs         Log[]
+}
+
+model Version {
+  id          String         @id @default(cuid())
+  projectId   String
+  version     String
+  title       String?
+  content     String?
+  downloadUrl String
+  forced      Boolean        @default(false)
+  platform    ClientPlatform?
+  customData  Json?
+  createdAt   DateTime       @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, version])
+  @@index([projectId, createdAt])
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  projectId String
+  title     String
+  content   String
+  isPinned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}
+
+model Feedback {
+  id         String   @id @default(cuid())
+  projectId  String
+  userId     String?
+  rating     Int?
+  content    String
+  platform   ClientPlatform?
+  customData Json?
+  createdAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}
+
+model Log {
+  id         String   @id @default(cuid())
+  projectId  String
+  level      LogLevel
+  content    String
+  deviceInfo Json?
+  customData Json?
+  createdAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([level, createdAt])
+}

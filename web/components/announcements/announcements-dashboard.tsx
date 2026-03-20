@@ -57,7 +57,7 @@ function toMutationInput(form: AnnouncementFormState): AnnouncementMutationInput
 }
 
 export function AnnouncementsDashboard() {
-  const [token, setToken] = React.useState("")
+  const [token, setToken] = React.useState(() => getSessionToken().trim())
   const [authError, setAuthError] = React.useState<string | null>(null)
 
   const [projects, setProjects] = React.useState<ProjectItem[]>([])
@@ -155,13 +155,6 @@ export function AnnouncementsDashboard() {
     },
     [selectedProjectId, token],
   )
-
-  React.useEffect(() => {
-    const savedToken = getSessionToken().trim()
-    if (savedToken) {
-      setToken(savedToken)
-    }
-  }, [])
 
   React.useEffect(() => {
     void loadProjects()

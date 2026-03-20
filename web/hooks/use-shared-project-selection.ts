@@ -22,14 +22,10 @@ function emitChange(nextId: string) {
 }
 
 export function useSharedProjectSelection(defaultValue = "") {
-  const [selectedProjectId, setSelectedProjectIdState] = React.useState(defaultValue)
-
-  React.useEffect(() => {
+  const [selectedProjectId, setSelectedProjectIdState] = React.useState(() => {
     const current = readStoredProjectId()
-    if (current) {
-      setSelectedProjectIdState(current)
-    }
-  }, [])
+    return current || defaultValue
+  })
 
   React.useEffect(() => {
     if (typeof window === "undefined") {

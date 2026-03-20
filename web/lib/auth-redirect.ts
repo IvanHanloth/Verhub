@@ -14,12 +14,6 @@ export function resolveAuthRedirect(
     }
   }
 
-  if (pathname === "/" && hasToken) {
-    return {
-      redirectTo: "/admin",
-    }
-  }
-
   return {
     redirectTo: null,
   }

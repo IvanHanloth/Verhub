@@ -67,7 +67,8 @@ export function DashboardShell({ children }: Props) {
 
   function logout() {
     clearSessionToken()
-    router.replace("/admin")
+    router.replace("/")
+    router.refresh()
   }
 
   if (!ready) {

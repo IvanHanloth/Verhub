@@ -106,4 +106,40 @@ describe("VersionsDashboard", () => {
 
     expect(screen.getByText("版本已更新。")).toBeInTheDocument()
   })
+
+  it("keeps previously selected project from shared storage", async () => {
+    window.localStorage.setItem("verhub.admin.selectedProjectId", "project-2")
+
+    mockedListProjects.mockResolvedValueOnce({
+      total: 2,
+      data: [
+        {
+          id: "project-1",
+          project_key: "verhub",
+          name: "Verhub",
+          repo_url: null,
+          description: null,
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+        {
+          id: "project-2",
+          project_key: "client",
+          name: "Client",
+          repo_url: null,
+          description: null,
+          created_at: "2026-01-01T00:00:00.000Z",
+          updated_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    })
+
+    render(React.createElement(VersionsDashboard))
+
+    const select = await screen.findByLabelText("目标项目")
+    await waitFor(() => {
+      expect(select).toHaveValue("project-2")
+    })
+    expect(window.localStorage.getItem("verhub.admin.selectedProjectId")).toBe("project-2")
+  })
 })

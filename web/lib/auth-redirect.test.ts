@@ -21,9 +21,9 @@ describe("resolveAuthRedirect", () => {
     })
   })
 
-  it("redirects authenticated user from home page to admin", () => {
+  it("keeps home page publicly accessible for authenticated users", () => {
     expect(resolveAuthRedirect("/", "", true)).toEqual({
-      redirectTo: "/admin",
+      redirectTo: null,
     })
   })
 

@@ -1,4 +1,4 @@
-import { UnauthorizedException } from "@nestjs/common"
+import { Logger, UnauthorizedException } from "@nestjs/common"
 
 import * as bcrypt from "bcrypt"
 
@@ -16,7 +16,12 @@ type PrismaMock = {
     create: jest.Mock
     findFirst: jest.Mock
     findMany: jest.Mock
+    findUnique: jest.Mock
     update: jest.Mock
+  }
+  project: {
+    count: jest.Mock
+    findUnique: jest.Mock
   }
 }
 
@@ -33,7 +38,12 @@ function createPrismaMock(): PrismaMock {
       create: jest.fn(),
       findFirst: jest.fn(),
       findMany: jest.fn(),
+      findUnique: jest.fn(),
       update: jest.fn(),
+    },
+    project: {
+      count: jest.fn(),
+      findUnique: jest.fn(),
     },
   }
 }
@@ -128,6 +138,8 @@ describe("AuthService", () => {
     prisma.apiKey.findFirst.mockResolvedValue({
       id: "api-key-1",
       scopes: ["versions:write"],
+      allProjects: true,
+      projectIds: [],
     })
     prisma.apiKey.update.mockResolvedValue({ id: "api-key-1" })
 
@@ -160,6 +172,8 @@ describe("AuthService", () => {
     prisma.apiKey.findFirst.mockResolvedValue({
       id: "api-key-1",
       scopes: ["projects:read"],
+      allProjects: true,
+      projectIds: [],
     })
 
     const service = new AuthService(
@@ -179,6 +193,134 @@ describe("AuthService", () => {
 
     expect(valid).toBe(false)
     expect(prisma.apiKey.update).not.toHaveBeenCalled()
+  })
+
+  it("rejects forbidden admin profile update scope for api key", async () => {
+    const prisma = createPrismaMock()
+    prisma.apiKey.findFirst.mockResolvedValue({
+      id: "api-key-1",
+      scopes: ["tokens:write", "projects:read"],
+      allProjects: true,
+      projectIds: [],
+    })
+
+    const service = new AuthService(
+      prisma as never,
+      { signAsync: jest.fn() } as never,
+      {
+        get: jest.fn((key: string) => {
+          const values: Record<string, string> = {
+            API_KEY_SALT: "pepper",
+          }
+          return values[key]
+        }),
+      } as never,
+    )
+
+    const valid = await service.validateApiKey("sk_live_demo", "admin:profile:update")
+
+    expect(valid).toBe(false)
+    expect(prisma.apiKey.update).not.toHaveBeenCalled()
+  })
+
+  it("enforces project scope when api key is limited to project ids", async () => {
+    const prisma = createPrismaMock()
+    prisma.apiKey.findFirst.mockResolvedValue({
+      id: "api-key-1",
+      scopes: ["versions:read"],
+      allProjects: false,
+      projectIds: ["project-1"],
+    })
+
+    const service = new AuthService(
+      prisma as never,
+      { signAsync: jest.fn() } as never,
+      {
+        get: jest.fn((key: string) => {
+          const values: Record<string, string> = {
+            API_KEY_SALT: "pepper",
+          }
+          return values[key]
+        }),
+      } as never,
+    )
+
+    const allowed = await service.validateApiKey("sk_live_demo", "versions:read", {
+      projectId: "project-1",
+    })
+    const denied = await service.validateApiKey("sk_live_demo", "versions:read", {
+      projectId: "project-2",
+    })
+
+    expect(allowed).toBe(true)
+    expect(denied).toBe(false)
+  })
+
+  it("accepts previous key during grace period", async () => {
+    const prisma = createPrismaMock()
+    prisma.apiKey.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: "api-key-1",
+        scopes: ["versions:read"],
+        allProjects: true,
+        projectIds: [],
+      })
+
+    const service = new AuthService(
+      prisma as never,
+      { signAsync: jest.fn() } as never,
+      {
+        get: jest.fn((key: string) => {
+          const values: Record<string, string> = {
+            API_KEY_SALT: "pepper",
+          }
+          return values[key]
+        }),
+      } as never,
+    )
+
+    const valid = await service.validateApiKey("sk_live_previous", "versions:read")
+
+    expect(valid).toBe(true)
+    expect(prisma.apiKey.update).toHaveBeenCalledWith({
+      where: { id: "api-key-1" },
+      data: { lastUsedAt: expect.any(Date) },
+    })
+  })
+
+  it("rejects expired api key and writes warning log without deleting record", async () => {
+    const prisma = createPrismaMock()
+    prisma.apiKey.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: "expired-key-id",
+      expiresAt: new Date("2026-03-01T00:00:00.000Z"),
+    })
+
+    const warnSpy = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined)
+
+    const service = new AuthService(
+      prisma as never,
+      { signAsync: jest.fn() } as never,
+      {
+        get: jest.fn((key: string) => {
+          const values: Record<string, string> = {
+            API_KEY_SALT: "pepper",
+          }
+          return values[key]
+        }),
+      } as never,
+    )
+
+    const valid = await service.validateApiKey("sk_live_expired", "versions:read")
+
+    expect(valid).toBe(false)
+    expect(prisma.apiKey.update).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("expired token rejected key_id=expired-key-id"),
+    )
+
+    warnSpy.mockRestore()
   })
 
   it("updates admin profile with current password", async () => {
@@ -332,6 +474,8 @@ describe("AuthService", () => {
         name: "ci-key",
         keyHash: expect.any(String),
         scopes: ["versions:write"],
+        allProjects: true,
+        projectIds: [],
         createdById: "admin-id",
         expiresAt: expect.any(Date),
       },
@@ -339,10 +483,60 @@ describe("AuthService", () => {
         id: true,
         name: true,
         scopes: true,
+        allProjects: true,
+        projectIds: true,
         expiresAt: true,
         createdAt: true,
       },
     })
+  })
+
+  it("creates non-expiring api key with project whitelist", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.count.mockResolvedValue(2)
+    prisma.apiKey.create.mockResolvedValue({
+      id: "key-id",
+      name: "ci-key",
+      scopes: ["versions:write"],
+      allProjects: false,
+      projectIds: ["project-1", "project-2"],
+      expiresAt: null,
+      createdAt: new Date(),
+    })
+
+    const service = new AuthService(
+      prisma as never,
+      { signAsync: jest.fn() } as never,
+      {
+        get: jest.fn((key: string) => {
+          const values: Record<string, string> = {
+            API_KEY_SALT: "pepper",
+          }
+          return values[key]
+        }),
+      } as never,
+    )
+
+    const result = await service.createApiKey(
+      {
+        name: "ci-key",
+        all_projects: false,
+        project_ids: ["project-1", "project-2"],
+        never_expires: true,
+      },
+      "admin-id",
+    )
+
+    expect(result.expires_at).toBeNull()
+    expect(prisma.apiKey.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          allProjects: false,
+          projectIds: ["project-1", "project-2"],
+          expiresAt: null,
+        }),
+      }),
+    )
   })
 
   it("does not print bootstrap password when admin password is configured", async () => {

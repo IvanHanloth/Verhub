@@ -164,6 +164,22 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /auth/api-scopes:
+    get:
+      tags: [Auth]
+      summary: 获取可用的 API 作用域列表
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: 获取可用作用域列表及默认值
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListApiScopesResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /auth/tokens:
     get:
       tags: [Auth]
@@ -237,6 +253,27 @@ paths:
   /auth/tokens/{id}:
     parameters:
       - $ref: "#/components/parameters/EntityId"
+    patch:
+      tags: [Auth]
+      summary: 在线更新长期 Token（权限/范围/有效期，token 值不变）
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateApiTokenDto"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateApiTokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
     delete:
       tags: [Auth]
       summary: 撤销长期 Token
@@ -253,9 +290,55 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /auth/tokens/{id}/rotate:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    post:
+      tags: [Auth]
+      summary: 轮转长期 Token（支持旧 token 宽限期）
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RotateApiTokenDto"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateApiTokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /auth/api-keys/{id}:
     parameters:
       - $ref: "#/components/parameters/EntityId"
+    patch:
+      tags: [Auth]
+      summary: 在线更新长期 Token（包装响应，token 值不变）
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateApiTokenDto"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateApiTokenResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
     delete:
       tags: [Auth]
       summary: 撤销长期 Token（包装响应）
@@ -267,6 +350,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeleteSuccessResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /auth/api-keys/{id}/rotate:
+    parameters:
+      - $ref: "#/components/parameters/EntityId"
+    post:
+      tags: [Auth]
+      summary: 轮转长期 Token（包装响应，支持旧 token 宽限期）
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RotateApiTokenDto"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotateApiTokenResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -974,6 +1082,17 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /feedbacks/_status:
+    get:
+      tags: [Feedbacks]
+      summary: Feedbacks 模块状态
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModuleStatusResponse"
+
   /public/{projectKey}:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
@@ -1075,17 +1194,6 @@ paths:
                 $ref: "#/components/schemas/FeedbackItem"
         "404":
           $ref: "#/components/responses/NotFound"
-
-  /feedbacks/_status:
-    get:
-      tags: [Feedbacks]
-      summary: Feedbacks 模块状态
-      responses:
-        "200":
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ModuleStatusResponse"
 
   /admin/projects/{projectId}/logs:
     parameters:
@@ -1618,6 +1726,16 @@ components:
           type: integer
           minimum: 1
           maximum: 365
+        never_expires:
+          type: boolean
+          default: false
+        all_projects:
+          type: boolean
+          default: true
+        project_ids:
+          type: array
+          items:
+            type: string
 
     ApiTokenListResponse:
       type: object
@@ -1630,13 +1748,31 @@ components:
 
     ApiTokenItem:
       type: object
-      required: [id, name, scopes, is_active, created_at, expires_at, revoked_at, last_used_at]
+      required:
+        [
+          id,
+          name,
+          scopes,
+          all_projects,
+          project_ids,
+          is_active,
+          created_at,
+          expires_at,
+          revoked_at,
+          last_used_at,
+        ]
       properties:
         id:
           type: string
         name:
           type: string
         scopes:
+          type: array
+          items:
+            type: string
+        all_projects:
+          type: boolean
+        project_ids:
           type: array
           items:
             type: string
@@ -1654,10 +1790,13 @@ components:
         last_used_at:
           type: [string, "null"]
           format: date-time
+        previous_key_expires_at:
+          type: [string, "null"]
+          format: date-time
 
     CreateApiTokenResponse:
       type: object
-      required: [id, name, token, scopes, expires_at, created_at]
+      required: [id, name, token, scopes, all_projects, project_ids, expires_at, created_at]
       properties:
         id:
           type: string
@@ -1669,12 +1808,104 @@ components:
           type: array
           items:
             type: string
+        all_projects:
+          type: boolean
+        project_ids:
+          type: array
+          items:
+            type: string
         expires_at:
-          type: string
+          type: [string, "null"]
           format: date-time
         created_at:
           type: string
           format: date-time
+
+    UpdateApiTokenDto:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 64
+        scopes:
+          type: array
+          items:
+            type: string
+            maxLength: 64
+        expires_in_days:
+          type: integer
+          minimum: 1
+          maximum: 365
+        never_expires:
+          type: boolean
+        all_projects:
+          type: boolean
+        project_ids:
+          type: array
+          items:
+            type: string
+
+    UpdateApiTokenResponse:
+      type: object
+      required: [id, name, scopes, all_projects, project_ids, expires_at, created_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        all_projects:
+          type: boolean
+        project_ids:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    RotateApiTokenDto:
+      type: object
+      properties:
+        grace_period_minutes:
+          type: integer
+          minimum: 0
+          maximum: 10080
+
+    RotateApiTokenResponse:
+      type: object
+      required: [id, token, grace_period_minutes, previous_key_expires_at]
+      properties:
+        id:
+          type: string
+        token:
+          type: string
+        grace_period_minutes:
+          type: integer
+        previous_key_expires_at:
+          type: [string, "null"]
+          format: date-time
+
+    ListApiScopesResponse:
+      type: object
+      required: [data, default]
+      properties:
+        data:
+          type: array
+          items:
+            type: string
+          description: 所有可用的 API 作用域列表
+        default:
+          type: array
+          items:
+            type: string
+          description: 创建 Token 时的默认作用域
 
     CreateProjectDto:
       type: object

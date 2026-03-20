@@ -20,8 +20,11 @@ export type ApiKeyItem = {
   id: string
   name: string
   scopes: string[]
+  all_projects: boolean
+  project_ids: string[]
   is_active: boolean
   expires_at: string | null
+  previous_key_expires_at?: string | null
   last_used_at: string | null
   created_at: string
   revoked_at: string | null
@@ -31,9 +34,17 @@ export type ListApiKeysResponse = {
   data: ApiKeyItem[]
 }
 
+export type ListApiScopesResponse = {
+  data: string[]
+  default: string[]
+}
+
 export type CreateApiKeyInput = {
   name: string
   scopes?: string[]
+  all_projects?: boolean
+  project_ids?: string[]
+  never_expires?: boolean
   expires_in_days?: number
 }
 
@@ -42,8 +53,40 @@ export type CreateApiKeyResponse = {
   name: string
   token: string
   scopes: string[]
-  expires_at: string
+  all_projects: boolean
+  project_ids: string[]
+  expires_at: string | null
   created_at: string
+}
+
+export type UpdateApiKeyInput = {
+  name?: string
+  scopes?: string[]
+  all_projects?: boolean
+  project_ids?: string[]
+  never_expires?: boolean
+  expires_in_days?: number
+}
+
+export type UpdateApiKeyResponse = {
+  id: string
+  name: string
+  scopes: string[]
+  all_projects: boolean
+  project_ids: string[]
+  expires_at: string | null
+  created_at: string
+}
+
+export type RotateApiKeyInput = {
+  grace_period_minutes?: number
+}
+
+export type RotateApiKeyResponse = {
+  id: string
+  token: string
+  grace_period_minutes: number
+  previous_key_expires_at: string | null
 }
 
 export async function loginWithPassword(
@@ -88,6 +131,12 @@ export async function listApiKeys(): Promise<ListApiKeysResponse> {
   })
 }
 
+export async function listApiScopes(): Promise<ListApiScopesResponse> {
+  return requestJson<ListApiScopesResponse>("/auth/api-scopes", {
+    token: getTokenOrThrow(),
+  })
+}
+
 export async function createApiKey(input: CreateApiKeyInput): Promise<CreateApiKeyResponse> {
   return requestJson<CreateApiKeyResponse>("/auth/api-keys", {
     method: "POST",
@@ -100,5 +149,27 @@ export async function revokeApiKey(id: string): Promise<{ success: true }> {
   return requestJson<{ success: true }>(`/auth/api-keys/${id}`, {
     method: "DELETE",
     token: getTokenOrThrow(),
+  })
+}
+
+export async function updateApiKey(
+  id: string,
+  input: UpdateApiKeyInput,
+): Promise<UpdateApiKeyResponse> {
+  return requestJson<UpdateApiKeyResponse>(`/auth/api-keys/${id}`, {
+    method: "PATCH",
+    token: getTokenOrThrow(),
+    body: input,
+  })
+}
+
+export async function rotateApiKey(
+  id: string,
+  input: RotateApiKeyInput,
+): Promise<RotateApiKeyResponse> {
+  return requestJson<RotateApiKeyResponse>(`/auth/api-keys/${id}/rotate`, {
+    method: "POST",
+    token: getTokenOrThrow(),
+    body: input,
   })
 }

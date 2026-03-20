@@ -1,15 +1,26 @@
 "use client"
 
 import * as React from "react"
-import { AlertTriangle, CheckCircle2, ListTree, Loader2, Plus, RefreshCcw } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Loader2, Plus } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
 import { ApiError, isAuthError } from "@/lib/api-client"
-import { listProjects, loginAdmin, type ProjectItem } from "@/lib/projects-api"
-import { createVersion, listVersions, type ClientPlatform, type CreateVersionInput, type VersionItem } from "@/lib/versions-api"
+import { getSessionToken } from "@/lib/auth-session"
+import { AdminCard, AdminItemCard } from "@/components/admin/admin-card"
+import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
+import { AdminPageHeader } from "@/components/admin/admin-page-header"
+import { useSharedProjectSelection } from "@/hooks/use-shared-project-selection"
+import { listProjects, type ProjectItem } from "@/lib/projects-api"
+import {
+  createVersion,
+  listVersions,
+  updateVersion,
+  type ClientPlatform,
+  type CreateVersionInput,
+  type VersionItem,
+} from "@/lib/versions-api"
 
-const TOKEN_STORAGE_KEY = "verhub-admin-token"
 const PROJECT_PAGE_SIZE = 100
 const VERSION_PAGE_SIZE = 10
 
@@ -81,15 +92,11 @@ function toCreateInput(form: VersionFormState): CreateVersionInput {
 
 export function VersionsDashboard() {
   const [token, setToken] = React.useState("")
-  const [tempToken, setTempToken] = React.useState("")
-  const [username, setUsername] = React.useState("")
-  const [password, setPassword] = React.useState("")
-  const [authLoading, setAuthLoading] = React.useState(false)
   const [authError, setAuthError] = React.useState<string | null>(null)
 
   const [projects, setProjects] = React.useState<ProjectItem[]>([])
   const [projectsLoading, setProjectsLoading] = React.useState(false)
-  const [selectedProjectId, setSelectedProjectId] = React.useState("")
+  const { selectedProjectId, setSelectedProjectId } = useSharedProjectSelection()
 
   const [versions, setVersions] = React.useState<VersionItem[]>([])
   const [totalVersions, setTotalVersions] = React.useState(0)
@@ -98,6 +105,7 @@ export function VersionsDashboard() {
   const [versionsError, setVersionsError] = React.useState<string | null>(null)
 
   const [form, setForm] = React.useState<VersionFormState>(emptyVersionForm)
+  const [editingVersionId, setEditingVersionId] = React.useState<string | null>(null)
   const [submitLoading, setSubmitLoading] = React.useState(false)
   const [submitMessage, setSubmitMessage] = React.useState<string | null>(null)
 
@@ -116,17 +124,20 @@ export function VersionsDashboard() {
     try {
       const response = await listProjects(token, { limit: PROJECT_PAGE_SIZE, offset: 0 })
       setProjects(response.data)
+      const hasCurrent = response.data.some((project) => project.id === selectedProjectId)
+      if (hasCurrent) {
+        return
+      }
+
       const firstProject = response.data[0]
       if (firstProject) {
-        setSelectedProjectId((current) => current || firstProject.id)
+        setSelectedProjectId(firstProject.id)
       } else {
         setSelectedProjectId("")
       }
     } catch (error) {
       if (isAuthError(error)) {
         setToken("")
-        setTempToken("")
-        window.localStorage.removeItem(TOKEN_STORAGE_KEY)
         setAuthError("登录状态已过期，请重新登录。")
       }
       setAuthError(getErrorMessage(error))
@@ -135,7 +146,7 @@ export function VersionsDashboard() {
     } finally {
       setProjectsLoading(false)
     }
-  }, [token])
+  }, [selectedProjectId, setSelectedProjectId, token])
 
   const loadVersions = React.useCallback(
     async (nextOffset: number, signal?: AbortSignal) => {
@@ -149,7 +160,12 @@ export function VersionsDashboard() {
       setVersionsError(null)
 
       try {
-        const response = await listVersions(token, selectedProjectId, { limit: VERSION_PAGE_SIZE, offset: nextOffset }, signal)
+        const response = await listVersions(
+          token,
+          selectedProjectId,
+          { limit: VERSION_PAGE_SIZE, offset: nextOffset },
+          signal,
+        )
         setVersions(response.data)
         setTotalVersions(response.total)
       } catch (error) {
@@ -158,8 +174,6 @@ export function VersionsDashboard() {
         }
         if (isAuthError(error)) {
           setToken("")
-          setTempToken("")
-          window.localStorage.removeItem(TOKEN_STORAGE_KEY)
           setAuthError("登录状态已过期，请重新登录。")
         }
         setVersionsError(getErrorMessage(error))
@@ -175,10 +189,9 @@ export function VersionsDashboard() {
   )
 
   React.useEffect(() => {
-    const savedToken = window.localStorage.getItem(TOKEN_STORAGE_KEY) ?? ""
+    const savedToken = getSessionToken().trim()
     if (savedToken) {
       setToken(savedToken)
-      setTempToken(savedToken)
     }
   }, [])
 
@@ -199,46 +212,11 @@ export function VersionsDashboard() {
     setOffset(0)
   }, [selectedProjectId])
 
-  async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setAuthLoading(true)
-    setAuthError(null)
-
-    try {
-      const response = await loginAdmin(username.trim(), password)
-      setToken(response.access_token)
-      setTempToken(response.access_token)
-      window.localStorage.setItem(TOKEN_STORAGE_KEY, response.access_token)
-      setPassword("")
-      setOffset(0)
-    } catch (error) {
-      setAuthError(getErrorMessage(error))
-    } finally {
-      setAuthLoading(false)
-    }
-  }
-
-  function handleSaveToken() {
-    const nextToken = tempToken.trim()
-    setToken(nextToken)
-    setOffset(0)
-
-    if (!nextToken) {
-      window.localStorage.removeItem(TOKEN_STORAGE_KEY)
-      setProjects([])
-      setSelectedProjectId("")
-      return
-    }
-
-    setAuthError(null)
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, nextToken)
-  }
-
   async function handleCreateVersion(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     if (!token) {
-      setSubmitMessage("请先登录或提供有效 JWT。")
+      setSubmitMessage("请先登录后再操作。")
       return
     }
 
@@ -257,16 +235,20 @@ export function VersionsDashboard() {
         return
       }
 
-      await createVersion(token, selectedProjectId, payload)
-      setSubmitMessage("版本已发布。")
+      if (editingVersionId) {
+        await updateVersion(token, selectedProjectId, editingVersionId, payload)
+        setSubmitMessage("版本已更新。")
+      } else {
+        await createVersion(token, selectedProjectId, payload)
+        setSubmitMessage("版本已发布。")
+      }
       setForm(emptyVersionForm)
+      setEditingVersionId(null)
       setOffset(0)
       await loadVersions(0)
     } catch (error) {
       if (isAuthError(error)) {
         setToken("")
-        setTempToken("")
-        window.localStorage.removeItem(TOKEN_STORAGE_KEY)
         setAuthError("登录状态已过期，请重新登录。")
       }
       setSubmitMessage(getErrorMessage(error))
@@ -275,158 +257,142 @@ export function VersionsDashboard() {
     }
   }
 
+  function beginEdit(version: VersionItem) {
+    setEditingVersionId(version.id)
+    setForm({
+      version: version.version,
+      title: version.title ?? "",
+      content: version.content ?? "",
+      download_url: version.download_url,
+      forced: version.forced,
+      platform: version.platform ?? "",
+      custom_data: version.custom_data ? JSON.stringify(version.custom_data, null, 2) : "",
+    })
+    setSubmitMessage(null)
+  }
+
+  function resetForm() {
+    setEditingVersionId(null)
+    setForm(emptyVersionForm)
+    setSubmitMessage(null)
+  }
+
   return (
-    <main className="min-h-svh bg-[linear-gradient(140deg,#0f172a_0%,#1e293b_50%,#0b1224_100%)] text-slate-100">
-      <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-8 sm:px-8 sm:py-10">
-        <section className="rounded-3xl border border-cyan-200/20 bg-white/8 p-6 shadow-2xl backdrop-blur-md">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-2">
-              <p className="inline-flex items-center gap-2 rounded-full border border-cyan-200/25 bg-cyan-200/10 px-3 py-1 text-xs tracking-[0.16em] text-cyan-100 uppercase">
-                <ListTree className="size-3.5" />
-                Verhub Versions
-              </p>
-              <h1 className="text-2xl font-semibold sm:text-3xl">版本发布工作台</h1>
-              <p className="max-w-3xl text-sm text-slate-200/90 sm:text-base">选择项目后可分页查看历史版本，并发布新版本（支持平台、强更与扩展 JSON 元数据）。</p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="border-white/30 bg-white/10 hover:bg-white/20"
-              onClick={() => {
-                void loadProjects()
-                void loadVersions(offset)
-              }}
-              disabled={!hasToken || versionsLoading || projectsLoading}
-            >
-              {versionsLoading || projectsLoading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCcw className="size-4" />}
-              刷新
-            </Button>
+    <section className="space-y-6">
+      <AdminPageHeader
+        title="版本发布管理"
+        description="为指定项目发布客户端版本，配置平台、强更策略和下载地址，并按分页浏览历史版本。"
+        badge="Verhub Versions"
+      />
+
+      <section className="grid gap-6 lg:grid-cols-[1.1fr_1.9fr]">
+        <AdminCard className="space-y-6">
+          <div className="space-y-2">
+            <h2 className="text-lg font-semibold">项目选择</h2>
           </div>
-        </section>
 
-        <section className="grid gap-6 lg:grid-cols-[1.1fr_1.9fr]">
-          <article className="space-y-6 rounded-3xl border border-white/15 bg-black/25 p-5 shadow-xl">
-            <div className="space-y-2">
-              <h2 className="text-lg font-semibold">管理员登录</h2>
-              <p className="text-sm text-slate-300">支持账号密码换取 JWT，也可粘贴已有 token。</p>
-            </div>
+          <div className="space-y-2">
+            <label className="text-sm text-slate-700 dark:text-slate-300" htmlFor="project-select">
+              目标项目
+            </label>
+            <select
+              id="project-select"
+              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/5"
+              value={selectedProjectId}
+              onChange={(event) => setSelectedProjectId(event.target.value)}
+              disabled={!hasToken || projectsLoading || projects.length === 0}
+            >
+              {projects.length === 0 ? <option value="">暂无可选项目</option> : null}
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name} ({project.project_key})
+                </option>
+              ))}
+            </select>
+          </div>
 
-            <form className="space-y-3" onSubmit={handleLogin}>
+          {authError ? (
+            <p className="inline-flex items-center gap-2 text-sm text-rose-300">
+              <AlertTriangle className="size-4" />
+              {authError}
+            </p>
+          ) : null}
+        </AdminCard>
+
+        <AdminCard className="space-y-6">
+          <div className="space-y-2">
+            <h2 className="text-lg font-semibold">
+              {editingVersionId ? "编辑版本" : "发布新版本"}
+            </h2>
+            <p className="text-sm text-slate-700 dark:text-slate-300">
+              与后端 CreateVersionDto 对齐：version 与 download_url 必填，custom_data 需为 JSON
+              对象。
+            </p>
+          </div>
+
+          <form className="grid gap-3" onSubmit={handleCreateVersion}>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">版本号</span>
               <input
                 type="text"
-                placeholder="用户名"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm outline-none ring-cyan-300 transition focus:ring-2"
-                required
-              />
-              <input
-                type="password"
-                placeholder="密码"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm outline-none ring-cyan-300 transition focus:ring-2"
-                required
-              />
-              <Button type="submit" className="w-full bg-cyan-200 text-slate-900 hover:bg-cyan-100" disabled={authLoading}>
-                {authLoading ? <Loader2 className="size-4 animate-spin" /> : null}
-                获取访问令牌
-              </Button>
-            </form>
-
-            <div className="space-y-2">
-              <label className="text-sm text-slate-300" htmlFor="version-token-input">
-                JWT Token
-              </label>
-              <textarea
-                id="version-token-input"
-                value={tempToken}
-                onChange={(event) => setTempToken(event.target.value)}
-                rows={5}
-                className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-xs outline-none ring-cyan-300 transition focus:ring-2"
-                placeholder="Bearer 后面的 token"
-              />
-              <Button type="button" variant="secondary" className="w-full" onClick={handleSaveToken}>
-                保存并应用 Token
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm text-slate-300" htmlFor="project-select">
-                目标项目
-              </label>
-              <select
-                id="project-select"
-                className="w-full rounded-xl border border-white/20 bg-white/8 px-3 py-2 text-sm outline-none ring-cyan-300 transition focus:ring-2"
-                value={selectedProjectId}
-                onChange={(event) => setSelectedProjectId(event.target.value)}
-                disabled={!hasToken || projectsLoading || projects.length === 0}
-              >
-                {projects.length === 0 ? <option value="">暂无可选项目</option> : null}
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name} ({project.project_key})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {authError ? (
-              <p className="inline-flex items-center gap-2 text-sm text-rose-300">
-                <AlertTriangle className="size-4" />
-                {authError}
-              </p>
-            ) : null}
-          </article>
-
-          <article className="space-y-6 rounded-3xl border border-white/15 bg-white/8 p-5 shadow-xl backdrop-blur">
-            <div className="space-y-2">
-              <h2 className="text-lg font-semibold">发布新版本</h2>
-              <p className="text-sm text-slate-200/90">与后端 CreateVersionDto 对齐：version 与 download_url 必填，custom_data 需为 JSON 对象。</p>
-            </div>
-
-            <form className="grid gap-3" onSubmit={handleCreateVersion}>
-              <input
-                type="text"
-                placeholder="版本号（例如 2.3.0）"
+                placeholder="例如：2.3.0"
                 value={form.version}
                 onChange={(event) => setForm((prev) => ({ ...prev, version: event.target.value }))}
-                className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm outline-none ring-cyan-300 transition focus:ring-2"
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
                 required
                 maxLength={64}
               />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">下载地址</span>
               <input
                 type="url"
-                placeholder="下载地址"
+                placeholder="https://example.com/download"
                 value={form.download_url}
-                onChange={(event) => setForm((prev) => ({ ...prev, download_url: event.target.value }))}
-                className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm outline-none ring-cyan-300 transition focus:ring-2"
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, download_url: event.target.value }))
+                }
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
                 required
                 maxLength={2048}
               />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">版本标题（可选）</span>
               <input
                 type="text"
-                placeholder="标题（可选）"
+                placeholder="例如：稳定版更新"
                 value={form.title}
                 onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-                className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm outline-none ring-cyan-300 transition focus:ring-2"
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
                 maxLength={128}
               />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">更新内容（可选）</span>
               <textarea
-                placeholder="更新内容（可选）"
+                placeholder="描述本次版本的主要变化"
                 value={form.content}
                 onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))}
                 rows={4}
-                className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm outline-none ring-cyan-300 transition focus:ring-2"
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
                 maxLength={4096}
               />
+            </label>
 
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+              <label className="space-y-1 text-sm">
+                <span className="text-slate-700 dark:text-slate-300">平台范围</span>
                 <select
                   aria-label="版本平台"
                   value={form.platform}
-                  onChange={(event) => setForm((prev) => ({ ...prev, platform: event.target.value as "" | ClientPlatform }))}
-                  className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm outline-none ring-cyan-300 transition focus:ring-2"
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      platform: event.target.value as "" | ClientPlatform,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
                 >
                   <option value="">全部平台（默认）</option>
                   {platformOptions.map((item) => (
@@ -435,112 +401,164 @@ export function VersionsDashboard() {
                     </option>
                   ))}
                 </select>
-                <label className="inline-flex items-center gap-2 text-sm text-slate-200">
-                  <input
-                    type="checkbox"
-                    checked={form.forced}
-                    onChange={(event) => setForm((prev) => ({ ...prev, forced: event.target.checked }))}
-                    className="size-4 rounded border-white/30 bg-white/10"
-                  />
-                  强制更新
-                </label>
-              </div>
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={form.forced}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, forced: event.target.checked }))
+                  }
+                  className="size-4 rounded border-white/30 bg-white/10"
+                />
+                强制更新
+              </label>
+            </div>
 
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON（可选）</span>
               <textarea
-                placeholder='custom_data（可选 JSON 对象，例如 {"channel":"beta"}）'
+                placeholder='例如：{"channel":"beta"}'
                 value={form.custom_data}
-                onChange={(event) => setForm((prev) => ({ ...prev, custom_data: event.target.value }))}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, custom_data: event.target.value }))
+                }
                 rows={4}
-                className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 font-mono text-xs outline-none ring-cyan-300 transition focus:ring-2"
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
               />
+            </label>
 
-              <Button type="submit" className="bg-emerald-300 text-emerald-950 hover:bg-emerald-200" disabled={submitLoading || !selectedProjectId}>
-                {submitLoading ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-                发布版本
+            <Button
+              type="submit"
+              className="bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
+              disabled={submitLoading || !selectedProjectId}
+            >
+              {submitLoading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Plus className="size-4" />
+              )}
+              {editingVersionId ? "保存版本" : "发布版本"}
+            </Button>
+
+            {editingVersionId ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="border-white/25 bg-white/5"
+                onClick={resetForm}
+              >
+                取消编辑
               </Button>
+            ) : null}
 
-              {submitMessage ? (
-                <p className="inline-flex items-center gap-2 text-sm text-slate-100">
-                  <CheckCircle2 className="size-4 text-emerald-300" />
-                  {submitMessage}
-                </p>
-              ) : null}
-            </form>
-          </article>
-        </section>
+            {submitMessage ? (
+              <p className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-100">
+                <CheckCircle2 className="size-4 text-emerald-300" />
+                {submitMessage}
+              </p>
+            ) : null}
+          </form>
+        </AdminCard>
+      </section>
 
-        <section className="rounded-3xl border border-white/15 bg-black/25 p-5 shadow-xl">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">版本列表</h2>
-            <p className="text-sm text-slate-300">
-              共 {totalVersions} 条，当前第 {page}/{totalPages} 页
-            </p>
+      <AdminCard as="section">
+        <AdminListHeader
+          title="版本列表"
+          total={totalVersions}
+          page={page}
+          totalPages={totalPages}
+        />
+
+        {!hasToken ? (
+          <div className="rounded-2xl border border-dashed border-cyan-300/40 bg-cyan-100/70 p-6 text-sm text-cyan-800 dark:border-cyan-200/30 dark:bg-cyan-100/5 dark:text-cyan-100">
+            请先在登录页完成登录后查看版本数据。
           </div>
+        ) : null}
 
-          {!hasToken ? <div className="rounded-2xl border border-dashed border-cyan-200/30 bg-cyan-100/5 p-6 text-sm text-cyan-100">请先登录或填入 JWT Token 后查看版本数据。</div> : null}
+        {hasToken && !selectedProjectId ? (
+          <div className="rounded-2xl border border-dashed border-slate-900/20 bg-slate-100/60 p-6 text-sm text-slate-600 dark:border-white/20 dark:bg-white/5 dark:text-slate-300">
+            暂无项目，请先去项目管理页创建项目。
+          </div>
+        ) : null}
 
-          {hasToken && !selectedProjectId ? (
-            <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-slate-300">暂无项目，请先去项目管理页创建项目。</div>
-          ) : null}
+        {hasToken && selectedProjectId && versionsLoading ? (
+          <div className="flex items-center gap-2 rounded-2xl border border-slate-900/15 bg-slate-100/60 p-6 text-sm text-slate-700 dark:border-white/15 dark:bg-white/5 dark:text-slate-200">
+            <Loader2 className="size-4 animate-spin" />
+            正在加载版本列表...
+          </div>
+        ) : null}
 
-          {hasToken && selectedProjectId && versionsLoading ? (
-            <div className="flex items-center gap-2 rounded-2xl border border-white/15 bg-white/5 p-6 text-sm text-slate-200">
-              <Loader2 className="size-4 animate-spin" />
-              正在加载版本列表...
-            </div>
-          ) : null}
+        {hasToken && selectedProjectId && !versionsLoading && versionsError ? (
+          <div className="rounded-2xl border border-rose-300/30 bg-rose-300/10 p-6 text-sm text-rose-200">
+            {versionsError}
+          </div>
+        ) : null}
 
-          {hasToken && selectedProjectId && !versionsLoading && versionsError ? (
-            <div className="rounded-2xl border border-rose-300/30 bg-rose-300/10 p-6 text-sm text-rose-200">{versionsError}</div>
-          ) : null}
+        {hasToken &&
+        selectedProjectId &&
+        !versionsLoading &&
+        !versionsError &&
+        versions.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-slate-300">
+            暂无版本，使用上方表单发布第一条版本记录。
+          </div>
+        ) : null}
 
-          {hasToken && selectedProjectId && !versionsLoading && !versionsError && versions.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-slate-300">暂无版本，使用上方表单发布第一条版本记录。</div>
-          ) : null}
-
-          {hasToken && selectedProjectId && !versionsLoading && !versionsError && versions.length > 0 ? (
-            <div className="space-y-3">
-              {versions.map((version) => (
-                <article key={version.id} className="rounded-2xl border border-white/15 bg-white/8 p-4">
-                  <div className="space-y-1">
-                    <p className="text-base font-medium">{version.version}</p>
-                    <p className="text-xs text-slate-300">创建于 {new Date(version.created_at).toLocaleString("zh-CN")}</p>
-                    <p className="text-sm text-slate-200/90">{version.title ?? "无标题"}</p>
-                    {version.content ? <p className="text-sm text-slate-300">{version.content}</p> : null}
-                    <a className="text-sm text-cyan-200 underline-offset-2 hover:underline" href={version.download_url} target="_blank" rel="noreferrer">
-                      {version.download_url}
-                    </a>
-                    <p className="text-xs text-slate-300">
-                      平台：{version.platform ?? "全部"} | 强更：{version.forced ? "是" : "否"}
-                    </p>
+        {hasToken &&
+        selectedProjectId &&
+        !versionsLoading &&
+        !versionsError &&
+        versions.length > 0 ? (
+          <div className="space-y-3">
+            {versions.map((version) => (
+              <AdminItemCard key={version.id}>
+                <div className="space-y-1">
+                  <p className="text-base font-medium">{version.version}</p>
+                  <p className="font-mono text-xs text-cyan-100/90">ID: {version.id}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-300">
+                    创建于 {new Date(version.created_at).toLocaleString("zh-CN")}
+                  </p>
+                  <p className="text-sm text-slate-700 dark:text-slate-200/90">
+                    {version.title ?? "无标题"}
+                  </p>
+                  {version.content ? (
+                    <p className="text-sm text-slate-600 dark:text-slate-300">{version.content}</p>
+                  ) : null}
+                  <a
+                    className="text-sm text-cyan-200 underline-offset-2 hover:underline"
+                    href={version.download_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {version.download_url}
+                  </a>
+                  <p className="text-xs text-slate-500 dark:text-slate-300">
+                    平台：{version.platform ?? "全部"} | 强更：{version.forced ? "是" : "否"}
+                  </p>
+                  <div className="pt-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-white/20 bg-white/5"
+                      onClick={() => beginEdit(version)}
+                    >
+                      编辑版本
+                    </Button>
                   </div>
-                </article>
-              ))}
+                </div>
+              </AdminItemCard>
+            ))}
 
-              <div className="flex flex-wrap justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-white/20 bg-white/5"
-                  disabled={offset === 0}
-                  onClick={() => setOffset((prev) => Math.max(0, prev - VERSION_PAGE_SIZE))}
-                >
-                  上一页
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-white/20 bg-white/5"
-                  disabled={offset + VERSION_PAGE_SIZE >= totalVersions}
-                  onClick={() => setOffset((prev) => prev + VERSION_PAGE_SIZE)}
-                >
-                  下一页
-                </Button>
-              </div>
-            </div>
-          ) : null}
-        </section>
-      </div>
-    </main>
+            <AdminPagination
+              hasPrev={offset > 0}
+              hasNext={offset + VERSION_PAGE_SIZE < totalVersions}
+              onPrev={() => setOffset((prev) => Math.max(0, prev - VERSION_PAGE_SIZE))}
+              onNext={() => setOffset((prev) => prev + VERSION_PAGE_SIZE)}
+            />
+          </div>
+        ) : null}
+      </AdminCard>
+    </section>
   )
 }

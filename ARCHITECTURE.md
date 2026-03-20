@@ -53,6 +53,14 @@ Verhub 采用 Monorepo + 模块化单体架构：
 - 客户端公开接口：`/public/...`
 - 响应字段采用 snake_case，与前端 API Client 保持一致
 
+Token 范围模型（ApiKey）：
+
+- `scopes`：权限白名单，后端按枚举校验
+- `allProjects` + `projectIds`：项目范围控制，支持“全项目”或“项目白名单”
+- `expiresAt`：过期时间，允许 `null`（永不过期）
+- `previousKeyHash` + `previousKeyExpiresAt`：轮转后的旧 key 宽限期校验
+- 过期策略为“拒绝访问但不自动删除记录”
+
 ## 4. 前端架构
 
 前端管理端基于 Next.js App Router：
@@ -69,7 +77,8 @@ Verhub 采用 Monorepo + 模块化单体架构：
 状态设计：
 
 - 统一处理加载态、空态、错误态
-- Token 通过 localStorage 持久化，支持账号密码登录后写入
+- 管理员会话通过 localStorage + cookie 双写（便于前端请求与路由守卫）
+- 需要项目上下文的页面统一使用 `useSharedProjectSelection`，通过 localStorage 与窗口事件跨页面同步默认项目
 
 ## 5. 扩展策略
 

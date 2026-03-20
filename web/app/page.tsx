@@ -1,127 +1,182 @@
 "use client"
 
 import * as React from "react"
-import { Suspense } from "react"
-import { LockKeyhole, ShieldCheck } from "lucide-react"
-import { useRouter, useSearchParams } from "next/navigation"
-
+import { useRouter } from "next/navigation"
+import { ArrowRight, BookOpen, Shield, Zap, Code, GitBranch, CheckCircle2 } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
+import { getSessionToken } from "@/lib/auth-session"
 
-import { ApiError } from "@/lib/api-client"
-import { loginWithPassword } from "@/lib/auth-api"
-import { normalizeReturnTo, setSessionToken } from "@/lib/auth-session"
-
-function toMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    return error.message
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return "登录失败，请稍后重试。"
-}
-
-function LoginPageContent() {
-  const searchParams = useSearchParams()
+export default function DocumentationPage() {
   const router = useRouter()
+  const [hasToken, setHasToken] = React.useState(false)
 
-  const [username, setUsername] = React.useState("admin")
-  const [password, setPassword] = React.useState("")
-  const [pending, setPending] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    const token = getSessionToken().trim()
+    setHasToken(!!token)
+  }, [])
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setError(null)
-    setPending(true)
-
-    try {
-      const response = await loginWithPassword(username.trim(), password)
-      setSessionToken(response.access_token, response.expires_in)
-      const nextPath = normalizeReturnTo(searchParams.get("returnTo"))
-      router.replace(nextPath)
-    } catch (loginError) {
-      setError(toMessage(loginError))
-    } finally {
-      setPending(false)
-    }
+  const handleEnterAdmin = () => {
+    router.push("/admin")
   }
 
   return (
-    <main className="relative min-h-svh overflow-hidden bg-slate-950 text-slate-100">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-32 -left-40 h-96 w-96 rounded-full bg-cyan-500/20 blur-3xl" />
-        <div className="absolute top-20 -right-24 h-104 w-104 rounded-full bg-orange-500/20 blur-3xl" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_10%_10%,rgba(255,255,255,0.15),transparent_40%),radial-gradient(circle_at_90%_30%,rgba(56,189,248,0.18),transparent_35%)]" />
-      </div>
+    <main className="min-h-svh bg-linear-to-b from-slate-50 to-slate-100 text-slate-900 dark:from-slate-950 dark:to-slate-900 dark:text-slate-100">
+      {/* Navigation */}
+      <nav className="sticky top-0 z-40 border-b border-slate-200/50 bg-white/70 backdrop-blur dark:border-white/10 dark:bg-black/20">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4 sm:px-8">
+          <div className="text-xl font-bold">Verhub</div>
+          <Button onClick={handleEnterAdmin} className="gap-2">
+            <span>{hasToken ? "进入后台" : "管理员登录"}</span>
+            <ArrowRight className="size-4" />
+          </Button>
+        </div>
+      </nav>
 
-      <div className="relative mx-auto flex w-full max-w-4xl flex-col gap-8 px-5 py-10 sm:px-8 md:py-16">
-        <section className="rounded-3xl border border-white/15 bg-white/8 p-6 shadow-2xl backdrop-blur md:p-10">
-          <div className="max-w-2xl space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200/30 bg-cyan-200/10 px-3 py-1 text-xs tracking-[0.2em] text-cyan-100 uppercase">
-              <ShieldCheck className="size-3.5" />
-              Verhub Admin
-            </div>
-            <h1 className="text-3xl leading-tight font-semibold text-balance sm:text-4xl md:text-5xl">
-              后台管理登录
-            </h1>
-            <p className="max-w-xl text-sm leading-relaxed text-slate-200/90 sm:text-base">
-              仅支持账号密码登录，不支持直接输入 Token
-              登录。登录成功后会自动返回你刚才访问的后台页面。
-            </p>
+      {/* Hero Section */}
+      <section className="relative overflow-hidden px-6 py-20 sm:px-8 sm:py-32">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-40 -right-40 h-80 w-80 rounded-full bg-blue-500/10 blur-3xl" />
+          <div className="absolute -bottom-20 -left-40 h-80 w-80 rounded-full bg-purple-500/10 blur-3xl" />
+        </div>
+
+        <div className="relative mx-auto max-w-4xl text-center">
+          <div className="mb-4 inline-block rounded-full border border-blue-200/50 bg-blue-50/50 px-4 py-1.5 text-sm font-medium text-blue-700 dark:border-blue-400/30 dark:bg-blue-400/10 dark:text-blue-200">
+            欢迎使用 Verhub
           </div>
-        </section>
-
-        <section className="rounded-2xl border border-white/15 bg-black/25 p-5">
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <label className="block space-y-1 text-sm">
-              <span className="text-slate-300">管理员账号</span>
-              <input
-                required
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2"
-              />
-            </label>
-            <label className="block space-y-1 text-sm">
-              <span className="text-slate-300">管理员密码</span>
-              <input
-                required
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2"
-              />
-            </label>
-            {error ? <p className="text-sm text-rose-300">{error}</p> : null}
-            <Button type="submit" disabled={pending} className="w-full">
-              <LockKeyhole className="size-4" />
-              {pending ? "登录中..." : "登录后台"}
-            </Button>
-          </form>
-        </section>
-
-        <section className="rounded-2xl border border-white/15 bg-black/25 p-5 text-sm text-slate-300 md:flex md:items-center md:justify-between">
-          <p>登录后将进入现代化后台，包含侧边栏导航、统计图表、Token 管理与管理员设置。</p>
-          <p className="mt-2 font-mono text-xs text-slate-400 md:mt-0">
-            Next.js App Router + NestJS Auth
+          <h1 className="mb-6 text-4xl leading-tight font-bold sm:text-5xl md:text-6xl">
+            现代化项目管理平台
+          </h1>
+          <p className="mb-8 text-lg text-slate-600 sm:text-xl dark:text-slate-300">
+            Verhub 提供完整的版本管理、公告发布、反馈收集、日志查询等功能，
+            帮助你高效管理项目和用户互动。
           </p>
-        </section>
-      </div>
+        </div>
+      </section>
+
+      {/* Features Grid */}
+      <section className="px-6 py-16 sm:px-8 sm:py-24">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="mb-12 text-center text-3xl font-bold">核心功能</h2>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              {
+                icon: BookOpen,
+                title: "项目管理",
+                description: "创建和管理多个项目，组织应用的不同版本和更新",
+              },
+              {
+                icon: Zap,
+                title: "版本发布",
+                description: "轻松发布新版本，支持多平台（iOS、Android、Web等）",
+              },
+              {
+                icon: Shield,
+                title: "公告管理",
+                description: "发布重要公告，置顶关键信息，及时通知用户",
+              },
+              {
+                icon: Code,
+                title: "反馈管理",
+                description: "收集用户反馈，记录评分，改善产品体验",
+              },
+              {
+                icon: GitBranch,
+                title: "日志系统",
+                description: "完整的操作日志，支持多级别筛选和日期范围查询",
+              },
+              {
+                icon: CheckCircle2,
+                title: "Token 管理",
+                description: "生成 API 密钥，灵活配置权限和有效期",
+              },
+            ].map((feature, index) => {
+              const Icon = feature.icon
+              return (
+                <div
+                  key={index}
+                  className="rounded-2xl border border-slate-200/50 bg-white/50 p-6 backdrop-blur dark:border-white/10 dark:bg-white/5"
+                >
+                  <Icon className="mb-4 size-8 text-blue-600 dark:text-blue-400" />
+                  <h3 className="mb-2 text-lg font-semibold">{feature.title}</h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    {feature.description}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* API Documentation Section */}
+      <section className="border-t border-slate-200/50 px-6 py-16 sm:px-8 sm:py-24 dark:border-white/10">
+        <div className="mx-auto max-w-5xl">
+          <h2 className="mb-8 text-3xl font-bold">API 文档</h2>
+          <div className="grid gap-8 md:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200/50 bg-white/50 p-8 backdrop-blur dark:border-white/10 dark:bg-white/5">
+              <h3 className="mb-4 text-xl font-semibold">RESTful API</h3>
+              <p className="mb-6 text-slate-600 dark:text-slate-400">
+                Verhub 提供完整的 RESTful API，支持认证和 Token 管理。
+              </p>
+              <ul className="space-y-2 text-sm">
+                <li className="flex items-center gap-2">
+                  <span className="text-blue-600 dark:text-blue-400">→</span>
+                  JSON 请求/响应格式
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="text-blue-600 dark:text-blue-400">→</span>
+                  JWT 短期令牌认证
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="text-blue-600 dark:text-blue-400">→</span>
+                  API Key 长期令牌
+                </li>
+              </ul>
+            </div>
+            <div className="rounded-2xl border border-slate-200/50 bg-white/50 p-8 backdrop-blur dark:border-white/10 dark:bg-white/5">
+              <h3 className="mb-4 text-xl font-semibold">OpenAPI 规范</h3>
+              <p className="mb-6 text-slate-600 dark:text-slate-400">
+                完整的 OpenAPI 3.0 规范，支持自动代码生成和 API 文档生成。
+              </p>
+              <ul className="space-y-2 text-sm">
+                <li className="flex items-center gap-2">
+                  <span className="text-blue-600 dark:text-blue-400">→</span>
+                  <code className="text-xs">GET /api/v1/admin/projects</code>
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="text-blue-600 dark:text-blue-400">→</span>
+                  <code className="text-xs">POST /api/v1/admin/versions</code>
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="text-blue-600 dark:text-blue-400">→</span>
+                  <code className="text-xs">DELETE /api/v1/admin/resources</code>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="border-t border-slate-200/50 px-6 py-16 sm:px-8 sm:py-24 dark:border-white/10">
+        <div className="mx-auto max-w-3xl text-center">
+          <h2 className="mb-4 text-3xl font-bold">立即开始</h2>
+          <p className="mb-8 text-lg text-slate-600 dark:text-slate-400">
+            登录管理员后台，开始管理你的项目和版本
+          </p>
+          <Button onClick={handleEnterAdmin} size="lg" className="gap-2 text-lg">
+            {hasToken ? "进入后台" : "前往登录"}
+            <ArrowRight className="size-5" />
+          </Button>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-slate-200/50 px-6 py-8 sm:px-8 dark:border-white/10">
+        <div className="mx-auto max-w-6xl text-center text-sm text-slate-600 dark:text-slate-400">
+          <p>Verhub © 2026. 现代化项目管理平台。</p>
+        </div>
+      </footer>
     </main>
-  )
-}
-
-function PageFallback() {
-  return <main className="min-h-svh bg-slate-950" />
-}
-
-export default function Page() {
-  return (
-    <Suspense fallback={<PageFallback />}>
-      <LoginPageContent />
-    </Suspense>
   )
 }

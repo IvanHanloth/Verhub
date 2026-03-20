@@ -48,13 +48,35 @@ cp packages/backend/.env.example packages/backend/.env
 pnpm dev
 ```
 
+## Docker Production Deployment
+
+Use Docker Compose for a production-like local deployment:
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
+
+This will start:
+
+- PostgreSQL
+- Verhub unified app container (`http://localhost:3000`, 内置 backend + web)
+
+Detailed Docker and native Docker run guide: `docs/DOCKER.md`.
+
 ## Modern Admin Auth Flow
 
-- Admin pages are under `/dashboard` with left sidebar navigation.
-- Unauthenticated access to `/dashboard` is redirected to `/` (password login page).
+- Admin pages are under `/admin` with left sidebar navigation.
+- Unauthenticated access to `/admin` is redirected to `/login`.
 - Login supports username/password only; direct token input login is disabled.
 - Successful login issues a short-lived JWT session and redirects back to the original path.
-- Long-lived API tokens can be created/revoked in `Dashboard -> Token 管理`.
+- Long-lived API tokens can be created/revoked in `Admin -> Token 管理`.
+- Token scope no longer supports `admin:profile:update`; API tokens cannot modify admin profile.
+- Token can be configured as `all projects` or project whitelist (`project_ids`).
+- Token permissions and project range can be edited online without changing token value.
+- Token rotation supports user-defined grace period for old token.
+- Expired token is rejected by API auth but is not auto-deleted from records.
+- Non-expiring token creation is supported and should be used with caution.
 
 ## Bootstrap Admin Behavior
 
@@ -79,26 +101,6 @@ pnpm dev
 - Unit tests: `pnpm --filter @workspace/backend test`
 - E2E tests: `pnpm --filter @workspace/backend test:e2e`
 
-## Docker Deployment
-
-The repository includes production-ready Docker artifacts:
-
-- `docker-compose.yml`
-- `docker/backend.Dockerfile`
-- `docker/web.Dockerfile`
-- `.env.example`
-
-Quick start:
-
-```bash
-cp .env.example .env
-docker compose --env-file .env up -d --build
-```
-
-For both deployment methods (Compose and direct Docker), see:
-
-- `docs/DOCKER-DEPLOYMENT.md`
-
 ## Commit Gate
 
 The repository enables `Husky` + `lint-staged` pre-commit checks.
@@ -111,6 +113,7 @@ When committing, staged files are automatically:
 ## Development Guide
 
 - Detailed local setup, environment variables, and commit conventions: `docs/DEVELOPMENT.md`
+- Docker production deployment guide: `docs/DOCKER.md`
 
 ## Current Progress
 

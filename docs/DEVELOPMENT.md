@@ -46,6 +46,26 @@ pnpm dev
 - 仅启动后端：`pnpm --filter @workspace/backend dev`
 - 仅启动管理端：`pnpm --filter web dev`
 
+## 1.6 Docker 生产封装与运行
+
+- Docker 相关文件：`docker/verhub.Dockerfile`、`docker/app-entrypoint.sh`、`docker/backend-entrypoint.sh`、`docker-compose.yml`
+- 示例环境变量：`.env.example`
+- 使用与排障文档：`docs/DOCKER.md`
+
+快速启动：
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+```
+
+首次登录引导文件位置：
+
+- 容器内：`/bootstrap/verhub.bootstrap-admin.txt`
+- 挂载卷：`bootstrap-secrets`
+
+首次登录成功后该文件会自动删除。
+
 ## 2. 环境变量说明
 
 后端变量（`packages/backend/.env`）：
@@ -97,6 +117,19 @@ pnpm --filter @workspace/backend test
 pnpm --filter @workspace/backend test:e2e
 ```
 
+## 3.2 管理后台表单规范
+
+- 管理后台页面统一使用 `admin-unified` 视觉层，表单建议采用 `label > span + input/textarea/select` 结构
+- 必填字段必须使用原生 `required` 属性，红色 `*` 由全局样式自动渲染
+- 新增或重构表单时，避免把字段名只放在 placeholder 中，必须保留可见 label
+
+## 3.3 跨页面项目上下文规范
+
+- 后台项目上下文由 `web/hooks/use-shared-project-selection.ts` 管理
+- 持久化键：`verhub.admin.selectedProjectId`
+- 事件广播：`verhub.admin.project.changed`
+- 需要项目维度的页面（versions/announcements/feedbacks/logs/actions）应复用该 hook，避免各页面独立维护默认项目
+
 ## 4. 提交规范
 
 仓库启用 Husky + lint-staged，提交时会自动执行 ESLint 与 Prettier。
@@ -126,18 +159,7 @@ pnpm --filter @workspace/backend test:e2e
 - 在 Docker 下建议设置 `BOOTSTRAP_SECRET_DIR=/bootstrap` 并挂载卷
 - 首次登录成功后，后端会自动删除该文件
 
-## 6. Docker 部署
-
-- Docker 环境变量模板：`/.env.example`
-- Docker 与 Compose 部署步骤：`docs/DOCKER-DEPLOYMENT.md`
-
-### 5.2 Prisma 迁移失败
-
-- 确认 `DATABASE_URL` 指向可访问数据库
-- 检查数据库用户是否有建表权限
-- 先执行 `pnpm --filter @workspace/backend prisma:generate` 再迁移
-
-### 5.3 前端无法请求后端
+### 5.2 前端无法请求后端
 
 - 确认 `NEXT_PUBLIC_API_BASE_URL` 是否正确
 - 检查后端是否在 `PORT` 指定端口正常启动

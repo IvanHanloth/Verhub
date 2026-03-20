@@ -15,8 +15,10 @@ import { AuthService } from "./auth.service"
 import { ChangePasswordDto } from "./dto/change-password.dto"
 import { CreateApiKeyDto } from "./dto/create-api-key.dto"
 import { LoginDto } from "./dto/login.dto"
+import { RotateApiKeyDto } from "./dto/rotate-api-key.dto"
 import { UpdateAdminAccountDto } from "./dto/update-admin-account.dto"
 import { UpdateAdminProfileDto } from "./dto/update-admin-profile.dto"
+import { UpdateApiKeyDto } from "./dto/update-api-key.dto"
 import { JwtAdminGuard } from "./guards/jwt-admin.guard"
 
 type AdminRequest = {
@@ -78,6 +80,12 @@ export class AuthController {
     return this.authService.listApiKeys()
   }
 
+  @Get("api-scopes")
+  @UseGuards(JwtAdminGuard)
+  async listApiScopes() {
+    return this.authService.getApiScopes()
+  }
+
   @Get("tokens")
   @UseGuards(JwtAdminGuard)
   async listTokens() {
@@ -119,6 +127,30 @@ export class AuthController {
   async revokeToken(@Param("id") id: string) {
     await this.authService.revokeApiKey(id)
     return { success: true }
+  }
+
+  @Patch("api-keys/:id")
+  @UseGuards(JwtAdminGuard)
+  async updateApiKey(@Param("id") id: string, @Body() dto: UpdateApiKeyDto) {
+    return this.authService.updateApiKey(id, dto)
+  }
+
+  @Patch("tokens/:id")
+  @UseGuards(JwtAdminGuard)
+  async updateToken(@Param("id") id: string, @Body() dto: UpdateApiKeyDto) {
+    return this.authService.updateApiKey(id, dto)
+  }
+
+  @Post("api-keys/:id/rotate")
+  @UseGuards(JwtAdminGuard)
+  async rotateApiKey(@Param("id") id: string, @Body() dto: RotateApiKeyDto) {
+    return this.authService.rotateApiKey(id, dto)
+  }
+
+  @Post("tokens/:id/rotate")
+  @UseGuards(JwtAdminGuard)
+  async rotateToken(@Param("id") id: string, @Body() dto: RotateApiKeyDto) {
+    return this.authService.rotateApiKey(id, dto)
   }
 
   @Get("status")

@@ -1,5 +1,5 @@
 export function isProtectedPath(pathname: string): boolean {
-  return pathname === "/dashboard" || pathname.startsWith("/dashboard/")
+  return pathname === "/admin" || pathname.startsWith("/admin/")
 }
 
 export function resolveAuthRedirect(
@@ -10,13 +10,13 @@ export function resolveAuthRedirect(
   if (isProtectedPath(pathname) && !hasToken) {
     const returnTo = encodeURIComponent(`${pathname}${search}`)
     return {
-      redirectTo: `/?returnTo=${returnTo}`,
+      redirectTo: `/login?returnTo=${returnTo}`,
     }
   }
 
   if (pathname === "/" && hasToken) {
     return {
-      redirectTo: "/dashboard",
+      redirectTo: "/admin",
     }
   }
 

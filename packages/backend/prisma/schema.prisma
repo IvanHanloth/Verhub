@@ -41,7 +41,11 @@ model ApiKey {
   id          String   @id @default(cuid())
   name        String
   keyHash     String   @unique
+  previousKeyHash      String?
+  previousKeyExpiresAt DateTime?
   scopes      String[] @default([])
+  allProjects Boolean  @default(true)
+  projectIds  String[] @default([])
   isActive    Boolean  @default(true)
   lastUsedAt  DateTime?
   expiresAt   DateTime?

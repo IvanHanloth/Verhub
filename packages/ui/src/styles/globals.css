@@ -126,3 +126,116 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  .admin-unified {
+    --admin-surface: rgba(255, 255, 255, 0.76);
+    --admin-surface-alt: rgba(15, 23, 42, 0.04);
+    --admin-border: rgba(15, 23, 42, 0.12);
+    --admin-text-soft: rgb(71, 85, 105);
+    --admin-ring: rgba(14, 165, 233, 0.35);
+  }
+
+  .dark .admin-unified {
+    --admin-surface: rgba(2, 6, 23, 0.42);
+    --admin-surface-alt: rgba(148, 163, 184, 0.08);
+    --admin-border: rgba(148, 163, 184, 0.2);
+    --admin-text-soft: rgb(148, 163, 184);
+    --admin-ring: rgba(125, 211, 252, 0.45);
+  }
+
+  .admin-unified main,
+  .admin-unified > section {
+    @apply min-h-full text-slate-900 dark:text-slate-100;
+    background: transparent !important;
+  }
+
+  .admin-unified main > div,
+  .admin-unified > section {
+    @apply mx-auto w-full max-w-7xl space-y-6 px-4 py-8 sm:px-8 sm:py-10;
+  }
+
+  .admin-unified main > div > div > section,
+  .admin-unified main > div > div > main {
+    @apply space-y-6;
+  }
+
+  .admin-unified header,
+  .admin-unified article,
+  .admin-unified .admin-card {
+    border-color: var(--admin-border) !important;
+    background: var(--admin-surface) !important;
+    box-shadow: 0 20px 45px -28px rgba(15, 23, 42, 0.45);
+    @apply rounded-3xl border backdrop-blur-xl;
+  }
+
+  .admin-unified p,
+  .admin-unified label,
+  .admin-unified span {
+    color: inherit;
+  }
+
+  .admin-unified :is(input, textarea, select) {
+    border-color: var(--admin-border) !important;
+    background: var(--admin-surface-alt) !important;
+    color: inherit !important;
+    box-shadow: none !important;
+  }
+
+  .admin-unified :is(input, textarea, select):focus {
+    border-color: transparent !important;
+    box-shadow: 0 0 0 3px var(--admin-ring) !important;
+    outline: none !important;
+  }
+
+  .admin-unified label:has(:is(input, textarea, select)[required]) > span::after {
+    content: " *";
+    color: rgb(239, 68, 68);
+    font-weight: 700;
+  }
+
+  .admin-unified label:has(:is(input, textarea, select)[required]):not(:has(> span))::before {
+    content: "*";
+    color: rgb(239, 68, 68);
+    font-weight: 700;
+    margin-right: 0.25rem;
+  }
+
+  .admin-unified :is(.border-white\/10, .border-white\/15, .border-white\/20, .border-white\/30) {
+    border-color: var(--admin-border) !important;
+  }
+
+  .admin-unified .text-slate-300,
+  .admin-unified .text-slate-200,
+  .admin-unified .text-slate-200\/90,
+  .admin-unified .text-slate-100,
+  .admin-unified .text-slate-400,
+  .admin-unified .text-slate-500,
+  .admin-unified .text-slate-700 {
+    color: var(--admin-text-soft) !important;
+  }
+
+  .admin-unified .text-cyan-200,
+  .admin-unified .text-cyan-100,
+  .admin-unified .text-amber-100,
+  .admin-unified .text-rose-100,
+  .admin-unified .text-teal-100 {
+    color: rgb(14, 165, 233) !important;
+  }
+
+  .admin-unified .bg-white\/8,
+  .admin-unified .bg-white\/5,
+  .admin-unified .bg-white\/10,
+  .admin-unified .bg-white\/80,
+  .admin-unified .bg-black\/25,
+  .admin-unified .bg-black\/20,
+  .admin-unified .bg-white\/70 {
+    background: var(--admin-surface) !important;
+  }
+
+  .admin-unified .bg-slate-100\/60,
+  .admin-unified .bg-slate-900\/5,
+  .admin-unified .bg-slate-50 {
+    background: var(--admin-surface-alt) !important;
+  }
+}

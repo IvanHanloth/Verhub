@@ -40,10 +40,13 @@ export async function listVersions(
     offset: String(params.offset),
   })
 
-  return requestJson<ListVersionsResponse>(`/admin/projects/${projectId}/versions?${query.toString()}`, {
-    token,
-    signal,
-  })
+  return requestJson<ListVersionsResponse>(
+    `/admin/projects/${projectId}/versions?${query.toString()}`,
+    {
+      token,
+      signal,
+    },
+  )
 }
 
 export async function createVersion(
@@ -53,6 +56,19 @@ export async function createVersion(
 ): Promise<VersionItem> {
   return requestJson<VersionItem>(`/admin/projects/${projectId}/versions`, {
     method: "POST",
+    token,
+    body: input,
+  })
+}
+
+export async function updateVersion(
+  token: string,
+  projectId: string,
+  versionId: string,
+  input: Partial<CreateVersionInput>,
+): Promise<VersionItem> {
+  return requestJson<VersionItem>(`/admin/projects/${projectId}/versions/${versionId}`, {
+    method: "PATCH",
     token,
     body: input,
   })

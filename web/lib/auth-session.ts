@@ -3,11 +3,11 @@ export const SESSION_COOKIE_KEY = "verhub_session"
 
 export function normalizeReturnTo(input?: string | null): string {
   if (!input || !input.startsWith("/")) {
-    return "/dashboard"
+    return "/admin"
   }
 
   if (input.startsWith("//") || input.includes("://")) {
-    return "/dashboard"
+    return "/admin"
   }
 
   return input

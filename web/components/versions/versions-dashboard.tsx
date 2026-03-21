@@ -458,20 +458,10 @@ export function VersionsDashboard() {
                 label: "管理接口",
                 endpoints: [
                   {
-                    method: "GET",
-                    path: "/api/v1/admin/projects/{projectKey}/versions",
-                    description: "分页获取版本列表",
-                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
-                  },
-                  {
                     method: "POST",
                     path: "/api/v1/admin/projects/{projectKey}/versions",
                     description: "创建版本（支持 API Key）",
-                    auth: {
-                      tokenRequired: true,
-                      tokenType: "管理员 JWT 或 API Key",
-                      scopes: ["versions:write"],
-                    },
+                    auth: { tokenRequired: true },
                     requestBody: {
                       version: "2.1.0",
                       title: "稳定版",
@@ -486,16 +476,10 @@ export function VersionsDashboard() {
                     },
                   },
                   {
-                    method: "GET",
-                    path: "/api/v1/admin/projects/{projectKey}/versions/github-release-preview",
-                    description: "从项目 GitHub Release 自动预填版本草稿",
-                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
-                  },
-                  {
                     method: "PATCH",
                     path: "/api/v1/admin/projects/{projectKey}/versions/{id}",
                     description: "编辑版本",
-                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                    auth: { tokenRequired: true },
                     requestBody: {
                       title: "稳定版-修订",
                       forced: true,
@@ -506,7 +490,7 @@ export function VersionsDashboard() {
                     method: "DELETE",
                     path: "/api/v1/admin/projects/{projectKey}/versions/{id}",
                     description: "删除版本",
-                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                    auth: { tokenRequired: true },
                   },
                 ],
               },

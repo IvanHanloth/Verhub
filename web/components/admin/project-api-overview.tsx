@@ -1,4 +1,8 @@
+import Link from "next/link"
+import { ExternalLink } from "lucide-react"
+
 import { AdminItemCard } from "@/components/admin/admin-card"
+import { createEndpointSlug } from "@/lib/api-docs/utils"
 
 type ApiEndpoint = {
   method: "GET" | "POST" | "PATCH" | "DELETE"
@@ -6,9 +10,9 @@ type ApiEndpoint = {
   description: string
   auth?: {
     tokenRequired: boolean
-    tokenType?: string
-    scopes?: string[]
   }
+  pathParams?: Record<string, string>
+  queryParams?: Record<string, string>
   requestBody?: Record<string, unknown>
 }
 
@@ -34,6 +38,35 @@ function replacePathVars(path: string, projectKey?: string): string {
   return path.replaceAll("{projectKey}", projectKey || "<projectKey>")
 }
 
+function stripApiPrefix(path: string): string {
+  return path.startsWith("/api/v1") ? path.slice(7) : path
+}
+
+function buildDocHref(endpoint: ApiEndpoint, projectKey?: string): string {
+  const docPath = stripApiPrefix(endpoint.path)
+  const slug = createEndpointSlug(endpoint.method, docPath)
+  const search = new URLSearchParams()
+
+  if (docPath.includes("{projectKey}")) {
+    search.set("path.projectKey", projectKey || "")
+  }
+
+  for (const [key, value] of Object.entries(endpoint.pathParams ?? {})) {
+    search.set(`path.${key}`, value)
+  }
+
+  for (const [key, value] of Object.entries(endpoint.queryParams ?? {})) {
+    search.set(`query.${key}`, value)
+  }
+
+  if (endpoint.requestBody) {
+    search.set("body", JSON.stringify(replaceBodyVars(endpoint.requestBody, projectKey), null, 2))
+  }
+
+  const query = search.toString()
+  return query ? `/doc/${slug}?${query}` : `/doc/${slug}`
+}
+
 function replaceBodyVars(value: unknown, projectKey?: string): unknown {
   if (typeof value === "string") {
     return value.replaceAll("{projectKey}", projectKey || "<projectKey>")
@@ -56,6 +89,9 @@ export function ProjectApiOverview({ title, projectKey, groups }: ProjectApiOver
   return (
     <AdminItemCard className="border-slate-900/10 bg-white/70 p-4 dark:border-white/15 dark:bg-white/5">
       <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{title}</p>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
+        点击接口跳转文档中心，并自动填充已知参数到 Try It Out。
+      </p>
       <div className="mt-3 space-y-3">
         {groups.map((group) => (
           <div key={group.label} className="space-y-2">
@@ -64,59 +100,29 @@ export function ProjectApiOverview({ title, projectKey, groups }: ProjectApiOver
             </p>
             {group.endpoints.map((endpoint) => {
               const endpointPath = replacePathVars(endpoint.path, projectKey)
-              const requestBody = endpoint.requestBody
-                ? replaceBodyVars(endpoint.requestBody, projectKey)
-                : undefined
+              const href = buildDocHref(endpoint, projectKey)
 
               return (
-                <details
+                <Link
                   key={`${group.label}:${endpoint.method}:${endpoint.path}`}
-                  className="rounded-xl border border-slate-900/10 bg-white/80 px-3 py-2 text-xs dark:border-white/10 dark:bg-black/20"
+                  href={href}
+                  className="block rounded-xl border border-slate-900/10 bg-white/80 px-3 py-2 text-xs transition hover:border-sky-400/40 hover:bg-sky-50/60 dark:border-white/10 dark:bg-black/20 dark:hover:bg-sky-500/10"
                 >
-                  <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2">
+                  <div className="flex list-none flex-wrap items-center gap-2">
                     <span
                       className={`rounded-full border px-2 py-0.5 font-semibold ${METHOD_CLASS[endpoint.method]}`}
                     >
                       {endpoint.method}
                     </span>
                     <code className="text-slate-700 dark:text-slate-200">{endpointPath}</code>
-                  </summary>
-
-                  <div className="mt-2 space-y-2">
-                    <p className="text-slate-600 dark:text-slate-300">{endpoint.description}</p>
-
-                    <div className="rounded-lg border border-slate-900/10 bg-white/70 p-2 dark:border-white/10 dark:bg-black/20">
-                      <p className="font-semibold text-slate-700 dark:text-slate-200">认证要求</p>
-                      {endpoint.auth?.tokenRequired ? (
-                        <>
-                          <p className="mt-1 text-slate-600 dark:text-slate-300">
-                            需要 Token: {endpoint.auth.tokenType || "Bearer Token"}
-                          </p>
-                          {endpoint.auth.scopes?.length ? (
-                            <p className="text-slate-600 dark:text-slate-300">
-                              需要权限: {endpoint.auth.scopes.join(", ")}
-                            </p>
-                          ) : null}
-                        </>
-                      ) : (
-                        <p className="mt-1 text-slate-600 dark:text-slate-300">
-                          公开接口，无需 Token
-                        </p>
-                      )}
-                    </div>
-
-                    {requestBody ? (
-                      <details className="rounded-lg border border-slate-900/10 bg-white/70 p-2 dark:border-white/10 dark:bg-black/20">
-                        <summary className="cursor-pointer font-semibold text-slate-700 dark:text-slate-200">
-                          请求体示例
-                        </summary>
-                        <pre className="mt-2 overflow-auto rounded bg-slate-900 p-2 text-[11px] text-slate-100">
-                          {JSON.stringify(requestBody, null, 2)}
-                        </pre>
-                      </details>
-                    ) : null}
+                    <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-300">
+                      {endpoint.auth?.tokenRequired ? "需要 Token" : "公开接口"}
+                      <ExternalLink className="size-3" />
+                    </span>
                   </div>
-                </details>
+
+                  <p className="mt-2 text-slate-600 dark:text-slate-300">{endpoint.description}</p>
+                </Link>
               )
             })}
           </div>

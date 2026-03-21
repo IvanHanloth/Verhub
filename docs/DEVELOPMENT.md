@@ -117,6 +117,20 @@ pnpm --filter @workspace/backend test
 pnpm --filter @workspace/backend test:e2e
 ```
 
+### 3.1.1 `/doc` API 文档页维护
+
+- 文档入口：`/doc`
+- 单接口页面：`/doc/{endpoint-slug}`
+- 文档数据源：`web/lib/api-docs/registry.ts`
+- 通用文档组件：`web/components/docs/*`
+
+维护要求：
+
+- 新增/变更对外 API 时，必须同步更新 `web/lib/api-docs/registry.ts`
+- 对 `{projectKey}`、`{id}` 等路径参数，需在 `pathParams` 中声明并提供说明
+- 请求/响应示例应与 `verhub.openapi.yaml` 和后端 DTO 保持一致
+- 文档页变更后必须执行 `pnpm --filter web test` 与 `pnpm --filter web typecheck`
+
 ## 3.2 管理后台表单规范
 
 - 管理后台页面统一使用 `admin-unified` 视觉层，表单建议采用 `label > span + input/textarea/select` 结构

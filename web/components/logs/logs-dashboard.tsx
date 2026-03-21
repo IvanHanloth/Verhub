@@ -307,17 +307,7 @@ export function LogsDashboard() {
                     method: "GET",
                     path: "/api/v1/admin/projects/{projectKey}/logs",
                     description: "按条件分页查询日志",
-                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
-                  },
-                  {
-                    method: "GET",
-                    path: "/api/v1/admin/logs/statistics",
-                    description: "查看日志聚合统计",
-                    auth: {
-                      tokenRequired: true,
-                      tokenType: "项目 API Key",
-                      scopes: ["logs:read"],
-                    },
+                    auth: { tokenRequired: true },
                   },
                 ],
               },

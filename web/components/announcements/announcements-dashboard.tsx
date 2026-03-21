@@ -372,16 +372,10 @@ export function AnnouncementsDashboard() {
                 label: "管理接口",
                 endpoints: [
                   {
-                    method: "GET",
-                    path: "/api/v1/admin/projects/{projectKey}/announcements",
-                    description: "分页获取公告列表",
-                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
-                  },
-                  {
                     method: "POST",
                     path: "/api/v1/admin/projects/{projectKey}/announcements",
                     description: "创建公告",
-                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                    auth: { tokenRequired: true },
                     requestBody: {
                       title: "系统维护通知",
                       content: "3 月 25 日晚 22:00-23:00 进行维护",
@@ -394,7 +388,7 @@ export function AnnouncementsDashboard() {
                     method: "PATCH",
                     path: "/api/v1/admin/projects/{projectKey}/announcements/{id}",
                     description: "更新公告",
-                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                    auth: { tokenRequired: true },
                     requestBody: {
                       title: "系统维护通知（延期）",
                       content: "维护窗口改为 23:00-24:00",
@@ -404,7 +398,7 @@ export function AnnouncementsDashboard() {
                     method: "DELETE",
                     path: "/api/v1/admin/projects/{projectKey}/announcements/{id}",
                     description: "删除公告",
-                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                    auth: { tokenRequired: true },
                   },
                 ],
               },

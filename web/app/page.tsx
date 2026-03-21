@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowRight, BookOpen, Shield, Zap, Code, GitBranch, CheckCircle2 } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
@@ -25,10 +26,18 @@ export default function DocumentationPage() {
       <nav className="sticky top-0 z-40 border-b border-slate-200/50 bg-white/70 backdrop-blur dark:border-white/10 dark:bg-black/20">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4 sm:px-8">
           <div className="text-xl font-bold">Verhub</div>
-          <Button onClick={handleEnterAdmin} className="gap-2">
-            <span>{hasToken ? "进入后台" : "管理员登录"}</span>
-            <ArrowRight className="size-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" className="gap-2">
+              <Link href="/doc">
+                查看 API 文档
+                <BookOpen className="size-4" />
+              </Link>
+            </Button>
+            <Button onClick={handleEnterAdmin} className="gap-2">
+              <span>{hasToken ? "进入后台" : "管理员登录"}</span>
+              <ArrowRight className="size-4" />
+            </Button>
+          </div>
         </div>
       </nav>
 
@@ -104,55 +113,6 @@ export default function DocumentationPage() {
                 </div>
               )
             })}
-          </div>
-        </div>
-      </section>
-
-      {/* API Documentation Section */}
-      <section className="border-t border-slate-200/50 px-6 py-16 sm:px-8 sm:py-24 dark:border-white/10">
-        <div className="mx-auto max-w-5xl">
-          <h2 className="mb-8 text-3xl font-bold">API 文档</h2>
-          <div className="grid gap-8 md:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200/50 bg-white/50 p-8 backdrop-blur dark:border-white/10 dark:bg-white/5">
-              <h3 className="mb-4 text-xl font-semibold">RESTful API</h3>
-              <p className="mb-6 text-slate-600 dark:text-slate-400">
-                Verhub 提供完整的 RESTful API，支持认证和 Token 管理。
-              </p>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-center gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">→</span>
-                  JSON 请求/响应格式
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">→</span>
-                  JWT 短期令牌认证
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">→</span>
-                  API Key 长期令牌
-                </li>
-              </ul>
-            </div>
-            <div className="rounded-2xl border border-slate-200/50 bg-white/50 p-8 backdrop-blur dark:border-white/10 dark:bg-white/5">
-              <h3 className="mb-4 text-xl font-semibold">OpenAPI 规范</h3>
-              <p className="mb-6 text-slate-600 dark:text-slate-400">
-                完整的 OpenAPI 3.0 规范，支持自动代码生成和 API 文档生成。
-              </p>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-center gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">→</span>
-                  <code className="text-xs">GET /api/v1/admin/projects</code>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">→</span>
-                  <code className="text-xs">POST /api/v1/admin/versions</code>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-blue-600 dark:text-blue-400">→</span>
-                  <code className="text-xs">DELETE /api/v1/admin/resources</code>
-                </li>
-              </ul>
-            </div>
           </div>
         </div>
       </section>

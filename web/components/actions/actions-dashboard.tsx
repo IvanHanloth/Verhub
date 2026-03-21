@@ -245,13 +245,13 @@ export function ActionsDashboard() {
                     method: "GET",
                     path: "/api/v1/admin/projects/{projectKey}/actions",
                     description: "查询行为定义",
-                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                    auth: { tokenRequired: true },
                   },
                   {
                     method: "POST",
                     path: "/api/v1/admin/projects/actions",
                     description: "创建行为定义",
-                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                    auth: { tokenRequired: true },
                     requestBody: {
                       project_key: "{projectKey}",
                       name: "open_settings",
@@ -261,9 +261,9 @@ export function ActionsDashboard() {
                   },
                   {
                     method: "PATCH",
-                    path: "/api/v1/admin/actions/{actionId}",
+                    path: "/api/v1/admin/actions/{action_id}",
                     description: "编辑行为定义",
-                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                    auth: { tokenRequired: true },
                     requestBody: {
                       name: "open_settings_v2",
                       description: "用户打开设置页（新版）",

@@ -1,7 +1,7 @@
 const config = {
   lang: "zh-CN",
   title: "Verhub 文档",
-  base: '/verhub/',
+  base: '/Verhub/',
   description: "Verhub 版本与发布管理平台文档中心",
   cleanUrls: true,
   lastUpdated: true,

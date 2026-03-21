@@ -21,6 +21,22 @@ describe("resolveAuthRedirect", () => {
     })
   })
 
+  it("redirects authenticated user away from login page", () => {
+    expect(resolveAuthRedirect("/login", "", true)).toEqual({
+      redirectTo: "/admin",
+    })
+  })
+
+  it("redirects authenticated user to safe returnTo when visiting login", () => {
+    expect(resolveAuthRedirect("/login", "?returnTo=%2Fadmin%2Ftokens", true)).toEqual({
+      redirectTo: "/admin/tokens",
+    })
+
+    expect(resolveAuthRedirect("/login", "?returnTo=https%3A%2F%2Fevil.example", true)).toEqual({
+      redirectTo: "/admin",
+    })
+  })
+
   it("keeps home page publicly accessible for authenticated users", () => {
     expect(resolveAuthRedirect("/", "", true)).toEqual({
       redirectTo: null,

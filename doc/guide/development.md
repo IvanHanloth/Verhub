@@ -108,3 +108,73 @@ pnpm typecheck
 1. 使用短生命周期功能分支
 2. 单次提交聚焦一个目标
 3. PR 描述中附带验证步骤与影响范围
+
+## 多语言 SDK（进行中）
+
+仓库新增了统一命名空间的 SDK 初版，目录如下：
+
+- `sdk/typescript`：TypeScript SDK（public + admin）
+- `sdk/python`：Python SDK（public + admin）
+- `sdk/vanilla-js`：vanilla JS SDK（仅 public）
+
+统一约定：
+
+- 命名空间统一为 `VerhubSDK`
+- TypeScript: `sdk.publicApi` / `sdk.adminApi`
+- Python: `sdk.public_api` / `sdk.admin_api`（同时提供 `publicApi` / `adminApi` 兼容别名）
+- vanilla JS: 仅 `sdk.publicApi`
+
+接口覆盖范围以 Web 文档中心展示接口为准（`web/lib/api-docs/registry.ts`），避免封装文档外的私有接口。
+
+## CI/CD 集成示例：自动增加版本与公告
+
+下面示例展示如何在 GitHub Actions 中，在发布后自动调用管理接口创建版本和公告。
+
+前置条件：
+
+- 已在仓库 Secret 中配置 `VERHUB_BASE_URL`（例如 `https://api.example.com/api/v1`）
+- 已配置 `VERHUB_ADMIN_TOKEN`（Bearer Token）
+- 工作流触发时可拿到版本号（如 `v1.2.3`）
+
+```yaml
+name: Verhub Publish Notify
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "发布版本号，例如 1.2.3"
+        required: true
+
+jobs:
+  notify-verhub:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create version in Verhub
+        env:
+          VERHUB_BASE_URL: ${{ secrets.VERHUB_BASE_URL }}
+          VERHUB_ADMIN_TOKEN: ${{ secrets.VERHUB_ADMIN_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          curl -sS -X POST "${VERHUB_BASE_URL}/admin/projects/verhub/versions" \
+            -H "Authorization: Bearer ${VERHUB_ADMIN_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"version\":\"${RELEASE_VERSION}\",\"title\":\"Release ${RELEASE_VERSION}\",\"content\":\"Automated release by CI\",\"is_latest\":true,\"is_preview\":false}"
+
+      - name: Create announcement in Verhub
+        env:
+          VERHUB_BASE_URL: ${{ secrets.VERHUB_BASE_URL }}
+          VERHUB_ADMIN_TOKEN: ${{ secrets.VERHUB_ADMIN_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          curl -sS -X POST "${VERHUB_BASE_URL}/admin/projects/verhub/announcements" \
+            -H "Authorization: Bearer ${VERHUB_ADMIN_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"title\":\"版本 ${RELEASE_VERSION} 已发布\",\"content\":\"本次发布由 CI 自动同步到 Verhub。\",\"is_pinned\":false,\"author\":\"github-actions\"}"
+```
+
+建议：
+
+- 将项目键 `verhub` 抽为变量，适配多项目流水线
+- 在调用前增加一次健康检查与权限校验
+- 失败时输出响应体并中止流水线，避免“代码已发布但公告未同步”的不一致状态

@@ -23,37 +23,48 @@ Verhub 当前只提供分离镜像：
 
 ### 1) 准备 docker-compose 模板
 
-建议在部署目录创建 `docker-compose.release.yml`：
+建议在部署目录创建 `docker-compose.yml`：
 
 ```yaml
-name: Verhub
+name: verhub
+
+networks:
+  verhub-net:
+    driver: bridge
 
 services:
   postgres:
     image: postgres:16-alpine
     container_name: verhub-postgres
     restart: unless-stopped
+    networks:
+      - verhub-net
     environment:
       POSTGRES_DB: ${VERHUB_POSTGRES_DB:-verhub}
       POSTGRES_USER: ${VERHUB_POSTGRES_USER:-verhub}
       POSTGRES_PASSWORD: ${VERHUB_POSTGRES_PASSWORD}
     healthcheck:
       test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U ${VERHUB_POSTGRES_USER:-verhub} -d ${VERHUB_POSTGRES_DB:-verhub}",
-        ]
+        - CMD-SHELL
+        - pg_isready -U ${VERHUB_POSTGRES_USER:-verhub} -d ${VERHUB_POSTGRES_DB:-verhub}
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 5
       start_period: 10s
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    logging: &default-logging
+      driver: "json-file"
+      options:
+        max-size: "20m" # 单个日志文件最大 20MB
+        max-file: "3" # 最多保留 3 个旧文件
 
   backend:
     image: ${VERHUB_BACKEND_IMAGE:-docker.io/ivanhanloth/verhub-backend}:${VERHUB_TAG:-latest}
     container_name: verhub-backend
     restart: unless-stopped
+    networks:
+      - verhub-net
     environment:
       NODE_ENV: production
       PORT: 4000
@@ -69,34 +80,29 @@ services:
         condition: service_healthy
     healthcheck:
       test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
-        ]
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
     volumes:
       - bootstrap-secrets:/bootstrap
+    logging: *default-logging # 引用日志配置
 
   frontend:
     image: ${VERHUB_FRONTEND_IMAGE:-docker.io/ivanhanloth/verhub-frontend}:${VERHUB_TAG:-latest}
     container_name: verhub-frontend
     restart: unless-stopped
+    networks:
+      - verhub-net
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
       test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
-        ]
+        - CMD-SHELL
+        - wget --no-verbose --tries=1 --spider http://127.0.0.1/healthz || exit 1
       interval: 30s
       timeout: 5s
       retries: 3
@@ -104,6 +110,7 @@ services:
     ports:
       - "${VERHUB_HTTP_PORT:-80}:80"
       - "${VERHUB_HTTPS_PORT:-443}:443"
+    logging: *default-logging # 引用日志配置
 
 volumes:
   postgres-data:

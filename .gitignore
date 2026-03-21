@@ -10,3 +10,7 @@ coverage
 .pnpm-store
 doc/.vitepress/dist
 doc/.vitepress/cache
+__pycache__
+.vscode
+.idea
+.DS_Store

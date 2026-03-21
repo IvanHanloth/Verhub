@@ -1,6 +1,7 @@
 const config = {
   lang: "zh-CN",
   title: "Verhub 文档",
+  base: '/verhub/',
   description: "Verhub 版本与发布管理平台文档中心",
   cleanUrls: true,
   lastUpdated: true,
@@ -9,7 +10,6 @@ const config = {
     nav: [
       { text: "首页", link: "/" },
       { text: "项目介绍", link: "/guide/introduction" },
-      { text: "快速开始", link: "/guide/getting-started" },
       { text: "部署指南", link: "/guide/deployment" },
       { text: "开发指南", link: "/guide/development" },
       { text: "用户指南", link: "/guide/user-guide" }

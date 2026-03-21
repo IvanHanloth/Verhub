@@ -8,3 +8,5 @@ coverage
 !.env.example
 *.log
 .pnpm-store
+doc/.vitepress/dist
+doc/.vitepress/cache

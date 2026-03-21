@@ -17,6 +17,11 @@ type ProjectItem = {
   name: string
   repo_url: string | null
   description: string | null
+  author: string | null
+  author_homepage_url: string | null
+  icon_url: string | null
+  website_url: string | null
+  published_at: number | null
   created_at: number
   updated_at: number
 }
@@ -31,6 +36,11 @@ type GithubRepoPreview = {
   name: string
   repo_url: string
   description: string | null
+  author: string | null
+  author_homepage_url: string | null
+  icon_url: string | null
+  website_url: string | null
+  published_at: number | null
 }
 
 function nowSeconds(): number {
@@ -98,6 +108,11 @@ export class ProjectsService {
           name: dto.name,
           repoUrl: dto.repo_url,
           description: dto.description,
+          author: dto.author,
+          authorHomepageUrl: dto.author_homepage_url,
+          iconUrl: dto.icon_url,
+          websiteUrl: dto.website_url,
+          publishedAt: dto.published_at,
         },
       })
 
@@ -128,6 +143,11 @@ export class ProjectsService {
           name: dto.name,
           repoUrl: dto.repo_url,
           description: dto.description,
+          author: dto.author,
+          authorHomepageUrl: dto.author_homepage_url,
+          iconUrl: dto.icon_url,
+          websiteUrl: dto.website_url,
+          publishedAt: dto.published_at,
           updatedAt: nowSeconds(),
         },
       })
@@ -177,17 +197,33 @@ export class ProjectsService {
       full_name?: string
       description?: string | null
       html_url?: string
+      homepage?: string | null
+      created_at?: string
+      owner?: {
+        login?: string
+        html_url?: string
+        avatar_url?: string
+      }
     }
 
     const resolvedRepo = payload.name?.trim() || repo
     const displayName = payload.full_name?.trim() || `${owner}/${resolvedRepo}`
     const finalRepoUrl = payload.html_url?.trim() || `https://github.com/${owner}/${resolvedRepo}`
 
+    const publishedAt = payload.created_at
+      ? Math.floor(new Date(payload.created_at).getTime() / 1000)
+      : null
+
     return {
       project_key: normalizeProjectKey(`${owner}-${resolvedRepo}`),
       name: displayName,
       repo_url: finalRepoUrl,
       description: payload.description?.trim() || null,
+      author: payload.owner?.login?.trim() || null,
+      author_homepage_url: payload.owner?.html_url?.trim() || null,
+      icon_url: payload.owner?.avatar_url?.trim() || null,
+      website_url: payload.homepage?.trim() || null,
+      published_at: Number.isFinite(publishedAt) ? publishedAt : null,
     }
   }
 
@@ -203,6 +239,11 @@ export class ProjectsService {
     name: string
     repoUrl: string | null
     description: string | null
+    author: string | null
+    authorHomepageUrl: string | null
+    iconUrl: string | null
+    websiteUrl: string | null
+    publishedAt: number | null
     createdAt: number
     updatedAt: number
   }): ProjectItem {
@@ -212,6 +253,11 @@ export class ProjectsService {
       name: project.name,
       repo_url: project.repoUrl,
       description: project.description,
+      author: project.author,
+      author_homepage_url: project.authorHomepageUrl,
+      icon_url: project.iconUrl,
+      website_url: project.websiteUrl,
+      published_at: project.publishedAt,
       created_at: project.createdAt,
       updated_at: project.updatedAt,
     }

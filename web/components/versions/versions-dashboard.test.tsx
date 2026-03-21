@@ -9,6 +9,7 @@ import {
   createVersion,
   deleteVersion,
   updateVersion,
+  importVersionsFromGithubReleases,
   previewVersionFromGithubRelease,
 } from "@/lib/versions-api"
 
@@ -23,6 +24,7 @@ vi.mock("@/lib/versions-api", () => ({
   createVersion: vi.fn(),
   deleteVersion: vi.fn(),
   updateVersion: vi.fn(),
+  importVersionsFromGithubReleases: vi.fn(),
   previewVersionFromGithubRelease: vi.fn(),
 }))
 
@@ -31,6 +33,7 @@ const mockedListVersions = vi.mocked(listVersions)
 const mockedCreateVersion = vi.mocked(createVersion)
 const mockedDeleteVersion = vi.mocked(deleteVersion)
 const mockedUpdateVersion = vi.mocked(updateVersion)
+const mockedImportVersionsFromGithubReleases = vi.mocked(importVersionsFromGithubReleases)
 const mockedPreviewVersionFromGithubRelease = vi.mocked(previewVersionFromGithubRelease)
 
 describe("VersionsDashboard", () => {
@@ -43,6 +46,7 @@ describe("VersionsDashboard", () => {
     mockedCreateVersion.mockReset()
     mockedDeleteVersion.mockReset()
     mockedUpdateVersion.mockReset()
+    mockedImportVersionsFromGithubReleases.mockReset()
     mockedPreviewVersionFromGithubRelease.mockReset()
 
     mockedListProjects.mockResolvedValue({
@@ -54,6 +58,11 @@ describe("VersionsDashboard", () => {
           name: "Verhub",
           repo_url: null,
           description: null,
+          author: null,
+          author_homepage_url: null,
+          icon_url: null,
+          website_url: null,
+          published_at: null,
           created_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
           updated_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
         },
@@ -69,6 +78,7 @@ describe("VersionsDashboard", () => {
           title: "稳定版",
           content: "old content",
           download_url: "https://example.com/1.0.0",
+          download_links: [{ url: "https://example.com/1.0.0", name: "Web 包", platform: "web" }],
           forced: false,
           is_latest: true,
           is_preview: false,
@@ -86,6 +96,7 @@ describe("VersionsDashboard", () => {
       title: "稳定版-更新",
       content: "new content",
       download_url: "https://example.com/1.0.0",
+      download_links: [{ url: "https://example.com/1.0.0", name: "Web 包", platform: "web" }],
       forced: false,
       is_latest: true,
       is_preview: false,
@@ -96,12 +107,20 @@ describe("VersionsDashboard", () => {
     })
 
     mockedDeleteVersion.mockResolvedValue({ success: true })
+    mockedImportVersionsFromGithubReleases.mockResolvedValue({
+      imported: 2,
+      skipped: 1,
+      scanned: 3,
+    })
 
     mockedPreviewVersionFromGithubRelease.mockResolvedValue({
       version: "1.2.3",
       title: "Verhub v1.2.3",
       content: "release note",
       download_url: "https://downloads.example.com/verhub-1.2.3.zip",
+      download_links: [
+        { url: "https://downloads.example.com/verhub-1.2.3.zip", name: "verhub-1.2.3.zip" },
+      ],
       forced: false,
       platform: "web",
       is_latest: false,
@@ -109,6 +128,46 @@ describe("VersionsDashboard", () => {
       published_at: 1774087200,
       custom_data: { source: "github-release" },
     })
+  })
+
+  it("imports version history from github and shows summary", async () => {
+    const user = userEvent.setup()
+
+    mockedListProjects.mockResolvedValue({
+      total: 1,
+      data: [
+        {
+          id: "project-1",
+          project_key: "verhub",
+          name: "Verhub",
+          repo_url: "https://github.com/octocat/Hello-World",
+          description: null,
+          author: null,
+          author_homepage_url: null,
+          icon_url: null,
+          website_url: null,
+          published_at: null,
+          created_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
+          updated_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
+        },
+      ],
+    })
+
+    render(React.createElement(VersionsDashboard))
+
+    await screen.findByText("1.0.0")
+    await user.click(screen.getByRole("button", { name: "从 GitHub 导入历史版本" }))
+
+    await waitFor(() => {
+      expect(mockedImportVersionsFromGithubReleases).toHaveBeenCalledWith(
+        "valid-token",
+        "project-1",
+      )
+    })
+
+    expect(
+      screen.getByText("历史版本导入完成：新增 2 条，跳过 1 条，共扫描 3 条。"),
+    ).toBeInTheDocument()
   })
 
   it("edits existing version and submits update", async () => {
@@ -152,6 +211,11 @@ describe("VersionsDashboard", () => {
           name: "Verhub",
           repo_url: null,
           description: null,
+          author: null,
+          author_homepage_url: null,
+          icon_url: null,
+          website_url: null,
+          published_at: null,
           created_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
           updated_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
         },
@@ -161,6 +225,11 @@ describe("VersionsDashboard", () => {
           name: "Client",
           repo_url: null,
           description: null,
+          author: null,
+          author_homepage_url: null,
+          icon_url: null,
+          website_url: null,
+          published_at: null,
           created_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
           updated_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
         },
@@ -214,6 +283,11 @@ describe("VersionsDashboard", () => {
           name: "Verhub",
           repo_url: "https://github.com/octocat/Hello-World",
           description: null,
+          author: null,
+          author_homepage_url: null,
+          icon_url: null,
+          website_url: null,
+          published_at: null,
           created_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
           updated_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
         },
@@ -250,6 +324,11 @@ describe("VersionsDashboard", () => {
           name: "Verhub",
           repo_url: "https://github.com/octocat/Hello-World",
           description: null,
+          author: null,
+          author_homepage_url: null,
+          icon_url: null,
+          website_url: null,
+          published_at: null,
           created_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
           updated_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
         },

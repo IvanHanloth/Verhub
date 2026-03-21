@@ -5,8 +5,14 @@ import { DocHeader } from "@/components/docs/doc-header"
 import { ApiSidebar } from "@/components/docs/api-sidebar"
 
 export const metadata: Metadata = {
-  title: "Verhub API Docs",
+  title: {
+    default: "Verhub API Docs",
+    template: "%s | Verhub API Docs",
+  },
   description: "Verhub 对外 API 文档与管理 API 文档中心",
+  alternates: {
+    canonical: "/doc",
+  },
 }
 
 export default function DocLayout({ children }: { children: React.ReactNode }) {

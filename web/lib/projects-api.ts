@@ -6,6 +6,11 @@ export type ProjectItem = {
   name: string
   repo_url: string | null
   description: string | null
+  author: string | null
+  author_homepage_url: string | null
+  icon_url: string | null
+  website_url: string | null
+  published_at: number | null
   created_at: number
   updated_at: number
 }
@@ -20,6 +25,11 @@ export type ProjectMutationInput = {
   name: string
   repo_url?: string
   description?: string
+  author?: string
+  author_homepage_url?: string
+  icon_url?: string
+  website_url?: string
+  published_at?: number
 }
 
 export type GithubRepoProjectPreview = {
@@ -27,6 +37,11 @@ export type GithubRepoProjectPreview = {
   name: string
   repo_url: string
   description: string | null
+  author: string | null
+  author_homepage_url: string | null
+  icon_url: string | null
+  website_url: string | null
+  published_at: number | null
 }
 
 export type LoginResponse = {

@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import Link from "next/link"
 
@@ -6,6 +7,35 @@ import { getApiEndpointDocBySlug } from "@/lib/api-docs/registry"
 
 type Props = {
   params: Promise<{ slug: string }>
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params
+  const doc = getApiEndpointDocBySlug(slug)
+
+  if (!doc) {
+    return {
+      title: "接口不存在",
+      robots: {
+        index: false,
+        follow: false,
+      },
+    }
+  }
+
+  return {
+    title: `${doc.title} API 文档`,
+    description: doc.description,
+    alternates: {
+      canonical: `/doc/${doc.slug}`,
+    },
+    openGraph: {
+      title: `${doc.title} | Verhub API 文档`,
+      description: doc.description,
+      url: `/doc/${doc.slug}`,
+      type: "article",
+    },
+  }
 }
 
 export default async function ApiDocDetailPage({ params }: Props) {

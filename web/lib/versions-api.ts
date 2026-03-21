@@ -2,12 +2,19 @@ import { requestJson } from "@/lib/api-client"
 
 export type ClientPlatform = "ios" | "android" | "windows" | "mac" | "web"
 
+export type VersionDownloadLink = {
+  url: string
+  name?: string
+  platform?: string
+}
+
 export type VersionItem = {
   id: string
   version: string
   title: string | null
   content: string | null
   download_url: string | null
+  download_links: VersionDownloadLink[]
   forced: boolean
   is_latest: boolean
   is_preview: boolean
@@ -27,6 +34,7 @@ export type CreateVersionInput = {
   title?: string
   content?: string
   download_url?: string
+  download_links?: VersionDownloadLink[]
   forced?: boolean
   is_latest?: boolean
   is_preview?: boolean
@@ -40,6 +48,7 @@ export type GithubReleaseVersionPreview = {
   title?: string
   content?: string
   download_url?: string
+  download_links: VersionDownloadLink[]
   forced: boolean
   is_latest: boolean
   is_preview: boolean
@@ -121,4 +130,17 @@ export async function previewVersionFromGithubRelease(
   return requestJson<GithubReleaseVersionPreview>(path, {
     token,
   })
+}
+
+export async function importVersionsFromGithubReleases(
+  token: string,
+  projectKey: string,
+): Promise<{ imported: number; skipped: number; scanned: number }> {
+  return requestJson<{ imported: number; skipped: number; scanned: number }>(
+    `/admin/projects/${projectKey}/versions/github-release-import`,
+    {
+      method: "POST",
+      token,
+    },
+  )
 }

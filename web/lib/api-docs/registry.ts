@@ -30,7 +30,12 @@ const endpointsSeed: EndpointSeed[] = [
   "project_key": "verhub",
   "name": "Verhub",
   "description": "版本管理平台",
-  "repo_url": "https://github.com/example/verhub"
+  "repo_url": "https://github.com/example/verhub",
+  "author": "octocat",
+  "author_homepage_url": "https://github.com/octocat",
+  "icon_url": "https://avatars.githubusercontent.com/u/1?v=4",
+  "website_url": "https://verhub.dev",
+  "published_at": 1760000000
 }`,
     },
   },
@@ -78,6 +83,13 @@ const endpointsSeed: EndpointSeed[] = [
       "id": "ver-001",
       "version": "1.0.0",
       "title": "首发版本",
+      "download_links": [
+        {
+          "url": "https://example.com/download/verhub-1.0.0.zip",
+          "name": "Windows 包",
+          "platform": "windows"
+        }
+      ],
       "forced": false,
       "is_latest": true,
       "is_preview": false,
@@ -298,7 +310,12 @@ const endpointsSeed: EndpointSeed[] = [
   "project_key": "verhub",
   "name": "Verhub",
   "repo_url": "https://github.com/example/verhub",
-  "description": "版本与公告管理"
+  "description": "版本与公告管理",
+  "author": "octocat",
+  "author_homepage_url": "https://github.com/octocat",
+  "icon_url": "https://avatars.githubusercontent.com/u/1?v=4",
+  "website_url": "https://verhub.dev",
+  "published_at": 1760000000
 }`,
     },
     responseBody: {
@@ -354,6 +371,13 @@ const endpointsSeed: EndpointSeed[] = [
   "version": "1.2.0",
   "title": "性能优化",
   "content": "优化启动速度",
+  "download_links": [
+    {
+      "url": "https://example.com/download/1.2.0.zip",
+      "name": "web.zip",
+      "platform": "web"
+    }
+  ],
   "forced": false,
   "is_latest": true,
   "is_preview": false,

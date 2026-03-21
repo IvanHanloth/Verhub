@@ -29,11 +29,13 @@ import { listProjects, type ProjectItem } from "@/lib/projects-api"
 import {
   createVersion,
   deleteVersion,
+  importVersionsFromGithubReleases,
   listVersions,
   previewVersionFromGithubRelease,
   updateVersion,
   type ClientPlatform,
   type CreateVersionInput,
+  type VersionDownloadLink,
   type VersionItem,
 } from "@/lib/versions-api"
 
@@ -53,6 +55,7 @@ type VersionFormState = {
   title: string
   content: string
   download_url: string
+  download_links_json: string
   forced: boolean
   is_latest: boolean
   is_preview: boolean
@@ -66,6 +69,7 @@ const emptyVersionForm: VersionFormState = {
   title: "",
   content: "",
   download_url: "",
+  download_links_json: "",
   forced: false,
   is_latest: true,
   is_preview: false,
@@ -120,6 +124,29 @@ function parseJsonInput(value: string): Record<string, unknown> | undefined {
   return parsed as Record<string, unknown>
 }
 
+function parseDownloadLinks(value: string): VersionDownloadLink[] | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return undefined
+  }
+
+  const parsed = JSON.parse(trimmed) as unknown
+  if (!Array.isArray(parsed)) {
+    throw new Error("download_links 必须是数组。")
+  }
+
+  const links = parsed
+    .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+    .map((item) => ({
+      url: typeof item.url === "string" ? item.url.trim() : "",
+      name: typeof item.name === "string" ? item.name.trim() : undefined,
+      platform: typeof item.platform === "string" ? item.platform.trim() : undefined,
+    }))
+    .filter((item) => item.url.length > 0)
+
+  return links
+}
+
 function toCreateInput(form: VersionFormState): CreateVersionInput {
   const trimmedDownloadUrl = form.download_url.trim()
 
@@ -128,6 +155,7 @@ function toCreateInput(form: VersionFormState): CreateVersionInput {
     title: form.title.trim() || undefined,
     content: form.content.trim() || undefined,
     download_url: trimmedDownloadUrl || undefined,
+    download_links: parseDownloadLinks(form.download_links_json),
     forced: form.forced,
     is_latest: form.is_latest,
     is_preview: form.is_preview,
@@ -310,6 +338,8 @@ export function VersionsDashboard() {
       title: version.title ?? "",
       content: version.content ?? "",
       download_url: version.download_url ?? "",
+      download_links_json:
+        version.download_links.length > 0 ? JSON.stringify(version.download_links, null, 2) : "",
       forced: version.forced,
       is_latest: version.is_latest,
       is_preview: version.is_preview,
@@ -327,6 +357,8 @@ export function VersionsDashboard() {
       title: version.title ?? "",
       content: version.content ?? "",
       download_url: version.download_url ?? "",
+      download_links_json:
+        version.download_links.length > 0 ? JSON.stringify(version.download_links, null, 2) : "",
       forced: version.forced,
       is_latest: version.is_latest,
       is_preview: version.is_preview,
@@ -360,6 +392,8 @@ export function VersionsDashboard() {
         title: release.title ?? "",
         content: release.content ?? "",
         download_url: release.download_url ?? "",
+        download_links_json:
+          release.download_links.length > 0 ? JSON.stringify(release.download_links, null, 2) : "",
         forced: release.forced,
         is_latest: release.is_latest,
         is_preview: release.is_preview,
@@ -397,6 +431,32 @@ export function VersionsDashboard() {
       await loadVersions(nextOffset)
     } catch (error) {
       setVersionsError(getErrorMessage(error))
+    }
+  }
+
+  async function handleImportFromGithubReleaseHistory() {
+    if (!token) {
+      setSubmitMessage("请先登录后再操作。")
+      return
+    }
+    if (!selectedProjectKey) {
+      setSubmitMessage("请先选择一个项目。")
+      return
+    }
+
+    setGithubLoading(true)
+    setSubmitMessage(null)
+    try {
+      const result = await importVersionsFromGithubReleases(token, selectedProjectKey)
+      setSubmitMessage(
+        `历史版本导入完成：新增 ${result.imported} 条，跳过 ${result.skipped} 条，共扫描 ${result.scanned} 条。`,
+      )
+      await loadVersions(0)
+      setOffset(0)
+    } catch (error) {
+      setSubmitMessage(getErrorMessage(error))
+    } finally {
+      setGithubLoading(false)
     }
   }
 
@@ -467,6 +527,13 @@ export function VersionsDashboard() {
                       title: "稳定版",
                       content: "修复已知问题",
                       download_url: "https://example.com/download/2.1.0",
+                      download_links: [
+                        {
+                          url: "https://example.com/download/2.1.0",
+                          name: "web.zip",
+                          platform: "web",
+                        },
+                      ],
                       forced: false,
                       is_latest: true,
                       is_preview: false,
@@ -508,20 +575,36 @@ export function VersionsDashboard() {
               自动填充。
             </p>
             {selectedProject?.repo_url ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="border-cyan-300/40 bg-cyan-200/10 text-cyan-900 hover:bg-cyan-200/20 dark:text-cyan-100"
-                disabled={githubLoading}
-                onClick={() => void handlePrefillFromGithubRelease()}
-              >
-                {githubLoading ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <DownloadCloud className="size-4" />
-                )}
-                从 GitHub Release 获取
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-cyan-300/40 bg-cyan-200/10 text-cyan-900 hover:bg-cyan-200/20 dark:text-cyan-100"
+                  disabled={githubLoading}
+                  onClick={() => void handlePrefillFromGithubRelease()}
+                >
+                  {githubLoading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <DownloadCloud className="size-4" />
+                  )}
+                  从 GitHub Release 获取
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-cyan-300/40 bg-cyan-200/10 text-cyan-900 hover:bg-cyan-200/20 dark:text-cyan-100"
+                  disabled={githubLoading}
+                  onClick={() => void handleImportFromGithubReleaseHistory()}
+                >
+                  {githubLoading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <DownloadCloud className="size-4" />
+                  )}
+                  从 GitHub 导入历史版本
+                </Button>
+              </div>
             ) : (
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 当前项目未配置 GitHub 仓库地址，无法自动拉取 Release。
@@ -564,6 +647,18 @@ export function VersionsDashboard() {
                 onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
                 className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
                 maxLength={128}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">下载链接列表 JSON</span>
+              <textarea
+                placeholder='例如：[{"url":"https://example.com/app.zip","name":"Windows 包","platform":"windows"}]'
+                value={form.download_links_json}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, download_links_json: event.target.value }))
+                }
+                rows={4}
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
               />
             </label>
             <label className="space-y-1 text-sm">
@@ -778,7 +873,23 @@ export function VersionsDashboard() {
                       {version.is_preview ? <Sparkles className="size-4 text-sky-500" /> : null}
                     </p>
                     {version.content ? <p className="mt-1">{version.content}</p> : null}
-                    {version.download_url ? (
+                    {version.download_links.length > 0 ? (
+                      <div className="mt-1 space-y-1">
+                        {version.download_links.map((link, index) => (
+                          <a
+                            key={`${version.id}-${index}`}
+                            className="block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
+                            href={link.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {link.name ? `${link.name} · ` : ""}
+                            {link.platform ? `[${link.platform}] ` : ""}
+                            {link.url}
+                          </a>
+                        ))}
+                      </div>
+                    ) : version.download_url ? (
                       <a
                         className="mt-1 inline-block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
                         href={version.download_url}

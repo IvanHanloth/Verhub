@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength } from "class-validator"
+import { IsInt, IsOptional, IsString, IsUrl, MaxLength, Min } from "class-validator"
 
 export class CreateProjectDto {
   @IsString()
@@ -18,4 +18,29 @@ export class CreateProjectDto {
   @IsString()
   @MaxLength(2048)
   description?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  author?: string
+
+  @IsOptional()
+  @IsUrl({ require_protocol: true })
+  @MaxLength(512)
+  author_homepage_url?: string
+
+  @IsOptional()
+  @IsUrl({ require_protocol: true })
+  @MaxLength(1024)
+  icon_url?: string
+
+  @IsOptional()
+  @IsUrl({ require_protocol: true })
+  @MaxLength(512)
+  website_url?: string
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  published_at?: number
 }

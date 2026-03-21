@@ -20,6 +20,7 @@ type VersionItem = {
   title: string | null
   content: string | null
   download_url: string | null
+  download_links: Array<{ url: string; name?: string; platform?: string }>
   forced: boolean
   is_latest: boolean
   is_preview: boolean
@@ -39,11 +40,18 @@ type GithubReleasePreview = {
   title?: string
   content?: string
   download_url?: string
+  download_links: Array<{ url: string; name?: string; platform?: string }>
   forced: boolean
   is_latest: boolean
   is_preview: boolean
   published_at: number
   custom_data: Record<string, unknown>
+}
+
+type VersionImportResult = {
+  imported: number
+  skipped: number
+  scanned: number
 }
 
 function nowSeconds(): number {
@@ -192,13 +200,16 @@ export class VersionsService {
       const isLatest = dto.is_latest ?? !isPreview
       const publishedAt = dto.published_at ?? nowSeconds()
 
+      const downloadData = this.resolveDownloadData(dto.download_url, dto.download_links)
+
       const created = await this.prisma.version.create({
         data: {
           projectKey: normalizedProjectKey,
           version: dto.version,
           title: dto.title,
           content: dto.content,
-          downloadUrl: dto.download_url ?? null,
+          downloadUrl: downloadData.downloadUrl,
+          downloadLinks: downloadData.downloadLinks,
           forced: dto.forced ?? false,
           isLatest,
           isPreview,
@@ -248,6 +259,12 @@ export class VersionsService {
     try {
       const nextDownloadUrl =
         dto.download_url === undefined ? undefined : (dto.download_url ?? null)
+      const nextDownloadData = this.resolveDownloadData(
+        dto.download_url,
+        dto.download_links,
+        version.downloadUrl,
+        this.parseDownloadLinks(version.downloadLinks),
+      )
 
       const nextIsPreview = dto.is_preview ?? version.isPreview
       const nextIsLatest =
@@ -264,7 +281,8 @@ export class VersionsService {
           version: dto.version,
           title: dto.title,
           content: dto.content,
-          downloadUrl: nextDownloadUrl,
+          downloadUrl: nextDownloadData.downloadUrl ?? nextDownloadUrl,
+          downloadLinks: nextDownloadData.downloadLinks,
           forced: dto.forced,
           isLatest: nextIsLatest,
           isPreview: nextIsPreview,
@@ -384,7 +402,7 @@ export class VersionsService {
       published_at?: string
       html_url?: string
       zipball_url?: string
-      assets?: Array<{ browser_download_url?: string }>
+      assets?: Array<{ name?: string; browser_download_url?: string }>
     }
 
     const releaseTag = payload.tag_name?.trim()
@@ -395,10 +413,9 @@ export class VersionsService {
     const publishedAt = payload.published_at
       ? Math.floor(new Date(payload.published_at).getTime() / 1000)
       : nowSeconds()
-    const assetDownload = payload.assets?.find(
-      (item) => item.browser_download_url,
-    )?.browser_download_url
-    const downloadUrl = assetDownload ?? payload.zipball_url ?? payload.html_url
+    const downloadLinks = this.toGithubReleaseDownloadLinks(payload.assets)
+    const downloadUrl =
+      downloadLinks[0]?.url ?? payload.zipball_url ?? payload.html_url ?? undefined
     const isPreview = Boolean(payload.prerelease)
 
     return {
@@ -406,6 +423,7 @@ export class VersionsService {
       title: payload.name?.trim() || undefined,
       content: payload.body?.trim() || undefined,
       download_url: downloadUrl,
+      download_links: downloadLinks,
       forced: false,
       is_latest: !isPreview,
       is_preview: isPreview,
@@ -416,6 +434,88 @@ export class VersionsService {
         repo,
         release_tag: releaseTag,
       },
+    }
+  }
+
+  async importFromGithubReleases(projectKey: string): Promise<VersionImportResult> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    const project = await this.prisma.project.findUnique({
+      where: { projectKey: normalizedProjectKey },
+      select: { projectKey: true, repoUrl: true },
+    })
+
+    if (!project) {
+      throw new NotFoundException("Project not found")
+    }
+
+    if (!project.repoUrl) {
+      throw new BadRequestException("Project repo_url is not configured")
+    }
+
+    const { owner, repo } = this.parseGithubRepository(project.repoUrl)
+    const releases = await this.fetchGithubReleases(owner, repo)
+    if (releases.length === 0) {
+      return { imported: 0, skipped: 0, scanned: 0 }
+    }
+
+    const existing = await this.prisma.version.findMany({
+      where: { projectKey: normalizedProjectKey },
+      select: { version: true },
+    })
+    const existingVersions = new Set(existing.map((item) => item.version))
+
+    let imported = 0
+    let skipped = 0
+    for (const release of releases) {
+      const tag = release.tag_name?.trim()
+      if (!tag) {
+        skipped += 1
+        continue
+      }
+
+      const normalizedVersion = this.normalizeVersionTag(tag)
+      if (!normalizedVersion || existingVersions.has(normalizedVersion)) {
+        skipped += 1
+        continue
+      }
+
+      const releaseLinks = this.toGithubReleaseDownloadLinks(release.assets)
+      const downloadUrl =
+        releaseLinks[0]?.url ?? release.zipball_url?.trim() ?? release.html_url?.trim() ?? null
+      const publishedAt = release.published_at
+        ? Math.floor(new Date(release.published_at).getTime() / 1000)
+        : nowSeconds()
+
+      await this.prisma.version.create({
+        data: {
+          projectKey: normalizedProjectKey,
+          version: normalizedVersion,
+          title: release.name?.trim() || null,
+          content: release.body?.trim() || null,
+          downloadUrl,
+          downloadLinks: releaseLinks,
+          forced: false,
+          isLatest: false,
+          isPreview: Boolean(release.prerelease),
+          platform: undefined,
+          customData: {
+            source: "github-release-import",
+            owner,
+            repo,
+            release_tag: tag,
+          },
+          publishedAt: Number.isFinite(publishedAt) ? publishedAt : nowSeconds(),
+        },
+      })
+
+      existingVersions.add(normalizedVersion)
+      imported += 1
+    }
+
+    return {
+      imported,
+      skipped,
+      scanned: releases.length,
     }
   }
 
@@ -522,15 +622,24 @@ export class VersionsService {
     isPreview: boolean
     platform: ClientPlatform | null
     customData: Prisma.JsonValue | null
+    downloadLinks: Prisma.JsonValue | null
     publishedAt: number
     createdAt: number
   }): VersionItem {
+    const normalizedLinks = this.parseDownloadLinks(version.downloadLinks)
+
     return {
       id: version.id,
       version: version.version,
       title: version.title,
       content: version.content,
       download_url: version.downloadUrl,
+      download_links:
+        normalizedLinks.length > 0
+          ? normalizedLinks
+          : version.downloadUrl
+            ? [{ url: version.downloadUrl }]
+            : [],
       forced: version.forced,
       is_latest: version.isLatest,
       is_preview: version.isPreview,
@@ -547,5 +656,138 @@ export class VersionsService {
     }
 
     return "code" in error && error.code === "P2002"
+  }
+
+  private resolveDownloadData(
+    downloadUrl: string | undefined,
+    downloadLinks: Array<{ url: string; name?: string; platform?: string }> | undefined,
+    currentDownloadUrl?: string | null,
+    currentDownloadLinks?: Array<{ url: string; name?: string; platform?: string }>,
+  ): {
+    downloadUrl: string | null | undefined
+    downloadLinks: Array<{ url: string; name?: string; platform?: string }> | undefined
+  } {
+    if (downloadLinks !== undefined) {
+      const normalizedLinks = this.normalizeDownloadLinks(downloadLinks)
+      const urlFromLinks = normalizedLinks[0]?.url
+      return {
+        downloadUrl: downloadUrl === undefined ? (urlFromLinks ?? null) : (downloadUrl ?? null),
+        downloadLinks: normalizedLinks,
+      }
+    }
+
+    if (downloadUrl !== undefined) {
+      return {
+        downloadUrl: downloadUrl ?? null,
+        downloadLinks: downloadUrl ? [{ url: downloadUrl }] : [],
+      }
+    }
+
+    return {
+      downloadUrl: currentDownloadUrl,
+      downloadLinks: currentDownloadLinks,
+    }
+  }
+
+  private normalizeDownloadLinks(
+    links: Array<{ url: string; name?: string; platform?: string }>,
+  ): Array<{ url: string; name?: string; platform?: string }> {
+    return links
+      .map((item) => ({
+        url: item.url.trim(),
+        name: item.name?.trim() || undefined,
+        platform: item.platform?.trim() || undefined,
+      }))
+      .filter((item) => item.url.length > 0)
+  }
+
+  private parseDownloadLinks(
+    value: Prisma.JsonValue | null,
+  ): Array<{ url: string; name?: string; platform?: string }> {
+    if (!Array.isArray(value)) {
+      return []
+    }
+
+    const result: Array<{ url: string; name?: string; platform?: string }> = []
+    for (const item of value) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        continue
+      }
+
+      const jsonObject = item as Prisma.JsonObject
+      const rawUrl = jsonObject.url
+      if (typeof rawUrl !== "string" || rawUrl.trim().length === 0) {
+        continue
+      }
+
+      result.push({
+        url: rawUrl,
+        name: typeof jsonObject.name === "string" ? jsonObject.name : undefined,
+        platform: typeof jsonObject.platform === "string" ? jsonObject.platform : undefined,
+      })
+    }
+
+    return result
+  }
+
+  private toGithubReleaseDownloadLinks(
+    assets: Array<{ name?: string; browser_download_url?: string }> | undefined,
+  ): Array<{ url: string; name?: string }> {
+    return (assets ?? [])
+      .filter(
+        (asset): asset is { name?: string; browser_download_url: string } =>
+          typeof asset.browser_download_url === "string" && asset.browser_download_url.length > 0,
+      )
+      .map((asset) => ({
+        url: asset.browser_download_url,
+        name: asset.name?.trim() || undefined,
+      }))
+  }
+
+  private async fetchGithubReleases(
+    owner: string,
+    repo: string,
+  ): Promise<
+    Array<{
+      tag_name?: string
+      name?: string
+      body?: string
+      prerelease?: boolean
+      draft?: boolean
+      published_at?: string
+      html_url?: string
+      zipball_url?: string
+      assets?: Array<{ name?: string; browser_download_url?: string }>
+    }>
+  > {
+    const endpoint = `https://api.github.com/repos/${owner}/${repo}/releases?per_page=100&page=1`
+    const response = await fetch(endpoint, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "Verhub/1.2",
+      },
+    })
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new NotFoundException("GitHub release not found")
+      }
+
+      throw new BadGatewayException(`GitHub API request failed with status ${response.status}`)
+    }
+
+    const payload = (await response.json()) as Array<{
+      tag_name?: string
+      name?: string
+      body?: string
+      prerelease?: boolean
+      draft?: boolean
+      published_at?: string
+      html_url?: string
+      zipball_url?: string
+      assets?: Array<{ name?: string; browser_download_url?: string }>
+    }>
+
+    return payload.filter((item) => !item.draft)
   }
 }

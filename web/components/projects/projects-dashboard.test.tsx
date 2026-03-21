@@ -76,6 +76,11 @@ describe("ProjectsDashboard", () => {
           name: "Verhub",
           repo_url: null,
           description: null,
+          author: null,
+          author_homepage_url: null,
+          icon_url: null,
+          website_url: null,
+          published_at: null,
           created_at: Math.floor(Date.parse("2026-03-20T00:00:00.000Z") / 1000),
           updated_at: Math.floor(Date.parse("2026-03-20T00:00:00.000Z") / 1000),
         },
@@ -96,6 +101,11 @@ describe("ProjectsDashboard", () => {
       name: "octocat/Hello-World",
       repo_url: "https://github.com/octocat/Hello-World",
       description: "GitHub hello world",
+      author: "octocat",
+      author_homepage_url: "https://github.com/octocat",
+      icon_url: "https://avatars.githubusercontent.com/u/1?v=4",
+      website_url: null,
+      published_at: null,
     })
 
     render(React.createElement(ProjectsDashboard))

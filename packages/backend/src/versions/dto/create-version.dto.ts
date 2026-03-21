@@ -1,17 +1,39 @@
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
   IsObject,
   IsOptional,
   IsString,
+  IsUrl,
   MaxLength,
   Min,
+  ValidateNested,
 } from "class-validator"
+import { Type } from "class-transformer"
 
 const clientPlatforms = ["ios", "android", "windows", "mac", "web"] as const
 
 type ClientPlatform = (typeof clientPlatforms)[number]
+
+export class VersionDownloadLinkDto {
+  @IsString()
+  @IsUrl({ require_protocol: true })
+  @MaxLength(2048)
+  url!: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  name?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  platform?: string
+}
 
 export class CreateVersionDto {
   @IsString()
@@ -32,6 +54,13 @@ export class CreateVersionDto {
   @IsString()
   @MaxLength(2048)
   download_url?: string
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => VersionDownloadLinkDto)
+  @ArrayMaxSize(32)
+  download_links?: VersionDownloadLinkDto[]
 
   @IsOptional()
   @IsBoolean()

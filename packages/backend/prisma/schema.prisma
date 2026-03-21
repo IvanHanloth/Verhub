@@ -63,6 +63,11 @@ model Project {
   name          String
   repoUrl       String?
   description   String?
+  author        String?
+  authorHomepageUrl String?
+  iconUrl       String?
+  websiteUrl    String?
+  publishedAt   Int?
   createdAt     Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   updatedAt     Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   versions      Version[]
@@ -106,6 +111,7 @@ model Version {
   title       String?
   content     String?
   downloadUrl String?
+  downloadLinks Json?
   forced      Boolean        @default(false)
   isLatest    Boolean        @default(false)
   isPreview   Boolean        @default(false)

@@ -41,6 +41,7 @@ describe("VersionsService", () => {
       title: "First Release",
       content: "stable release",
       downloadUrl: "https://example.com/app",
+      downloadLinks: [{ url: "https://example.com/app", name: "Installer", platform: "web" }],
       forced: false,
       platform: "IOS",
       customData: { build: "100" },
@@ -58,6 +59,7 @@ describe("VersionsService", () => {
       title: "First Release",
       content: "stable release",
       download_url: "https://example.com/app",
+      download_links: [{ url: "https://example.com/app", name: "Installer", platform: "web" }],
       forced: false,
       platform: "ios",
       custom_data: { build: "100" },
@@ -70,6 +72,7 @@ describe("VersionsService", () => {
         title: "First Release",
         content: "stable release",
         downloadUrl: "https://example.com/app",
+        downloadLinks: [{ url: "https://example.com/app", name: "Installer", platform: "web" }],
         forced: false,
         platform: "IOS",
         customData: { build: "100" },
@@ -80,6 +83,9 @@ describe("VersionsService", () => {
     })
 
     expect(result.platform).toBe("ios")
+    expect(result.download_links).toEqual([
+      { url: "https://example.com/app", name: "Installer", platform: "web" },
+    ])
     expect(result.is_latest).toBe(true)
     expect(result.is_preview).toBe(false)
     expect(result.published_at).toBe(1767225600)
@@ -125,6 +131,7 @@ describe("VersionsService", () => {
       title: null,
       content: null,
       downloadUrl: null,
+      downloadLinks: null,
       forced: false,
       platform: null,
       customData: null,
@@ -153,7 +160,8 @@ describe("VersionsService", () => {
         version: "1.0.1",
         title: undefined,
         content: undefined,
-        downloadUrl: null,
+        downloadUrl: undefined,
+        downloadLinks: undefined,
         forced: false,
         platform: undefined,
         customData: undefined,
@@ -163,6 +171,7 @@ describe("VersionsService", () => {
       },
     })
     expect(result.download_url).toBeNull()
+    expect(result.download_links).toEqual([])
   })
 
   it("marks explicit preview version as non-latest", async () => {
@@ -174,6 +183,7 @@ describe("VersionsService", () => {
       title: "Preview",
       content: null,
       downloadUrl: null,
+      downloadLinks: null,
       forced: false,
       platform: "WEB",
       customData: null,
@@ -197,6 +207,79 @@ describe("VersionsService", () => {
         }),
       }),
     )
+  })
+
+  it("imports releases from github and skips duplicated version numbers", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({
+      projectKey: "project-1",
+      repoUrl: "https://github.com/octocat/Hello-World",
+    })
+
+    prisma.version.findMany.mockResolvedValueOnce([{ version: "1.0.0" }])
+    prisma.version.create.mockResolvedValue({
+      id: "version-2",
+      version: "1.1.0",
+      title: "v1.1.0",
+      content: "release note",
+      downloadUrl: "https://downloads.example.com/verhub-1.1.0.zip",
+      downloadLinks: [{ url: "https://downloads.example.com/verhub-1.1.0.zip", name: "app.zip" }],
+      forced: false,
+      platform: "WEB",
+      customData: { source: "github-release" },
+      isLatest: false,
+      isPreview: false,
+      publishedAt: 1774087200,
+      createdAt: 1774087200,
+    })
+
+    const fetchMock = jest.spyOn(global, "fetch" as never).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [
+        {
+          tag_name: "v1.0.0",
+          name: "v1.0.0",
+          prerelease: false,
+          body: "old",
+          assets: [{ browser_download_url: "https://downloads.example.com/verhub-1.0.0.zip" }],
+          published_at: "2026-03-20T10:00:00.000Z",
+        },
+        {
+          tag_name: "v1.1.0",
+          name: "v1.1.0",
+          prerelease: false,
+          body: "release note",
+          assets: [
+            {
+              name: "app.zip",
+              browser_download_url: "https://downloads.example.com/verhub-1.1.0.zip",
+            },
+          ],
+          published_at: "2026-03-21T10:00:00.000Z",
+        },
+      ],
+    } as never)
+
+    const service = new VersionsService(prisma as never)
+    const result = await service.importFromGithubReleases("project-1")
+
+    expect(result).toEqual({ imported: 1, skipped: 1, scanned: 2 })
+    expect(prisma.version.create).toHaveBeenCalledTimes(1)
+    expect(prisma.version.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          projectKey: "project-1",
+          version: "1.1.0",
+          downloadUrl: "https://downloads.example.com/verhub-1.1.0.zip",
+          downloadLinks: [
+            { url: "https://downloads.example.com/verhub-1.1.0.zip", name: "app.zip" },
+          ],
+        }),
+      }),
+    )
+
+    fetchMock.mockRestore()
   })
 
   it("fetches GitHub release preview by project repo", async () => {

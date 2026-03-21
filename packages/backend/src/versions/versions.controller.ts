@@ -35,6 +35,12 @@ export class VersionsController {
     return this.versionsService.previewFromGithubRelease(projectKey, query)
   }
 
+  @Post("github-release-import")
+  @UseGuards(JwtAdminGuard)
+  async importFromGithubRelease(@Param("projectKey") projectKey: string) {
+    return this.versionsService.importFromGithubReleases(projectKey)
+  }
+
   @Get(":id")
   @UseGuards(JwtAdminGuard)
   async findOne(@Param("projectKey") projectKey: string, @Param("id") id: string) {

@@ -48,6 +48,18 @@ const navItems: NavItem[] = [
   { href: "/admin/settings", label: "管理员设置", icon: Settings },
 ]
 
+const adminPageTitles: Record<string, string> = {
+  "/admin": "后台概览",
+  "/admin/projects": "项目管理",
+  "/admin/versions": "版本管理",
+  "/admin/announcements": "公告管理",
+  "/admin/actions": "行为管理",
+  "/admin/feedbacks": "反馈管理",
+  "/admin/logs": "日志管理",
+  "/admin/tokens": "Token 管理",
+  "/admin/settings": "管理员设置",
+}
+
 export function DashboardShell({ children }: Props) {
   const pathname = usePathname()
   const router = useRouter()
@@ -81,6 +93,19 @@ export function DashboardShell({ children }: Props) {
       cancelled = true
     }
   }, [pathname, router])
+
+  React.useEffect(() => {
+    if (!pathname) {
+      return
+    }
+
+    const titleEntry = Object.entries(adminPageTitles).find(([route]) => {
+      return pathname === route || pathname.startsWith(`${route}/`)
+    })
+
+    const pageTitle = titleEntry ? titleEntry[1] : "后台控制台"
+    document.title = `${pageTitle} | Verhub Admin`
+  }, [pathname])
 
   function logout() {
     clearSessionToken()

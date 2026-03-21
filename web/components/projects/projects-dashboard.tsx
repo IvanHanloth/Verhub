@@ -28,6 +28,11 @@ type FormState = {
   name: string
   repo_url: string
   description: string
+  author: string
+  author_homepage_url: string
+  icon_url: string
+  website_url: string
+  published_at: string
 }
 
 const emptyForm: FormState = {
@@ -35,6 +40,25 @@ const emptyForm: FormState = {
   name: "",
   repo_url: "",
   description: "",
+  author: "",
+  author_homepage_url: "",
+  icon_url: "",
+  website_url: "",
+  published_at: "",
+}
+
+function toTimestampSeconds(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return undefined
+  }
+
+  const millis = Date.parse(trimmed)
+  if (Number.isNaN(millis)) {
+    throw new Error("发布时间格式不正确")
+  }
+
+  return Math.floor(millis / 1000)
 }
 
 function toMutationInput(form: FormState): ProjectMutationInput {
@@ -43,6 +67,11 @@ function toMutationInput(form: FormState): ProjectMutationInput {
     name: form.name.trim(),
     repo_url: form.repo_url.trim() || undefined,
     description: form.description.trim() || undefined,
+    author: form.author.trim() || undefined,
+    author_homepage_url: form.author_homepage_url.trim() || undefined,
+    icon_url: form.icon_url.trim() || undefined,
+    website_url: form.website_url.trim() || undefined,
+    published_at: toTimestampSeconds(form.published_at),
   }
 }
 
@@ -138,6 +167,13 @@ export function ProjectsDashboard() {
       name: project.name,
       repo_url: project.repo_url ?? "",
       description: project.description ?? "",
+      author: project.author ?? "",
+      author_homepage_url: project.author_homepage_url ?? "",
+      icon_url: project.icon_url ?? "",
+      website_url: project.website_url ?? "",
+      published_at: project.published_at
+        ? new Date(project.published_at * 1000).toISOString().slice(0, 16)
+        : "",
     })
     setSubmitMessage(null)
   }
@@ -149,6 +185,13 @@ export function ProjectsDashboard() {
       name: project.name,
       repo_url: project.repo_url ?? "",
       description: project.description ?? "",
+      author: project.author ?? "",
+      author_homepage_url: project.author_homepage_url ?? "",
+      icon_url: project.icon_url ?? "",
+      website_url: project.website_url ?? "",
+      published_at: project.published_at
+        ? new Date(project.published_at * 1000).toISOString().slice(0, 16)
+        : "",
     })
     setSubmitMessage("已复制配置到表单，可直接创建新项目。")
   }
@@ -242,6 +285,13 @@ export function ProjectsDashboard() {
         name: preview.name,
         repo_url: preview.repo_url,
         description: preview.description ?? "",
+        author: preview.author ?? "",
+        author_homepage_url: preview.author_homepage_url ?? "",
+        icon_url: preview.icon_url ?? "",
+        website_url: preview.website_url ?? "",
+        published_at: preview.published_at
+          ? new Date(preview.published_at * 1000).toISOString().slice(0, 16)
+          : "",
       }))
       setSubmitMessage("已从 GitHub 仓库自动填充项目信息。")
     } catch (error) {
@@ -353,6 +403,65 @@ export function ProjectsDashboard() {
                 maxLength={2048}
               />
             </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">作者</span>
+              <input
+                type="text"
+                placeholder="例如：octocat"
+                value={form.author}
+                onChange={(event) => setForm((prev) => ({ ...prev, author: event.target.value }))}
+                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
+                maxLength={128}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">作者主页</span>
+              <input
+                type="url"
+                placeholder="https://github.com/author"
+                value={form.author_homepage_url}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, author_homepage_url: event.target.value }))
+                }
+                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
+                maxLength={512}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">图标链接</span>
+              <input
+                type="url"
+                placeholder="https://example.com/icon.png"
+                value={form.icon_url}
+                onChange={(event) => setForm((prev) => ({ ...prev, icon_url: event.target.value }))}
+                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
+                maxLength={1024}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">官网</span>
+              <input
+                type="url"
+                placeholder="https://example.com"
+                value={form.website_url}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, website_url: event.target.value }))
+                }
+                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
+                maxLength={512}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">发布时间</span>
+              <input
+                type="datetime-local"
+                value={form.published_at}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, published_at: event.target.value }))
+                }
+                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
+              />
+            </label>
             <div className="flex flex-wrap gap-2">
               <Button
                 type="submit"
@@ -442,6 +551,17 @@ export function ProjectsDashboard() {
                         rel="noreferrer"
                       >
                         {project.repo_url}
+                      </a>
+                    ) : null}
+                    {project.author ? <p className="mt-1">作者：{project.author}</p> : null}
+                    {project.website_url ? (
+                      <a
+                        className="mt-1 block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
+                        href={project.website_url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        官网：{project.website_url}
                       </a>
                     ) : null}
                     {project.description ? <p className="mt-1">{project.description}</p> : null}

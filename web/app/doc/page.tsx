@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import Link from "next/link"
 
 import { ApiMethodBadge } from "@/components/docs/api-method-badge"
@@ -7,6 +8,20 @@ type DocIndexPageProps = {
   searchParams?: {
     q?: string | string[]
   }
+}
+
+export const metadata: Metadata = {
+  title: "API 文档总览",
+  description: "浏览 Verhub 对外 API 与常用管理 API 文档，包含请求参数、响应结构与调试说明。",
+  alternates: {
+    canonical: "/doc",
+  },
+  openGraph: {
+    title: "Verhub API 文档总览",
+    description: "浏览 Verhub 对外 API 与常用管理 API 文档。",
+    url: "/doc",
+    type: "website",
+  },
 }
 
 export default function DocIndexPage({ searchParams }: DocIndexPageProps) {

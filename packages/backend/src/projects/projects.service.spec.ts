@@ -27,6 +27,11 @@ describe("ProjectsService", () => {
           name: "Verhub",
           repoUrl: "https://github.com/example/verhub",
           description: "version hub",
+          author: null,
+          authorHomepageUrl: null,
+          iconUrl: null,
+          websiteUrl: null,
+          publishedAt: null,
           createdAt: 1767225600,
           updatedAt: 1767312000,
         },
@@ -43,9 +48,53 @@ describe("ProjectsService", () => {
       name: "Verhub",
       repo_url: "https://github.com/example/verhub",
       description: "version hub",
+      author: null,
+      author_homepage_url: null,
+      icon_url: null,
+      website_url: null,
+      published_at: null,
       created_at: 1767225600,
       updated_at: 1767312000,
     })
+  })
+
+  it("extracts author metadata when previewing github repo", async () => {
+    const prisma = createPrismaMock()
+    const service = new ProjectsService(prisma as never)
+
+    const fetchMock = jest.spyOn(global, "fetch" as never).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        name: "Hello-World",
+        full_name: "octocat/Hello-World",
+        description: "Sample project",
+        html_url: "https://github.com/octocat/Hello-World",
+        homepage: "https://example.com",
+        created_at: "2026-03-20T10:00:00.000Z",
+        owner: {
+          login: "octocat",
+          html_url: "https://github.com/octocat",
+          avatar_url: "https://avatars.githubusercontent.com/u/1?v=4",
+        },
+      }),
+    } as never)
+
+    const preview = await service.previewFromGithubRepo("https://github.com/octocat/Hello-World")
+
+    expect(preview).toEqual({
+      project_key: "octocat-hello-world",
+      name: "octocat/Hello-World",
+      repo_url: "https://github.com/octocat/Hello-World",
+      description: "Sample project",
+      author: "octocat",
+      author_homepage_url: "https://github.com/octocat",
+      icon_url: "https://avatars.githubusercontent.com/u/1?v=4",
+      website_url: "https://example.com",
+      published_at: Math.floor(Date.parse("2026-03-20T10:00:00.000Z") / 1000),
+    })
+
+    fetchMock.mockRestore()
   })
 
   it("throws not found when project does not exist", async () => {

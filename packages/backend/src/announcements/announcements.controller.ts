@@ -7,14 +7,14 @@ import { QueryAnnouncementsDto } from "./dto/query-announcements.dto"
 import { UpdateAnnouncementDto } from "./dto/update-announcement.dto"
 import { AnnouncementsService } from "./announcements.service"
 
-@Controller("admin/projects/:projectId/announcements")
+@Controller("admin/projects/:projectKey/announcements")
 @UseGuards(JwtAdminGuard)
 export class AnnouncementsController {
   constructor(private readonly announcementsService: AnnouncementsService) {}
 
   @Get()
-  async findAll(@Param("projectId") projectId: string, @Query() query: QueryAnnouncementsDto) {
-    return this.announcementsService.findAll(projectId, query)
+  async findAll(@Param("projectKey") projectKey: string, @Query() query: QueryAnnouncementsDto) {
+    return this.announcementsService.findAll(projectKey, query)
   }
 
   @Get("_status")
@@ -23,27 +23,27 @@ export class AnnouncementsController {
   }
 
   @Get(":id")
-  async findOne(@Param("projectId") projectId: string, @Param("id") id: string) {
-    return this.announcementsService.findOne(projectId, id)
+  async findOne(@Param("projectKey") projectKey: string, @Param("id") id: string) {
+    return this.announcementsService.findOne(projectKey, id)
   }
 
   @Post()
-  async create(@Param("projectId") projectId: string, @Body() dto: CreateAnnouncementDto) {
-    return this.announcementsService.create(projectId, dto)
+  async create(@Param("projectKey") projectKey: string, @Body() dto: CreateAnnouncementDto) {
+    return this.announcementsService.create(projectKey, dto)
   }
 
   @Patch(":id")
   async update(
-    @Param("projectId") projectId: string,
+    @Param("projectKey") projectKey: string,
     @Param("id") id: string,
     @Body() dto: UpdateAnnouncementDto,
   ) {
-    return this.announcementsService.update(projectId, id, dto)
+    return this.announcementsService.update(projectKey, id, dto)
   }
 
   @Delete(":id")
-  async remove(@Param("projectId") projectId: string, @Param("id") id: string) {
-    await this.announcementsService.remove(projectId, id)
+  async remove(@Param("projectKey") projectKey: string, @Param("id") id: string) {
+    await this.announcementsService.remove(projectKey, id)
     return {
       success: true,
     }

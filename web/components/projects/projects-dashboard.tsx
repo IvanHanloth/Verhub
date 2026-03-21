@@ -1,19 +1,21 @@
 "use client"
 
 import * as React from "react"
-import { CheckCircle2, Loader2, PencilLine, Plus, RefreshCcw, Trash2 } from "lucide-react"
+import { CheckCircle2, Copy, Loader2, PencilLine, Plus, RefreshCcw, Trash2 } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
 import { ApiError, isAuthError } from "@/lib/api-client"
 import { getSessionToken } from "@/lib/auth-session"
-import { AdminCard, AdminItemCard } from "@/components/admin/admin-card"
+import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
+import { ManagementListItem } from "@/components/admin/management-list-item"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import {
   createProject,
   deleteProject,
   listProjects,
+  previewProjectFromGithubRepo,
   type ProjectItem,
   type ProjectMutationInput,
   updateProject,
@@ -69,6 +71,7 @@ export function ProjectsDashboard() {
   const [form, setForm] = React.useState<FormState>(emptyForm)
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [submitLoading, setSubmitLoading] = React.useState(false)
+  const [githubLoading, setGithubLoading] = React.useState(false)
   const [submitMessage, setSubmitMessage] = React.useState<string | null>(null)
 
   const hasToken = token.trim().length > 0
@@ -139,6 +142,17 @@ export function ProjectsDashboard() {
     setSubmitMessage(null)
   }
 
+  function copyFromProject(project: ProjectItem) {
+    setEditingId(null)
+    setForm({
+      project_key: project.project_key,
+      name: project.name,
+      repo_url: project.repo_url ?? "",
+      description: project.description ?? "",
+    })
+    setSubmitMessage("已复制配置到表单，可直接创建新项目。")
+  }
+
   function resetForm() {
     setEditingId(null)
     setForm(emptyForm)
@@ -206,6 +220,37 @@ export function ProjectsDashboard() {
     }
   }
 
+  async function handlePrefillFromGithubRepo() {
+    if (!token) {
+      setSubmitMessage("请先登录后再操作。")
+      return
+    }
+
+    const repoUrl = form.repo_url.trim()
+    if (!repoUrl) {
+      setSubmitMessage("请先填写 GitHub 仓库地址。")
+      return
+    }
+
+    setGithubLoading(true)
+    setSubmitMessage(null)
+    try {
+      const preview = await previewProjectFromGithubRepo(token, repoUrl)
+      setForm((prev) => ({
+        ...prev,
+        project_key: preview.project_key,
+        name: preview.name,
+        repo_url: preview.repo_url,
+        description: preview.description ?? "",
+      }))
+      setSubmitMessage("已从 GitHub 仓库自动填充项目信息。")
+    } catch (error) {
+      setSubmitMessage(getErrorMessage(error))
+    } finally {
+      setGithubLoading(false)
+    }
+  }
+
   return (
     <section className="space-y-6">
       <AdminPageHeader
@@ -269,7 +314,7 @@ export function ProjectsDashboard() {
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">仓库地址（可选）</span>
+              <span className="text-slate-700 dark:text-slate-300">仓库地址</span>
               <input
                 type="url"
                 placeholder="https://github.com/org/repo"
@@ -279,8 +324,24 @@ export function ProjectsDashboard() {
                 maxLength={512}
               />
             </label>
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-white/25 bg-white/5"
+                disabled={githubLoading}
+                onClick={() => void handlePrefillFromGithubRepo()}
+              >
+                {githubLoading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <RefreshCcw className="size-4" />
+                )}
+                从 GitHub 获取项目信息
+              </Button>
+            </div>
             <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">项目描述（可选）</span>
+              <span className="text-slate-700 dark:text-slate-300">项目描述</span>
               <textarea
                 placeholder="简要说明项目用途和范围"
                 value={form.description}
@@ -357,18 +418,25 @@ export function ProjectsDashboard() {
         {hasToken && !loading && !error && projects.length > 0 ? (
           <div className="space-y-3">
             {projects.map((project) => (
-              <AdminItemCard key={project.id}>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="text-base font-medium">{project.name}</p>
-                    <p className="font-mono text-xs text-cyan-100/90">ID: {project.id}</p>
-                    <p className="font-mono text-xs text-cyan-100/90">{project.project_key}</p>
-                    <p className="text-xs text-slate-300">
-                      创建于 {new Date(project.created_at).toLocaleString("zh-CN")}
-                    </p>
+              <ManagementListItem
+                key={project.id}
+                title={project.name}
+                subtitle={
+                  <p className="font-mono text-xs text-slate-700 dark:text-cyan-100/90">
+                    ID: {project.id}
+                  </p>
+                }
+                meta={
+                  <>
+                    <p className="font-mono">{project.project_key}</p>
+                    <p>创建于 {new Date(project.created_at * 1000).toLocaleString("zh-CN")}</p>
+                  </>
+                }
+                content={
+                  <>
                     {project.repo_url ? (
                       <a
-                        className="text-sm text-cyan-200 underline-offset-2 hover:underline"
+                        className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
                         href={project.repo_url}
                         target="_blank"
                         rel="noreferrer"
@@ -376,11 +444,20 @@ export function ProjectsDashboard() {
                         {project.repo_url}
                       </a>
                     ) : null}
-                    {project.description ? (
-                      <p className="text-sm text-slate-200/90">{project.description}</p>
-                    ) : null}
-                  </div>
-                  <div className="flex gap-2">
+                    {project.description ? <p className="mt-1">{project.description}</p> : null}
+                  </>
+                }
+                actions={
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-white/20 bg-white/5"
+                      onClick={() => copyFromProject(project)}
+                    >
+                      <Copy className="size-4" />
+                      复制配置
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"
@@ -398,9 +475,9 @@ export function ProjectsDashboard() {
                       <Trash2 className="size-4" />
                       删除
                     </Button>
-                  </div>
-                </div>
-              </AdminItemCard>
+                  </>
+                }
+              />
             ))}
 
             <AdminPagination

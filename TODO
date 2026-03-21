@@ -65,3 +65,47 @@
 - [x] 补齐默认模块兼容路由：/admin/feedbacks/{feedback_id}（PUT/DELETE）
 - [x] 补齐默认模块公开接口：project 基础信息/versions 列表与 latest/announcements 列表与 latest
 - [x] 补齐默认模块公开接口：actions 上报与管理端 actions 系列接口
+
+## 2026-03-21 管理页一致性与数据对接修复（进行中）
+
+- [x] TDD：补充版本模块“download_url 可空 + 删除 + 复制配置”测试
+- [x] TDD：补充公告模块“author/published_at 可编辑”后端测试
+- [x] Prisma：版本下载地址改可空，公告新增 author/publishedAt，并新增 migration
+- [x] 后端 DTO/Service：同步版本与公告字段变更
+- [x] 前端 API 客户端：优化默认 API 基址，降低首页请求失败概率
+- [x] 前端管理页：统一列表项组件与按钮位置，支持复制配置
+- [x] 前端页面：行为页改左右布局；版本支持删除；去除“（可选）”文案
+- [x] 前端页面：项目卡片下新增 API 速览（版本/公告/行为/反馈/日志）
+- [x] 接口文档：更新 verhub.openapi.yaml（版本与公告契约）
+- [x] 验证：执行受影响测试并记录结果
+
+## 2026-03-21 登录页重构 + 行为页统一 + 版本发布增强（进行中）
+
+- [x] TDD：补充版本模块 latest/preview/发布时间 与 GitHub Release 拉取能力测试（后端单测 + 前端组件测试）
+- [x] 数据建模：扩展 Version 字段（isLatest/isPreview/publishedAt）并新增 Prisma migration
+- [x] 接口设计：扩展版本 DTO/响应结构，新增“从 GitHub Release 拉取版本草稿”接口
+- [x] 后端实现：版本管理支持 latest/preview 设置、自动维护 latest、发布时间修改
+- [x] 后端实现：根据项目 repo_url 调用 GitHub API 拉取 release 数据
+- [x] 前端实现：重构登录页为居中双栏卡片（复用组件，宽屏双栏/窄屏堆叠）
+- [x] 前端实现：统一行为管理页表单标题、按钮图标与色彩风格
+- [x] 前端实现：版本管理页新增“从 GitHub Release 获取”与 latest/preview/发布时间编辑能力
+- [x] 文档同步：更新 README.md、docs/DEVELOPMENT.md、ARCHITECTURE.md
+- [x] 接口同步：更新 verhub.openapi.yaml 与后端 DTO/返回结构
+- [~] 验证：执行受影响 lint/typecheck/test/e2e 并记录结果
+
+## 2026-03-21 项目键统一与 GitHub 同步增强（进行中）
+
+- [x] TDD：补充“按版本号拉取指定 release/不存在报错/latest 与 preview 同步”测试
+- [x] TDD：补充“项目管理从 GitHub 获取项目信息”测试
+- [x] 数据建模：去除 Project 额外 id，统一使用 project_key 作为主键与外键
+- [x] 数据迁移：新增 Prisma migration，完成 projectId -> projectKey 数据迁移与外键重建
+- [x] 后端改造：项目相关 API 全部切换到 project_key 路径参数与服务语义
+- [x] 后端改造：project_key 在所有 API 查询与校验中大小写不敏感
+- [x] 后端改造：版本 GitHub 拉取支持“未填版本号拉最新，填写版本号拉指定并处理不存在”
+- [x] 后端改造：新增项目 GitHub 仓库信息拉取接口
+- [x] 前端改造：项目选择上下文从 id 切换为 project_key
+- [x] 前端改造：项目管理页支持从 GitHub 导入项目信息
+- [x] 前端改造：版本管理页支持按版本号拉取指定 release
+- [x] 接口同步：更新 verhub.openapi.yaml（路径参数、请求/响应字段、错误码）
+- [x] 文档同步：更新 README.md、docs/DEVELOPMENT.md、ARCHITECTURE.md
+- [x] 验证：执行 backend/web typecheck + 关键测试并记录结果

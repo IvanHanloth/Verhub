@@ -1,5 +1,5 @@
 # ===== Stage 1: Backend Builder =====
-FROM node:22-alpine AS backend-builder
+FROM node:24-alpine AS backend-builder
 
 RUN apk add --no-cache openssl python3 make g++
 WORKDIR /app
@@ -19,7 +19,7 @@ RUN pnpm --filter @workspace/backend prisma:generate
 RUN pnpm --filter @workspace/backend build
 
 # ===== Stage 2: Frontend Builder =====
-FROM node:22-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
@@ -41,7 +41,7 @@ ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 RUN pnpm --filter web build
 
 # ===== Stage 3: Runtime =====
-FROM node:22-alpine AS runtime
+FROM node:24-alpine AS runtime
 
 WORKDIR /app
 

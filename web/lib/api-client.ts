@@ -1,4 +1,6 @@
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000/api/v1"
+import { clearSessionToken } from "@/lib/auth-session"
+
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/v1"
 
 export class ApiError extends Error {
   readonly status: number
@@ -50,6 +52,15 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
   const payload = isJson ? await response.json() : null
 
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== "undefined") {
+      clearSessionToken()
+      const pathname = window.location.pathname
+      if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+        const returnTo = encodeURIComponent(`${pathname}${window.location.search}`)
+        window.location.assign(`/login?returnTo=${returnTo}`)
+      }
+    }
+
     const message = toApiErrorMessage(payload, response.status)
 
     throw new ApiError(message, response.status, payload)
@@ -59,7 +70,8 @@ export async function requestJson<T>(path: string, options: RequestOptions = {})
 }
 
 export function toApiErrorMessage(payload: unknown, status: number): string {
-  const fallbackMessage = status === 0 ? "网络连接失败，请稍后重试。" : `Request failed with status ${status}`
+  const fallbackMessage =
+    status === 0 ? "网络连接失败，请稍后重试。" : `Request failed with status ${status}`
   if (!payload || typeof payload !== "object") {
     return fallbackMessage
   }

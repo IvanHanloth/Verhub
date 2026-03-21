@@ -23,11 +23,11 @@ export type ApiKeyItem = {
   all_projects: boolean
   project_ids: string[]
   is_active: boolean
-  expires_at: string | null
-  previous_key_expires_at?: string | null
-  last_used_at: string | null
-  created_at: string
-  revoked_at: string | null
+  expires_at: number | null
+  previous_key_expires_at?: number | null
+  last_used_at: number | null
+  created_at: number
+  revoked_at: number | null
 }
 
 export type ListApiKeysResponse = {
@@ -55,8 +55,8 @@ export type CreateApiKeyResponse = {
   scopes: string[]
   all_projects: boolean
   project_ids: string[]
-  expires_at: string | null
-  created_at: string
+  expires_at: number | null
+  created_at: number
 }
 
 export type UpdateApiKeyInput = {
@@ -74,8 +74,8 @@ export type UpdateApiKeyResponse = {
   scopes: string[]
   all_projects: boolean
   project_ids: string[]
-  expires_at: string | null
-  created_at: string
+  expires_at: number | null
+  created_at: number
 }
 
 export type RotateApiKeyInput = {
@@ -86,7 +86,7 @@ export type RotateApiKeyResponse = {
   id: string
   token: string
   grace_period_minutes: number
-  previous_key_expires_at: string | null
+  previous_key_expires_at: number | null
 }
 
 export async function loginWithPassword(

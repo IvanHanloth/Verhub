@@ -12,12 +12,16 @@ type LogItem = {
   content: string
   device_info: Prisma.JsonValue | null
   custom_data: Prisma.JsonValue | null
-  created_at: string
+  created_at: number
 }
 
 type LogListResponse = {
   total: number
   data: LogItem[]
+}
+
+function normalizeProjectKey(projectKey: string): string {
+  return projectKey.trim().toLowerCase()
 }
 
 @Injectable()
@@ -48,8 +52,9 @@ export class LogsService {
     }
   }
 
-  async findAll(projectId: string, query: QueryLogsDto): Promise<LogListResponse> {
-    await this.ensureProjectExistsById(projectId)
+  async findAll(projectKey: string, query: QueryLogsDto): Promise<LogListResponse> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    await this.ensureProjectExistsByKey(normalizedProjectKey)
 
     if (
       query.start_time !== undefined &&
@@ -60,11 +65,11 @@ export class LogsService {
     }
 
     const where: Prisma.LogWhereInput = {
-      projectId,
+      projectKey: normalizedProjectKey,
       level: this.toLogLevel(query.level),
       createdAt: {
-        gte: query.start_time !== undefined ? new Date(query.start_time) : undefined,
-        lte: query.end_time !== undefined ? new Date(query.end_time) : undefined,
+        gte: query.start_time,
+        lte: query.end_time,
       },
     }
 
@@ -85,9 +90,10 @@ export class LogsService {
   }
 
   async createByProjectKey(projectKey: string, dto: UploadLogDto): Promise<LogItem> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
     const project = await this.prisma.project.findUnique({
-      where: { projectKey },
-      select: { id: true },
+      where: { projectKey: normalizedProjectKey },
+      select: { projectKey: true },
     })
     if (!project) {
       throw new NotFoundException("Project not found")
@@ -95,7 +101,7 @@ export class LogsService {
 
     const created = await this.prisma.log.create({
       data: {
-        projectId: project.id,
+        projectKey: project.projectKey,
         level: this.toRequiredLogLevel(dto.level),
         content: dto.content,
         deviceInfo: dto.device_info as Prisma.InputJsonValue | undefined,
@@ -113,10 +119,10 @@ export class LogsService {
     }
   }
 
-  private async ensureProjectExistsById(projectId: string): Promise<void> {
+  private async ensureProjectExistsByKey(projectKey: string): Promise<void> {
     const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
-      select: { id: true },
+      where: { projectKey },
+      select: { projectKey: true },
     })
     if (!project) {
       throw new NotFoundException("Project not found")
@@ -164,7 +170,7 @@ export class LogsService {
     content: string
     deviceInfo: Prisma.JsonValue | null
     customData: Prisma.JsonValue | null
-    createdAt: Date
+    createdAt: number
   }): LogItem {
     return {
       id: log.id,
@@ -172,7 +178,7 @@ export class LogsService {
       content: log.content,
       device_info: log.deviceInfo,
       custom_data: log.customData,
-      created_at: log.createdAt.toISOString(),
+      created_at: log.createdAt,
     }
   }
 }

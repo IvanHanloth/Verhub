@@ -23,13 +23,12 @@ describe("ProjectsService", () => {
       1,
       [
         {
-          id: "project-1",
           projectKey: "verhub",
           name: "Verhub",
           repoUrl: "https://github.com/example/verhub",
           description: "version hub",
-          createdAt: new Date("2026-01-01T00:00:00.000Z"),
-          updatedAt: new Date("2026-01-02T00:00:00.000Z"),
+          createdAt: 1767225600,
+          updatedAt: 1767312000,
         },
       ],
     ])
@@ -39,13 +38,13 @@ describe("ProjectsService", () => {
 
     expect(result.total).toBe(1)
     expect(result.data[0]).toEqual({
-      id: "project-1",
+      id: "verhub",
       project_key: "verhub",
       name: "Verhub",
       repo_url: "https://github.com/example/verhub",
       description: "version hub",
-      created_at: "2026-01-01T00:00:00.000Z",
-      updated_at: "2026-01-02T00:00:00.000Z",
+      created_at: 1767225600,
+      updated_at: 1767312000,
     })
   })
 
@@ -76,12 +75,12 @@ describe("ProjectsService", () => {
 
   it("deletes project after existence check", async () => {
     const prisma = createPrismaMock()
-    prisma.project.findUnique.mockResolvedValue({ id: "project-1" })
-    prisma.project.delete.mockResolvedValue({ id: "project-1" })
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "project-1" })
+    prisma.project.delete.mockResolvedValue({ projectKey: "project-1" })
 
     const service = new ProjectsService(prisma as never)
     await service.remove("project-1")
 
-    expect(prisma.project.delete).toHaveBeenCalledWith({ where: { id: "project-1" } })
+    expect(prisma.project.delete).toHaveBeenCalledWith({ where: { projectKey: "project-1" } })
   })
 })

@@ -1,9 +1,10 @@
 import * as React from "react"
 import { render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ApiError } from "@/lib/api-client"
-import { listProjects } from "@/lib/projects-api"
+import { listProjects, previewProjectFromGithubRepo } from "@/lib/projects-api"
 
 import { ProjectsDashboard } from "./projects-dashboard"
 
@@ -12,14 +13,17 @@ vi.mock("@/lib/projects-api", () => ({
   createProject: vi.fn(),
   updateProject: vi.fn(),
   deleteProject: vi.fn(),
+  previewProjectFromGithubRepo: vi.fn(),
 }))
 
 const mockedListProjects = vi.mocked(listProjects)
+const mockedPreviewProjectFromGithubRepo = vi.mocked(previewProjectFromGithubRepo)
 
 describe("ProjectsDashboard", () => {
   beforeEach(() => {
     window.localStorage.clear()
     mockedListProjects.mockReset()
+    mockedPreviewProjectFromGithubRepo.mockReset()
   })
 
   it("shows empty state after loading projects", async () => {
@@ -72,8 +76,8 @@ describe("ProjectsDashboard", () => {
           name: "Verhub",
           repo_url: null,
           description: null,
-          created_at: "2026-03-20T00:00:00.000Z",
-          updated_at: "2026-03-20T00:00:00.000Z",
+          created_at: Math.floor(Date.parse("2026-03-20T00:00:00.000Z") / 1000),
+          updated_at: Math.floor(Date.parse("2026-03-20T00:00:00.000Z") / 1000),
         },
       ],
     })
@@ -81,5 +85,33 @@ describe("ProjectsDashboard", () => {
     render(React.createElement(ProjectsDashboard))
 
     expect(await screen.findByText("ID: project-1")).toBeInTheDocument()
+  })
+
+  it("prefills project form from github repository metadata", async () => {
+    const user = userEvent.setup()
+    window.localStorage.setItem("verhub-admin-token", "valid-token")
+    mockedListProjects.mockResolvedValue({ total: 0, data: [] })
+    mockedPreviewProjectFromGithubRepo.mockResolvedValue({
+      project_key: "octocat-hello-world",
+      name: "octocat/Hello-World",
+      repo_url: "https://github.com/octocat/Hello-World",
+      description: "GitHub hello world",
+    })
+
+    render(React.createElement(ProjectsDashboard))
+
+    const repoInput = await screen.findByPlaceholderText("https://github.com/org/repo")
+    await user.type(repoInput, "https://github.com/octocat/Hello-World")
+    await user.click(screen.getByRole("button", { name: "从 GitHub 获取项目信息" }))
+
+    await waitFor(() => {
+      expect(mockedPreviewProjectFromGithubRepo).toHaveBeenCalledWith(
+        "valid-token",
+        "https://github.com/octocat/Hello-World",
+      )
+    })
+
+    expect(screen.getByDisplayValue("octocat-hello-world")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("octocat/Hello-World")).toBeInTheDocument()
   })
 })

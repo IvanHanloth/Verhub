@@ -1,12 +1,24 @@
 "use client"
 
 import * as React from "react"
-import { AlertTriangle, CheckCircle2, Loader2, PencilLine, Pin, Plus, Trash2 } from "lucide-react"
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Copy,
+  Loader2,
+  PencilLine,
+  Pin,
+  Plus,
+  Trash2,
+} from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
-import { AdminCard, AdminItemCard } from "@/components/admin/admin-card"
+import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
+import { ManagementListItem } from "@/components/admin/management-list-item"
+import { ProjectApiOverview } from "@/components/admin/project-api-overview"
+import { ProjectSelectorCard } from "@/components/admin/project-selector-card"
 import {
   createAnnouncement,
   deleteAnnouncement,
@@ -28,12 +40,16 @@ type AnnouncementFormState = {
   title: string
   content: string
   is_pinned: boolean
+  author: string
+  published_at: string
 }
 
 const emptyForm: AnnouncementFormState = {
   title: "",
   content: "",
   is_pinned: false,
+  author: "",
+  published_at: "",
 }
 
 function getErrorMessage(error: unknown): string {
@@ -53,7 +69,29 @@ function toMutationInput(form: AnnouncementFormState): AnnouncementMutationInput
     title: form.title.trim(),
     content: form.content.trim(),
     is_pinned: form.is_pinned,
+    author: form.author.trim() || undefined,
+    published_at: form.published_at ? toTimestamp(form.published_at) : undefined,
   }
+}
+
+function toDateTimeLocal(value: number): string {
+  const date = new Date(value * 1000)
+  if (Number.isNaN(date.getTime())) {
+    return ""
+  }
+
+  const offset = date.getTimezoneOffset()
+  const localDate = new Date(date.getTime() - offset * 60_000)
+  return localDate.toISOString().slice(0, 16)
+}
+
+function toTimestamp(value: string): number | undefined {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return undefined
+  }
+
+  return Math.floor(date.getTime() / 1000)
 }
 
 export function AnnouncementsDashboard() {
@@ -62,7 +100,7 @@ export function AnnouncementsDashboard() {
 
   const [projects, setProjects] = React.useState<ProjectItem[]>([])
   const [projectsLoading, setProjectsLoading] = React.useState(false)
-  const { selectedProjectId, setSelectedProjectId } = useSharedProjectSelection()
+  const { selectedProjectKey, setSelectedProjectKey } = useSharedProjectSelection()
 
   const [announcements, setAnnouncements] = React.useState<AnnouncementItem[]>([])
   const [total, setTotal] = React.useState(0)
@@ -75,6 +113,11 @@ export function AnnouncementsDashboard() {
   const [submitLoading, setSubmitLoading] = React.useState(false)
   const [submitMessage, setSubmitMessage] = React.useState<string | null>(null)
 
+  const selectedProject = React.useMemo(
+    () => projects.find((project) => project.id === selectedProjectKey) ?? null,
+    [projects, selectedProjectKey],
+  )
+
   const hasToken = token.trim().length > 0
   const page = Math.floor(offset / PAGE_SIZE) + 1
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -82,7 +125,7 @@ export function AnnouncementsDashboard() {
   const loadProjects = React.useCallback(async () => {
     if (!token) {
       setProjects([])
-      setSelectedProjectId("")
+      setSelectedProjectKey("")
       return
     }
 
@@ -90,16 +133,16 @@ export function AnnouncementsDashboard() {
     try {
       const response = await listProjects(token, { limit: PROJECT_PAGE_SIZE, offset: 0 })
       setProjects(response.data)
-      const hasCurrent = response.data.some((project) => project.id === selectedProjectId)
+      const hasCurrent = response.data.some((project) => project.id === selectedProjectKey)
       if (hasCurrent) {
         return
       }
 
       const firstProject = response.data[0]
       if (firstProject) {
-        setSelectedProjectId(firstProject.id)
+        setSelectedProjectKey(firstProject.id)
       } else {
-        setSelectedProjectId("")
+        setSelectedProjectKey("")
       }
     } catch (loadError) {
       if (isAuthError(loadError)) {
@@ -108,15 +151,15 @@ export function AnnouncementsDashboard() {
       }
       setAuthError(getErrorMessage(loadError))
       setProjects([])
-      setSelectedProjectId("")
+      setSelectedProjectKey("")
     } finally {
       setProjectsLoading(false)
     }
-  }, [selectedProjectId, setSelectedProjectId, token])
+  }, [selectedProjectKey, setSelectedProjectKey, token])
 
   const loadAnnouncements = React.useCallback(
     async (nextOffset: number, signal?: AbortSignal) => {
-      if (!token || !selectedProjectId) {
+      if (!token || !selectedProjectKey) {
         setAnnouncements([])
         setTotal(0)
         return
@@ -128,7 +171,7 @@ export function AnnouncementsDashboard() {
       try {
         const response = await listAnnouncements(
           token,
-          selectedProjectId,
+          selectedProjectKey,
           { limit: PAGE_SIZE, offset: nextOffset },
           signal,
         )
@@ -153,7 +196,7 @@ export function AnnouncementsDashboard() {
         }
       }
     },
-    [selectedProjectId, token],
+    [selectedProjectKey, token],
   )
 
   React.useEffect(() => {
@@ -174,7 +217,7 @@ export function AnnouncementsDashboard() {
     setEditingId(null)
     setForm(emptyForm)
     setSubmitMessage(null)
-  }, [selectedProjectId])
+  }, [selectedProjectKey])
 
   function beginEdit(item: AnnouncementItem) {
     setEditingId(item.id)
@@ -182,8 +225,22 @@ export function AnnouncementsDashboard() {
       title: item.title,
       content: item.content,
       is_pinned: item.is_pinned,
+      author: item.author ?? "",
+      published_at: toDateTimeLocal(item.published_at),
     })
     setSubmitMessage(null)
+  }
+
+  function copyFromAnnouncement(item: AnnouncementItem) {
+    setEditingId(null)
+    setForm({
+      title: item.title,
+      content: item.content,
+      is_pinned: item.is_pinned,
+      author: item.author ?? "",
+      published_at: toDateTimeLocal(item.published_at),
+    })
+    setSubmitMessage("已复制配置到表单，可直接发布新公告。")
   }
 
   function resetForm() {
@@ -200,7 +257,7 @@ export function AnnouncementsDashboard() {
       return
     }
 
-    if (!selectedProjectId) {
+    if (!selectedProjectKey) {
       setSubmitMessage("请先选择项目。")
       return
     }
@@ -216,10 +273,10 @@ export function AnnouncementsDashboard() {
 
     try {
       if (editingId) {
-        await updateAnnouncement(token, selectedProjectId, editingId, payload)
+        await updateAnnouncement(token, selectedProjectKey, editingId, payload)
         setSubmitMessage("公告已更新。")
       } else {
-        await createAnnouncement(token, selectedProjectId, payload)
+        await createAnnouncement(token, selectedProjectKey, payload)
         setSubmitMessage("公告已发布。")
       }
 
@@ -238,7 +295,7 @@ export function AnnouncementsDashboard() {
   }
 
   async function handleDelete(id: string) {
-    if (!token || !selectedProjectId) {
+    if (!token || !selectedProjectKey) {
       setError("请先登录并选择项目。")
       return
     }
@@ -249,7 +306,7 @@ export function AnnouncementsDashboard() {
     }
 
     try {
-      await deleteAnnouncement(token, selectedProjectId, id)
+      await deleteAnnouncement(token, selectedProjectKey, id)
       const nextOffset =
         announcements.length === 1 && offset > 0 ? Math.max(0, offset - PAGE_SIZE) : offset
       setOffset(nextOffset)
@@ -272,43 +329,95 @@ export function AnnouncementsDashboard() {
       />
 
       <section className="grid gap-6 lg:grid-cols-[1.1fr_1.9fr]">
-        <AdminCard className="space-y-6">
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold">项目选择</h2>
-          </div>
+        <div className="space-y-6">
+          <ProjectSelectorCard
+            selectId="announcement-project-select"
+            selectedProjectKey={selectedProjectKey}
+            projects={projects}
+            disabled={!hasToken || projectsLoading || projects.length === 0}
+            ringClassName="ring-amber-300"
+            onChange={setSelectedProjectKey}
+            warning={
+              authError ? (
+                <span className="inline-flex items-center gap-2">
+                  <AlertTriangle className="size-4" />
+                  {authError}
+                </span>
+              ) : undefined
+            }
+          />
 
-          <div className="space-y-2">
-            <label className="text-sm text-slate-300" htmlFor="announcement-project-select">
-              目标项目
-            </label>
-            <select
-              id="announcement-project-select"
-              className="w-full rounded-xl border border-white/20 bg-white/8 px-3 py-2 text-sm ring-amber-300 transition outline-none focus:ring-2"
-              value={selectedProjectId}
-              onChange={(event) => setSelectedProjectId(event.target.value)}
-              disabled={!hasToken || projectsLoading || projects.length === 0}
-            >
-              {projects.length === 0 ? <option value="">暂无可选项目</option> : null}
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name} ({project.project_key})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {authError ? (
-            <p className="inline-flex items-center gap-2 text-sm text-rose-300">
-              <AlertTriangle className="size-4" />
-              {authError}
-            </p>
-          ) : null}
-        </AdminCard>
+          <ProjectApiOverview
+            title="API Demo · 公告"
+            projectKey={selectedProject?.project_key}
+            groups={[
+              {
+                label: "公开接口",
+                endpoints: [
+                  {
+                    method: "GET",
+                    path: "/api/v1/public/{projectKey}/announcements",
+                    description: "获取公告列表",
+                    auth: { tokenRequired: false },
+                  },
+                  {
+                    method: "GET",
+                    path: "/api/v1/public/{projectKey}/announcements/latest",
+                    description: "获取最新公告",
+                    auth: { tokenRequired: false },
+                  },
+                ],
+              },
+              {
+                label: "管理接口",
+                endpoints: [
+                  {
+                    method: "GET",
+                    path: "/api/v1/admin/projects/{projectKey}/announcements",
+                    description: "分页获取公告列表",
+                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                  },
+                  {
+                    method: "POST",
+                    path: "/api/v1/admin/projects/{projectKey}/announcements",
+                    description: "创建公告",
+                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                    requestBody: {
+                      title: "系统维护通知",
+                      content: "3 月 25 日晚 22:00-23:00 进行维护",
+                      is_pinned: false,
+                      author: "ops-bot",
+                      published_at: 1774476000000,
+                    },
+                  },
+                  {
+                    method: "PATCH",
+                    path: "/api/v1/admin/projects/{projectKey}/announcements/{id}",
+                    description: "更新公告",
+                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                    requestBody: {
+                      title: "系统维护通知（延期）",
+                      content: "维护窗口改为 23:00-24:00",
+                    },
+                  },
+                  {
+                    method: "DELETE",
+                    path: "/api/v1/admin/projects/{projectKey}/announcements/{id}",
+                    description: "删除公告",
+                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                  },
+                ],
+              },
+            ]}
+          />
+        </div>
 
         <AdminCard className="space-y-6">
           <div className="space-y-2">
             <h2 className="text-lg font-semibold">发布或编辑公告</h2>
-            <p className="text-sm text-slate-200/90">title 与 content 为必填，支持置顶标记。</p>
+            <p className="text-sm text-slate-200/90">
+              title 与 content 为必填，支持作者与发布时间配置。
+            </p>
           </div>
 
           <form className="grid gap-3" onSubmit={handleSubmit}>
@@ -337,6 +446,30 @@ export function AnnouncementsDashboard() {
               />
             </label>
 
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">发布时间</span>
+              <input
+                type="datetime-local"
+                value={form.published_at}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, published_at: event.target.value }))
+                }
+                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-amber-300 transition outline-none focus:ring-2"
+              />
+            </label>
+
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">作者</span>
+              <input
+                type="text"
+                placeholder="例如：运营团队"
+                value={form.author}
+                onChange={(event) => setForm((prev) => ({ ...prev, author: event.target.value }))}
+                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-amber-300 transition outline-none focus:ring-2"
+                maxLength={64}
+              />
+            </label>
+
             <label className="inline-flex items-center gap-2 text-sm text-slate-200">
               <input
                 type="checkbox"
@@ -353,7 +486,7 @@ export function AnnouncementsDashboard() {
               <Button
                 type="submit"
                 className="bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
-                disabled={submitLoading || !selectedProjectId}
+                disabled={submitLoading || !selectedProjectKey}
               >
                 {submitLoading ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -393,54 +526,67 @@ export function AnnouncementsDashboard() {
           </div>
         ) : null}
 
-        {hasToken && !selectedProjectId ? (
+        {hasToken && !selectedProjectKey ? (
           <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-slate-300">
             暂无项目，请先去项目管理页创建项目。
           </div>
         ) : null}
 
-        {hasToken && selectedProjectId && loading ? (
+        {hasToken && selectedProjectKey && loading ? (
           <div className="flex items-center gap-2 rounded-2xl border border-white/15 bg-white/5 p-6 text-sm text-slate-200">
             <Loader2 className="size-4 animate-spin" />
             正在加载公告列表...
           </div>
         ) : null}
 
-        {hasToken && selectedProjectId && !loading && error ? (
+        {hasToken && selectedProjectKey && !loading && error ? (
           <div className="rounded-2xl border border-rose-300/30 bg-rose-300/10 p-6 text-sm text-rose-200">
             {error}
           </div>
         ) : null}
 
-        {hasToken && selectedProjectId && !loading && !error && announcements.length === 0 ? (
+        {hasToken && selectedProjectKey && !loading && !error && announcements.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-slate-300">
             暂无公告，使用上方表单发布第一条公告。
           </div>
         ) : null}
 
-        {hasToken && selectedProjectId && !loading && !error && announcements.length > 0 ? (
+        {hasToken && selectedProjectKey && !loading && !error && announcements.length > 0 ? (
           <div className="space-y-3">
             {announcements.map((item) => (
-              <AdminItemCard key={item.id} className="border-white/15 bg-white/8">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="text-base font-medium">{item.title}</p>
-                    <p className="text-xs text-slate-300">
-                      创建于 {new Date(item.created_at).toLocaleString("zh-CN")}
-                    </p>
-                    <p className="text-xs text-slate-300">
-                      更新于 {new Date(item.updated_at).toLocaleString("zh-CN")}
-                    </p>
+              <ManagementListItem
+                key={item.id}
+                title={item.title}
+                meta={
+                  <>
+                    <p>发布时间 {new Date(item.published_at * 1000).toLocaleString("zh-CN")}</p>
+                    <p>创建于 {new Date(item.created_at * 1000).toLocaleString("zh-CN")}</p>
+                    <p>更新于 {new Date(item.updated_at * 1000).toLocaleString("zh-CN")}</p>
+                    <p>作者：{item.author ?? "未填写"}</p>
+                  </>
+                }
+                content={
+                  <>
                     {item.is_pinned ? (
-                      <p className="inline-flex items-center gap-1 rounded-full border border-amber-300/35 bg-amber-300/12 px-2 py-0.5 text-xs text-amber-200">
+                      <span className="mb-2 inline-flex items-center gap-1 rounded-full border border-amber-300/35 bg-amber-300/12 px-2 py-0.5 text-xs text-amber-200">
                         <Pin className="size-3" />
                         置顶
-                      </p>
+                      </span>
                     ) : null}
-                    <p className="text-sm leading-relaxed text-slate-200/90">{item.content}</p>
-                  </div>
-
-                  <div className="flex gap-2">
+                    <p className="leading-relaxed">{item.content}</p>
+                  </>
+                }
+                actions={
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-white/20 bg-white/5"
+                      onClick={() => copyFromAnnouncement(item)}
+                    >
+                      <Copy className="size-4" />
+                      复制配置
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"
@@ -458,9 +604,9 @@ export function AnnouncementsDashboard() {
                       <Trash2 className="size-4" />
                       删除
                     </Button>
-                  </div>
-                </div>
-              </AdminItemCard>
+                  </>
+                }
+              />
             ))}
 
             <AdminPagination

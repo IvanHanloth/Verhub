@@ -15,15 +15,17 @@ export function resolveRequestedScopes(
   return requestedScopes
 }
 
-export function resolveExpiresAt(expiresInDays?: number, neverExpires?: boolean): Date | null {
+export function resolveExpiresAt(expiresInDays?: number, neverExpires?: boolean): number | null {
   if (neverExpires) {
     return null
   }
 
   const days = expiresInDays ?? 30
-  return new Date(Date.now() + days * 24 * 60 * 60 * 1000)
+  return Math.floor(Date.now() / 1000) + days * 24 * 60 * 60
 }
 
 export function normalizeProjectIds(projectIds?: string[]): string[] {
-  return Array.from(new Set((projectIds ?? []).map((item) => item.trim()).filter(Boolean)))
+  return Array.from(
+    new Set((projectIds ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean)),
+  )
 }

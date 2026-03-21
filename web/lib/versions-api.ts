@@ -7,11 +7,14 @@ export type VersionItem = {
   version: string
   title: string | null
   content: string | null
-  download_url: string
+  download_url: string | null
   forced: boolean
+  is_latest: boolean
+  is_preview: boolean
   platform: ClientPlatform | null
   custom_data: Record<string, unknown> | null
-  created_at: string
+  published_at: number
+  created_at: number
 }
 
 export type ListVersionsResponse = {
@@ -23,15 +26,31 @@ export type CreateVersionInput = {
   version: string
   title?: string
   content?: string
-  download_url: string
+  download_url?: string
   forced?: boolean
+  is_latest?: boolean
+  is_preview?: boolean
   platform?: ClientPlatform
   custom_data?: Record<string, unknown>
+  published_at?: number
+}
+
+export type GithubReleaseVersionPreview = {
+  version: string
+  title?: string
+  content?: string
+  download_url?: string
+  forced: boolean
+  is_latest: boolean
+  is_preview: boolean
+  custom_data: Record<string, unknown>
+  published_at: number
+  platform?: ClientPlatform
 }
 
 export async function listVersions(
   token: string,
-  projectId: string,
+  projectKey: string,
   params: { limit: number; offset: number },
   signal?: AbortSignal,
 ): Promise<ListVersionsResponse> {
@@ -41,7 +60,7 @@ export async function listVersions(
   })
 
   return requestJson<ListVersionsResponse>(
-    `/admin/projects/${projectId}/versions?${query.toString()}`,
+    `/admin/projects/${projectKey}/versions?${query.toString()}`,
     {
       token,
       signal,
@@ -51,10 +70,10 @@ export async function listVersions(
 
 export async function createVersion(
   token: string,
-  projectId: string,
+  projectKey: string,
   input: CreateVersionInput,
 ): Promise<VersionItem> {
-  return requestJson<VersionItem>(`/admin/projects/${projectId}/versions`, {
+  return requestJson<VersionItem>(`/admin/projects/${projectKey}/versions`, {
     method: "POST",
     token,
     body: input,
@@ -63,13 +82,43 @@ export async function createVersion(
 
 export async function updateVersion(
   token: string,
-  projectId: string,
+  projectKey: string,
   versionId: string,
   input: Partial<CreateVersionInput>,
 ): Promise<VersionItem> {
-  return requestJson<VersionItem>(`/admin/projects/${projectId}/versions/${versionId}`, {
+  return requestJson<VersionItem>(`/admin/projects/${projectKey}/versions/${versionId}`, {
     method: "PATCH",
     token,
     body: input,
+  })
+}
+
+export async function deleteVersion(
+  token: string,
+  projectKey: string,
+  versionId: string,
+): Promise<{ success: true }> {
+  return requestJson<{ success: true }>(`/admin/projects/${projectKey}/versions/${versionId}`, {
+    method: "DELETE",
+    token,
+  })
+}
+
+export async function previewVersionFromGithubRelease(
+  token: string,
+  projectKey: string,
+  params?: { tag?: string },
+): Promise<GithubReleaseVersionPreview> {
+  const query = new URLSearchParams()
+  if (params?.tag) {
+    query.set("tag", params.tag)
+  }
+
+  const path = query.toString()
+    ? `/admin/projects/${projectKey}/versions/github-release-preview?${query.toString()}`
+    : `/admin/projects/${projectKey}/versions/github-release-preview`
+
+  return requestJson<GithubReleaseVersionPreview>(path, {
+    token,
   })
 }

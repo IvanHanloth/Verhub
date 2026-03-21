@@ -1,20 +1,36 @@
 "use client"
 
 import * as React from "react"
-import { AlertTriangle, CheckCircle2, Loader2, Plus } from "lucide-react"
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Copy,
+  DownloadCloud,
+  Loader2,
+  PencilLine,
+  Plus,
+  Sparkles,
+  Star,
+  Trash2,
+} from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
 import { ApiError, isAuthError } from "@/lib/api-client"
 import { getSessionToken } from "@/lib/auth-session"
-import { AdminCard, AdminItemCard } from "@/components/admin/admin-card"
+import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
+import { ManagementListItem } from "@/components/admin/management-list-item"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
+import { ProjectApiOverview } from "@/components/admin/project-api-overview"
+import { ProjectSelectorCard } from "@/components/admin/project-selector-card"
 import { useSharedProjectSelection } from "@/hooks/use-shared-project-selection"
 import { listProjects, type ProjectItem } from "@/lib/projects-api"
 import {
   createVersion,
+  deleteVersion,
   listVersions,
+  previewVersionFromGithubRelease,
   updateVersion,
   type ClientPlatform,
   type CreateVersionInput,
@@ -38,6 +54,9 @@ type VersionFormState = {
   content: string
   download_url: string
   forced: boolean
+  is_latest: boolean
+  is_preview: boolean
+  published_at: string
   platform: "" | ClientPlatform
   custom_data: string
 }
@@ -48,8 +67,31 @@ const emptyVersionForm: VersionFormState = {
   content: "",
   download_url: "",
   forced: false,
+  is_latest: true,
+  is_preview: false,
+  published_at: "",
   platform: "",
   custom_data: "",
+}
+
+function toDateTimeLocal(timestampSeconds: number): string {
+  const date = new Date(timestampSeconds * 1000)
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
+}
+
+function toTimestampSeconds(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return undefined
+  }
+
+  const millis = Date.parse(trimmed)
+  if (Number.isNaN(millis)) {
+    throw new Error("发布时间格式不正确")
+  }
+
+  return Math.floor(millis / 1000)
 }
 
 function getErrorMessage(error: unknown): string {
@@ -79,14 +121,19 @@ function parseJsonInput(value: string): Record<string, unknown> | undefined {
 }
 
 function toCreateInput(form: VersionFormState): CreateVersionInput {
+  const trimmedDownloadUrl = form.download_url.trim()
+
   return {
     version: form.version.trim(),
     title: form.title.trim() || undefined,
     content: form.content.trim() || undefined,
-    download_url: form.download_url.trim(),
+    download_url: trimmedDownloadUrl || undefined,
     forced: form.forced,
+    is_latest: form.is_latest,
+    is_preview: form.is_preview,
     platform: form.platform || undefined,
     custom_data: parseJsonInput(form.custom_data),
+    published_at: toTimestampSeconds(form.published_at),
   }
 }
 
@@ -96,7 +143,7 @@ export function VersionsDashboard() {
 
   const [projects, setProjects] = React.useState<ProjectItem[]>([])
   const [projectsLoading, setProjectsLoading] = React.useState(false)
-  const { selectedProjectId, setSelectedProjectId } = useSharedProjectSelection()
+  const { selectedProjectKey, setSelectedProjectKey } = useSharedProjectSelection()
 
   const [versions, setVersions] = React.useState<VersionItem[]>([])
   const [totalVersions, setTotalVersions] = React.useState(0)
@@ -108,6 +155,12 @@ export function VersionsDashboard() {
   const [editingVersionId, setEditingVersionId] = React.useState<string | null>(null)
   const [submitLoading, setSubmitLoading] = React.useState(false)
   const [submitMessage, setSubmitMessage] = React.useState<string | null>(null)
+  const [githubLoading, setGithubLoading] = React.useState(false)
+
+  const selectedProject = React.useMemo(
+    () => projects.find((project) => project.id === selectedProjectKey) ?? null,
+    [projects, selectedProjectKey],
+  )
 
   const hasToken = token.trim().length > 0
   const page = Math.floor(offset / VERSION_PAGE_SIZE) + 1
@@ -116,7 +169,7 @@ export function VersionsDashboard() {
   const loadProjects = React.useCallback(async () => {
     if (!token) {
       setProjects([])
-      setSelectedProjectId("")
+      setSelectedProjectKey("")
       return
     }
 
@@ -124,16 +177,16 @@ export function VersionsDashboard() {
     try {
       const response = await listProjects(token, { limit: PROJECT_PAGE_SIZE, offset: 0 })
       setProjects(response.data)
-      const hasCurrent = response.data.some((project) => project.id === selectedProjectId)
+      const hasCurrent = response.data.some((project) => project.id === selectedProjectKey)
       if (hasCurrent) {
         return
       }
 
       const firstProject = response.data[0]
       if (firstProject) {
-        setSelectedProjectId(firstProject.id)
+        setSelectedProjectKey(firstProject.id)
       } else {
-        setSelectedProjectId("")
+        setSelectedProjectKey("")
       }
     } catch (error) {
       if (isAuthError(error)) {
@@ -142,15 +195,15 @@ export function VersionsDashboard() {
       }
       setAuthError(getErrorMessage(error))
       setProjects([])
-      setSelectedProjectId("")
+      setSelectedProjectKey("")
     } finally {
       setProjectsLoading(false)
     }
-  }, [selectedProjectId, setSelectedProjectId, token])
+  }, [selectedProjectKey, setSelectedProjectKey, token])
 
   const loadVersions = React.useCallback(
     async (nextOffset: number, signal?: AbortSignal) => {
-      if (!token || !selectedProjectId) {
+      if (!token || !selectedProjectKey) {
         setVersions([])
         setTotalVersions(0)
         return
@@ -162,7 +215,7 @@ export function VersionsDashboard() {
       try {
         const response = await listVersions(
           token,
-          selectedProjectId,
+          selectedProjectKey,
           { limit: VERSION_PAGE_SIZE, offset: nextOffset },
           signal,
         )
@@ -185,7 +238,7 @@ export function VersionsDashboard() {
         }
       }
     },
-    [selectedProjectId, token],
+    [selectedProjectKey, token],
   )
 
   React.useEffect(() => {
@@ -203,7 +256,7 @@ export function VersionsDashboard() {
 
   React.useEffect(() => {
     setOffset(0)
-  }, [selectedProjectId])
+  }, [selectedProjectKey])
 
   async function handleCreateVersion(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -213,7 +266,7 @@ export function VersionsDashboard() {
       return
     }
 
-    if (!selectedProjectId) {
+    if (!selectedProjectKey) {
       setSubmitMessage("请先选择一个项目。")
       return
     }
@@ -223,16 +276,16 @@ export function VersionsDashboard() {
 
     try {
       const payload = toCreateInput(form)
-      if (!payload.version || !payload.download_url) {
-        setSubmitMessage("version 与 download_url 为必填项。")
+      if (!payload.version) {
+        setSubmitMessage("version 为必填项。")
         return
       }
 
       if (editingVersionId) {
-        await updateVersion(token, selectedProjectId, editingVersionId, payload)
+        await updateVersion(token, selectedProjectKey, editingVersionId, payload)
         setSubmitMessage("版本已更新。")
       } else {
-        await createVersion(token, selectedProjectId, payload)
+        await createVersion(token, selectedProjectKey, payload)
         setSubmitMessage("版本已发布。")
       }
       setForm(emptyVersionForm)
@@ -256,12 +309,95 @@ export function VersionsDashboard() {
       version: version.version,
       title: version.title ?? "",
       content: version.content ?? "",
-      download_url: version.download_url,
+      download_url: version.download_url ?? "",
       forced: version.forced,
+      is_latest: version.is_latest,
+      is_preview: version.is_preview,
+      published_at: toDateTimeLocal(version.published_at),
       platform: version.platform ?? "",
       custom_data: version.custom_data ? JSON.stringify(version.custom_data, null, 2) : "",
     })
     setSubmitMessage(null)
+  }
+
+  function copyFromVersion(version: VersionItem) {
+    setEditingVersionId(null)
+    setForm({
+      version: version.version,
+      title: version.title ?? "",
+      content: version.content ?? "",
+      download_url: version.download_url ?? "",
+      forced: version.forced,
+      is_latest: version.is_latest,
+      is_preview: version.is_preview,
+      published_at: toDateTimeLocal(version.published_at),
+      platform: version.platform ?? "",
+      custom_data: version.custom_data ? JSON.stringify(version.custom_data, null, 2) : "",
+    })
+    setSubmitMessage("已复制配置到表单，可直接发布新版本。")
+  }
+
+  async function handlePrefillFromGithubRelease() {
+    if (!token) {
+      setSubmitMessage("请先登录后再操作。")
+      return
+    }
+    if (!selectedProjectKey) {
+      setSubmitMessage("请先选择一个项目。")
+      return
+    }
+
+    setGithubLoading(true)
+    setSubmitMessage(null)
+
+    try {
+      const release = await previewVersionFromGithubRelease(token, selectedProjectKey, {
+        tag: form.version.trim() || undefined,
+      })
+      setForm((prev) => ({
+        ...prev,
+        version: release.version,
+        title: release.title ?? "",
+        content: release.content ?? "",
+        download_url: release.download_url ?? "",
+        forced: release.forced,
+        is_latest: release.is_latest,
+        is_preview: release.is_preview,
+        published_at: toDateTimeLocal(release.published_at),
+        custom_data: release.custom_data ? JSON.stringify(release.custom_data, null, 2) : "",
+      }))
+      setSubmitMessage("已从 GitHub Release 自动填充版本表单。")
+    } catch (error) {
+      if (isAuthError(error)) {
+        setToken("")
+        setAuthError("登录状态已过期，请重新登录。")
+      }
+      setSubmitMessage(getErrorMessage(error))
+    } finally {
+      setGithubLoading(false)
+    }
+  }
+
+  async function handleDelete(versionId: string) {
+    if (!token || !selectedProjectKey) {
+      setVersionsError("请先登录并选择项目。")
+      return
+    }
+
+    const confirmed = window.confirm("确认删除这个版本吗？该操作不可撤销。")
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      await deleteVersion(token, selectedProjectKey, versionId)
+      const nextOffset =
+        versions.length === 1 && offset > 0 ? Math.max(0, offset - VERSION_PAGE_SIZE) : offset
+      setOffset(nextOffset)
+      await loadVersions(nextOffset)
+    } catch (error) {
+      setVersionsError(getErrorMessage(error))
+    }
   }
 
   function resetForm() {
@@ -279,38 +415,104 @@ export function VersionsDashboard() {
       />
 
       <section className="grid gap-6 lg:grid-cols-[1.1fr_1.9fr]">
-        <AdminCard className="space-y-6">
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold">项目选择</h2>
-          </div>
+        <div className="space-y-6">
+          <ProjectSelectorCard
+            selectId="project-select"
+            selectedProjectKey={selectedProjectKey}
+            projects={projects}
+            disabled={!hasToken || projectsLoading || projects.length === 0}
+            ringClassName="ring-cyan-300"
+            onChange={setSelectedProjectKey}
+            warning={
+              authError ? (
+                <span className="inline-flex items-center gap-2">
+                  <AlertTriangle className="size-4" />
+                  {authError}
+                </span>
+              ) : undefined
+            }
+          />
 
-          <div className="space-y-2">
-            <label className="text-sm text-slate-700 dark:text-slate-300" htmlFor="project-select">
-              目标项目
-            </label>
-            <select
-              id="project-select"
-              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/5"
-              value={selectedProjectId}
-              onChange={(event) => setSelectedProjectId(event.target.value)}
-              disabled={!hasToken || projectsLoading || projects.length === 0}
-            >
-              {projects.length === 0 ? <option value="">暂无可选项目</option> : null}
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name} ({project.project_key})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {authError ? (
-            <p className="inline-flex items-center gap-2 text-sm text-rose-300">
-              <AlertTriangle className="size-4" />
-              {authError}
-            </p>
-          ) : null}
-        </AdminCard>
+          <ProjectApiOverview
+            title="API Demo · 版本"
+            projectKey={selectedProject?.project_key}
+            groups={[
+              {
+                label: "公开接口",
+                endpoints: [
+                  {
+                    method: "GET",
+                    path: "/api/v1/public/{projectKey}/versions",
+                    description: "查询项目所有版本（客户端可直接调用）",
+                    auth: { tokenRequired: false },
+                  },
+                  {
+                    method: "GET",
+                    path: "/api/v1/public/{projectKey}/versions/latest",
+                    description: "查询项目最新版本",
+                    auth: { tokenRequired: false },
+                  },
+                ],
+              },
+              {
+                label: "管理接口",
+                endpoints: [
+                  {
+                    method: "GET",
+                    path: "/api/v1/admin/projects/{projectKey}/versions",
+                    description: "分页获取版本列表",
+                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                  },
+                  {
+                    method: "POST",
+                    path: "/api/v1/admin/projects/{projectKey}/versions",
+                    description: "创建版本（支持 API Key）",
+                    auth: {
+                      tokenRequired: true,
+                      tokenType: "管理员 JWT 或 API Key",
+                      scopes: ["versions:write"],
+                    },
+                    requestBody: {
+                      version: "2.1.0",
+                      title: "稳定版",
+                      content: "修复已知问题",
+                      download_url: "https://example.com/download/2.1.0",
+                      forced: false,
+                      is_latest: true,
+                      is_preview: false,
+                      published_at: 1774050000,
+                      platform: "web",
+                      custom_data: { channel: "stable", project_key: "{projectKey}" },
+                    },
+                  },
+                  {
+                    method: "GET",
+                    path: "/api/v1/admin/projects/{projectKey}/versions/github-release-preview",
+                    description: "从项目 GitHub Release 自动预填版本草稿",
+                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                  },
+                  {
+                    method: "PATCH",
+                    path: "/api/v1/admin/projects/{projectKey}/versions/{id}",
+                    description: "编辑版本",
+                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                    requestBody: {
+                      title: "稳定版-修订",
+                      forced: true,
+                      custom_data: { release_note: "hotfix" },
+                    },
+                  },
+                  {
+                    method: "DELETE",
+                    path: "/api/v1/admin/projects/{projectKey}/versions/{id}",
+                    description: "删除版本",
+                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                  },
+                ],
+              },
+            ]}
+          />
+        </div>
 
         <AdminCard className="space-y-6">
           <div className="space-y-2">
@@ -318,9 +520,29 @@ export function VersionsDashboard() {
               {editingVersionId ? "编辑版本" : "发布新版本"}
             </h2>
             <p className="text-sm text-slate-700 dark:text-slate-300">
-              与后端 CreateVersionDto 对齐：version 与 download_url 必填，custom_data 需为 JSON
-              对象。
+              与后端 CreateVersionDto 对齐：支持 latest/preview 状态、发布时间和 GitHub Release
+              自动填充。
             </p>
+            {selectedProject?.repo_url ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="border-cyan-300/40 bg-cyan-200/10 text-cyan-900 hover:bg-cyan-200/20 dark:text-cyan-100"
+                disabled={githubLoading}
+                onClick={() => void handlePrefillFromGithubRelease()}
+              >
+                {githubLoading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <DownloadCloud className="size-4" />
+                )}
+                从 GitHub Release 获取
+              </Button>
+            ) : (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                当前项目未配置 GitHub 仓库地址，无法自动拉取 Release。
+              </p>
+            )}
           </div>
 
           <form className="grid gap-3" onSubmit={handleCreateVersion}>
@@ -346,12 +568,11 @@ export function VersionsDashboard() {
                   setForm((prev) => ({ ...prev, download_url: event.target.value }))
                 }
                 className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-                required
                 maxLength={2048}
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">版本标题（可选）</span>
+              <span className="text-slate-700 dark:text-slate-300">版本标题</span>
               <input
                 type="text"
                 placeholder="例如：稳定版更新"
@@ -362,7 +583,7 @@ export function VersionsDashboard() {
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">更新内容（可选）</span>
+              <span className="text-slate-700 dark:text-slate-300">更新内容</span>
               <textarea
                 placeholder="描述本次版本的主要变化"
                 value={form.content}
@@ -370,6 +591,19 @@ export function VersionsDashboard() {
                 rows={4}
                 className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
                 maxLength={4096}
+              />
+            </label>
+
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">发布时间</span>
+              <input
+                type="datetime-local"
+                value={form.published_at}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, published_at: event.target.value }))
+                }
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
+                aria-label="发布时间"
               />
             </label>
 
@@ -408,8 +642,35 @@ export function VersionsDashboard() {
               </label>
             </div>
 
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={form.is_latest}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, is_latest: event.target.checked }))
+                  }
+                  className="size-4 rounded border-white/30 bg-white/10"
+                  aria-label="设为 latest"
+                />
+                设为 latest
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={form.is_preview}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, is_preview: event.target.checked }))
+                  }
+                  className="size-4 rounded border-white/30 bg-white/10"
+                  aria-label="预发布版本"
+                />
+                预发布版本
+              </label>
+            </div>
+
             <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON（可选）</span>
+              <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
               <textarea
                 placeholder='例如：{"channel":"beta"}'
                 value={form.custom_data}
@@ -424,7 +685,7 @@ export function VersionsDashboard() {
             <Button
               type="submit"
               className="bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
-              disabled={submitLoading || !selectedProjectId}
+              disabled={submitLoading || !selectedProjectKey}
             >
               {submitLoading ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -469,27 +730,27 @@ export function VersionsDashboard() {
           </div>
         ) : null}
 
-        {hasToken && !selectedProjectId ? (
+        {hasToken && !selectedProjectKey ? (
           <div className="rounded-2xl border border-dashed border-slate-900/20 bg-slate-100/60 p-6 text-sm text-slate-600 dark:border-white/20 dark:bg-white/5 dark:text-slate-300">
             暂无项目，请先去项目管理页创建项目。
           </div>
         ) : null}
 
-        {hasToken && selectedProjectId && versionsLoading ? (
+        {hasToken && selectedProjectKey && versionsLoading ? (
           <div className="flex items-center gap-2 rounded-2xl border border-slate-900/15 bg-slate-100/60 p-6 text-sm text-slate-700 dark:border-white/15 dark:bg-white/5 dark:text-slate-200">
             <Loader2 className="size-4 animate-spin" />
             正在加载版本列表...
           </div>
         ) : null}
 
-        {hasToken && selectedProjectId && !versionsLoading && versionsError ? (
+        {hasToken && selectedProjectKey && !versionsLoading && versionsError ? (
           <div className="rounded-2xl border border-rose-300/30 bg-rose-300/10 p-6 text-sm text-rose-200">
             {versionsError}
           </div>
         ) : null}
 
         {hasToken &&
-        selectedProjectId &&
+        selectedProjectKey &&
         !versionsLoading &&
         !versionsError &&
         versions.length === 0 ? (
@@ -499,48 +760,85 @@ export function VersionsDashboard() {
         ) : null}
 
         {hasToken &&
-        selectedProjectId &&
+        selectedProjectKey &&
         !versionsLoading &&
         !versionsError &&
         versions.length > 0 ? (
           <div className="space-y-3">
             {versions.map((version) => (
-              <AdminItemCard key={version.id}>
-                <div className="space-y-1">
-                  <p className="text-base font-medium">{version.version}</p>
-                  <p className="font-mono text-xs text-cyan-100/90">ID: {version.id}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-300">
-                    创建于 {new Date(version.created_at).toLocaleString("zh-CN")}
+              <ManagementListItem
+                key={version.id}
+                title={version.version}
+                subtitle={
+                  <p className="font-mono text-xs text-slate-700 dark:text-cyan-100/90">
+                    ID: {version.id}
                   </p>
-                  <p className="text-sm text-slate-700 dark:text-slate-200/90">
-                    {version.title ?? "无标题"}
-                  </p>
-                  {version.content ? (
-                    <p className="text-sm text-slate-600 dark:text-slate-300">{version.content}</p>
-                  ) : null}
-                  <a
-                    className="text-sm text-cyan-200 underline-offset-2 hover:underline"
-                    href={version.download_url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {version.download_url}
-                  </a>
-                  <p className="text-xs text-slate-500 dark:text-slate-300">
-                    平台：{version.platform ?? "全部"} | 强更：{version.forced ? "是" : "否"}
-                  </p>
-                  <div className="pt-1">
+                }
+                meta={
+                  <>
+                    <p>发布时间 {new Date(version.published_at * 1000).toLocaleString("zh-CN")}</p>
+                    <p>创建于 {new Date(version.created_at * 1000).toLocaleString("zh-CN")}</p>
+                    <p>
+                      平台：{version.platform ?? "全部"} | 强更：{version.forced ? "是" : "否"} |
+                      latest：
+                      {version.is_latest ? "是" : "否"} | preview：
+                      {version.is_preview ? "是" : "否"}
+                    </p>
+                  </>
+                }
+                content={
+                  <>
+                    <p className="inline-flex items-center gap-2">
+                      {version.title ?? "无标题"}
+                      {version.is_latest ? <Star className="size-4 text-amber-500" /> : null}
+                      {version.is_preview ? <Sparkles className="size-4 text-sky-500" /> : null}
+                    </p>
+                    {version.content ? <p className="mt-1">{version.content}</p> : null}
+                    {version.download_url ? (
+                      <a
+                        className="mt-1 inline-block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
+                        href={version.download_url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {version.download_url}
+                      </a>
+                    ) : (
+                      <p className="mt-1 text-slate-500 dark:text-slate-400">未配置下载地址</p>
+                    )}
+                  </>
+                }
+                actions={
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-white/20 bg-white/5"
+                      onClick={() => copyFromVersion(version)}
+                    >
+                      <Copy className="size-4" />
+                      复制配置
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"
                       className="border-white/20 bg-white/5"
                       onClick={() => beginEdit(version)}
                     >
+                      <PencilLine className="size-4" />
                       编辑版本
                     </Button>
-                  </div>
-                </div>
-              </AdminItemCard>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={() => void handleDelete(version.id)}
+                    >
+                      <Trash2 className="size-4" />
+                      删除版本
+                    </Button>
+                  </>
+                }
+              />
             ))}
 
             <AdminPagination

@@ -51,6 +51,14 @@ type ProjectScopeContext = {
 
 const BOOTSTRAP_FILENAME = "verhub.bootstrap-admin.txt"
 
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000)
+}
+
+function normalizeProjectKey(projectKey: string): string {
+  return projectKey.trim().toLowerCase()
+}
+
 @Injectable()
 export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name)
@@ -115,7 +123,7 @@ export class AuthService implements OnModuleInit {
 
     await this.prisma.apiKey.update({
       where: { id: result.keyId },
-      data: { lastUsedAt: new Date() },
+      data: { lastUsedAt: nowSeconds() },
     })
 
     return true
@@ -281,13 +289,13 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException("Invalid api key id")
     }
 
-    const now = Date.now()
-    if (existing.expiresAt && existing.expiresAt.getTime() <= now) {
+    const now = nowSeconds()
+    if (existing.expiresAt && existing.expiresAt <= now) {
       throw new UnauthorizedException("Api key already expired")
     }
 
     const graceMinutes = dto.grace_period_minutes ?? 0
-    const previousKeyExpiresAt = graceMinutes > 0 ? new Date(now + graceMinutes * 60 * 1000) : null
+    const previousKeyExpiresAt = graceMinutes > 0 ? now + graceMinutes * 60 : null
 
     const rawToken = `vh_${randomBytes(24).toString("hex")}`
     const nextKeyHash = this.hashApiKey(rawToken)
@@ -322,7 +330,7 @@ export class AuthService implements OnModuleInit {
       where: { id },
       data: {
         isActive: false,
-        revokedAt: new Date(),
+        revokedAt: nowSeconds(),
       },
     })
   }
@@ -361,7 +369,10 @@ export class AuthService implements OnModuleInit {
     const data: {
       username?: string
       passwordHash?: string
-    } = {}
+      updatedAt: number
+    } = {
+      updatedAt: nowSeconds(),
+    }
 
     if (nextUsername) {
       data.username = nextUsername
@@ -394,7 +405,7 @@ export class AuthService implements OnModuleInit {
     projectScope?: ProjectScopeContext,
   ): Promise<ApiKeyValidationResult> {
     const keyHash = this.hashApiKey(apiKey)
-    const now = new Date()
+    const now = nowSeconds()
 
     const found = await this.prisma.apiKey.findFirst({
       where: {
@@ -443,7 +454,7 @@ export class AuthService implements OnModuleInit {
 
     if (expiredFound?.expiresAt) {
       this.logger.warn(
-        `[auth][api-key] expired token rejected key_id=${expiredFound.id} expires_at=${expiredFound.expiresAt.toISOString()}`,
+        `[auth][api-key] expired token rejected key_id=${expiredFound.id} expires_at=${expiredFound.expiresAt}`,
       )
       return { valid: false }
     }
@@ -500,7 +511,7 @@ export class AuthService implements OnModuleInit {
 
     const count = await this.prisma.project.count({
       where: {
-        id: { in: normalizedProjectIds },
+        projectKey: { in: normalizedProjectIds },
       },
     })
 
@@ -527,7 +538,7 @@ export class AuthService implements OnModuleInit {
     }
 
     if (scope.projectId) {
-      return record.projectIds.includes(scope.projectId)
+      return record.projectIds.includes(normalizeProjectKey(scope.projectId))
     }
 
     if (!scope.projectKey) {
@@ -535,14 +546,14 @@ export class AuthService implements OnModuleInit {
     }
 
     const project = await this.prisma.project.findUnique({
-      where: { projectKey: scope.projectKey },
-      select: { id: true },
+      where: { projectKey: normalizeProjectKey(scope.projectKey) },
+      select: { projectKey: true },
     })
     if (!project) {
       return false
     }
 
-    return record.projectIds.includes(project.id)
+    return record.projectIds.includes(project.projectKey)
   }
 
   private async validateAdminCredentials(
@@ -591,6 +602,7 @@ export class AuthService implements OnModuleInit {
         username,
         passwordHash,
         role: "ADMIN",
+        updatedAt: nowSeconds(),
       },
     })
 
@@ -635,7 +647,7 @@ export class AuthService implements OnModuleInit {
       `username=${username}`,
       `password=${password}`,
       "warning=delete this file after first successful login",
-      `created_at=${new Date().toISOString()}`,
+      `created_at=${nowSeconds()}`,
       "",
     ].join("\n")
 

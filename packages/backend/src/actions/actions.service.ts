@@ -34,17 +34,26 @@ type ActionRecordListResponse = {
   data: ActionRecordItem[]
 }
 
+function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000)
+}
+
+function normalizeProjectKey(projectKey: string): string {
+  return projectKey.trim().toLowerCase()
+}
+
 @Injectable()
 export class ActionsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findAllByProject(projectId: string, query: QueryActionsDto): Promise<ActionListResponse> {
-    await this.ensureProjectExistsById(projectId)
+  async findAllByProject(projectKey: string, query: QueryActionsDto): Promise<ActionListResponse> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    await this.ensureProjectExistsByKey(normalizedProjectKey)
 
     const [total, data] = await this.prisma.$transaction([
-      this.prisma.action.count({ where: { projectId } }),
+      this.prisma.action.count({ where: { projectKey: normalizedProjectKey } }),
       this.prisma.action.findMany({
-        where: { projectId },
+        where: { projectKey: normalizedProjectKey },
         take: query.limit,
         skip: query.offset,
         orderBy: { createdAt: "desc" },
@@ -59,9 +68,10 @@ export class ActionsService {
   }
 
   async create(dto: CreateActionDto): Promise<ActionItem> {
+    const normalizedProjectKey = normalizeProjectKey(dto.project_key)
     const project = await this.prisma.project.findUnique({
-      where: { projectKey: dto.project_key },
-      select: { id: true, projectKey: true },
+      where: { projectKey: normalizedProjectKey },
+      select: { projectKey: true },
     })
     if (!project) {
       throw new NotFoundException("Project not found")
@@ -69,7 +79,7 @@ export class ActionsService {
 
     const created = await this.prisma.action.create({
       data: {
-        projectId: project.id,
+        projectKey: project.projectKey,
         name: dto.name,
         description: dto.description,
         customData: dto.custom_data as Prisma.InputJsonValue | undefined,
@@ -95,6 +105,7 @@ export class ActionsService {
         name: dto.name,
         description: dto.description,
         customData: dto.custom_data as Prisma.InputJsonValue | undefined,
+        updatedAt: nowSeconds(),
       },
       include: { project: { select: { projectKey: true } } },
     })
@@ -156,11 +167,12 @@ export class ActionsService {
     dto: CreateActionRecordDto,
     http: Record<string, unknown>,
   ): Promise<ActionRecordItem> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
     const action = await this.prisma.action.findUnique({
       where: { id: dto.action_id },
       include: { project: { select: { projectKey: true } } },
     })
-    if (!action || action.project.projectKey !== projectKey) {
+    if (!action || action.project.projectKey !== normalizedProjectKey) {
       throw new NotFoundException("Action not found")
     }
 
@@ -192,10 +204,10 @@ export class ActionsService {
     }
   }
 
-  private async ensureProjectExistsById(projectId: string): Promise<void> {
+  private async ensureProjectExistsByKey(projectKey: string): Promise<void> {
     const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
-      select: { id: true },
+      where: { projectKey },
+      select: { projectKey: true },
     })
     if (!project) {
       throw new NotFoundException("Project not found")
@@ -207,7 +219,7 @@ export class ActionsService {
     name: string
     description: string
     customData: Prisma.JsonValue | null
-    createdAt: Date
+    createdAt: number
     project: { projectKey: string }
   }): ActionItem {
     return {
@@ -216,7 +228,7 @@ export class ActionsService {
       name: action.name,
       description: action.description,
       custom_data: action.customData,
-      created_time: action.createdAt.getTime(),
+      created_time: action.createdAt,
     }
   }
 
@@ -225,12 +237,12 @@ export class ActionsService {
     actionId: string
     http: Prisma.JsonValue | null
     customData: Prisma.JsonValue | null
-    createdAt: Date
+    createdAt: number
   }): ActionRecordItem {
     return {
       action_record_id: record.id,
       action_id: record.actionId,
-      created_time: record.createdAt.getTime(),
+      created_time: record.createdAt,
       http: record.http,
       custom_data: record.customData,
     }

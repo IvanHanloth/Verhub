@@ -12,6 +12,7 @@ describe("HealthController", () => {
     const result = controller.getHealth()
 
     expect(result.status).toBe("ok")
-    expect(new Date(result.timestamp).toString()).not.toBe("Invalid Date")
+    expect(typeof result.timestamp).toBe("number")
+    expect(Number.isFinite(result.timestamp)).toBe(true)
   })
 })

@@ -1,15 +1,18 @@
 "use client"
 
 import * as React from "react"
-import { AlertTriangle, CheckCircle2, Loader2, PencilLine, Save, Trash2 } from "lucide-react"
+import { AlertTriangle, CheckCircle2, Copy, Loader2, PencilLine, Save, Trash2 } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
 import { ApiError, isAuthError } from "@/lib/api-client"
 import { getSessionToken } from "@/lib/auth-session"
-import { AdminCard, AdminItemCard } from "@/components/admin/admin-card"
+import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
+import { ManagementListItem } from "@/components/admin/management-list-item"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
+import { ProjectApiOverview } from "@/components/admin/project-api-overview"
+import { ProjectSelectorCard } from "@/components/admin/project-selector-card"
 import { useSharedProjectSelection } from "@/hooks/use-shared-project-selection"
 import {
   deleteFeedback,
@@ -104,7 +107,7 @@ export function FeedbacksDashboard() {
 
   const [projects, setProjects] = React.useState<ProjectItem[]>([])
   const [projectsLoading, setProjectsLoading] = React.useState(false)
-  const { selectedProjectId, setSelectedProjectId } = useSharedProjectSelection()
+  const { selectedProjectKey, setSelectedProjectKey } = useSharedProjectSelection()
 
   const [feedbacks, setFeedbacks] = React.useState<FeedbackItem[]>([])
   const [total, setTotal] = React.useState(0)
@@ -117,6 +120,11 @@ export function FeedbacksDashboard() {
   const [submitLoading, setSubmitLoading] = React.useState(false)
   const [submitMessage, setSubmitMessage] = React.useState<string | null>(null)
 
+  const selectedProject = React.useMemo(
+    () => projects.find((project) => project.id === selectedProjectKey) ?? null,
+    [projects, selectedProjectKey],
+  )
+
   const hasToken = token.trim().length > 0
   const page = Math.floor(offset / PAGE_SIZE) + 1
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -124,7 +132,7 @@ export function FeedbacksDashboard() {
   const loadProjects = React.useCallback(async () => {
     if (!token) {
       setProjects([])
-      setSelectedProjectId("")
+      setSelectedProjectKey("")
       return
     }
 
@@ -132,16 +140,16 @@ export function FeedbacksDashboard() {
     try {
       const response = await listProjects(token, { limit: PROJECT_PAGE_SIZE, offset: 0 })
       setProjects(response.data)
-      const hasCurrent = response.data.some((project) => project.id === selectedProjectId)
+      const hasCurrent = response.data.some((project) => project.id === selectedProjectKey)
       if (hasCurrent) {
         return
       }
 
       const firstProject = response.data[0]
       if (firstProject) {
-        setSelectedProjectId(firstProject.id)
+        setSelectedProjectKey(firstProject.id)
       } else {
-        setSelectedProjectId("")
+        setSelectedProjectKey("")
       }
     } catch (loadError) {
       if (isAuthError(loadError)) {
@@ -150,15 +158,15 @@ export function FeedbacksDashboard() {
       }
       setAuthError(getErrorMessage(loadError))
       setProjects([])
-      setSelectedProjectId("")
+      setSelectedProjectKey("")
     } finally {
       setProjectsLoading(false)
     }
-  }, [selectedProjectId, setSelectedProjectId, token])
+  }, [selectedProjectKey, setSelectedProjectKey, token])
 
   const loadFeedbacks = React.useCallback(
     async (nextOffset: number, signal?: AbortSignal) => {
-      if (!token || !selectedProjectId) {
+      if (!token || !selectedProjectKey) {
         setFeedbacks([])
         setTotal(0)
         return
@@ -170,7 +178,7 @@ export function FeedbacksDashboard() {
       try {
         const response = await listFeedbacks(
           token,
-          selectedProjectId,
+          selectedProjectKey,
           { limit: PAGE_SIZE, offset: nextOffset },
           signal,
         )
@@ -195,7 +203,7 @@ export function FeedbacksDashboard() {
         }
       }
     },
-    [selectedProjectId, token],
+    [selectedProjectKey, token],
   )
 
   React.useEffect(() => {
@@ -216,7 +224,7 @@ export function FeedbacksDashboard() {
     setEditingId(null)
     setForm(emptyForm)
     setSubmitMessage(null)
-  }, [selectedProjectId])
+  }, [selectedProjectKey])
 
   function beginEdit(item: FeedbackItem) {
     setEditingId(item.id)
@@ -228,6 +236,18 @@ export function FeedbacksDashboard() {
       custom_data: toPrettyJson(item.custom_data),
     })
     setSubmitMessage(null)
+  }
+
+  function copyFromFeedback(item: FeedbackItem) {
+    setEditingId(null)
+    setForm({
+      user_id: item.user_id ?? "",
+      rating: item.rating ? String(item.rating) : "",
+      content: item.content,
+      platform: item.platform ?? "",
+      custom_data: toPrettyJson(item.custom_data),
+    })
+    setSubmitMessage("已复制配置到表单，可直接编辑后保存。")
   }
 
   function resetForm() {
@@ -244,7 +264,7 @@ export function FeedbacksDashboard() {
       return
     }
 
-    if (!selectedProjectId) {
+    if (!selectedProjectKey) {
       setSubmitMessage("请先选择项目。")
       return
     }
@@ -273,7 +293,7 @@ export function FeedbacksDashboard() {
         return
       }
 
-      await updateFeedback(token, selectedProjectId, editingId, payload)
+      await updateFeedback(token, selectedProjectKey, editingId, payload)
       setSubmitMessage("反馈已更新。")
       await loadFeedbacks(offset)
     } catch (submitError) {
@@ -288,7 +308,7 @@ export function FeedbacksDashboard() {
   }
 
   async function handleDelete(id: string) {
-    if (!token || !selectedProjectId) {
+    if (!token || !selectedProjectKey) {
       setError("请先登录并选择项目。")
       return
     }
@@ -299,7 +319,7 @@ export function FeedbacksDashboard() {
     }
 
     try {
-      await deleteFeedback(token, selectedProjectId, id)
+      await deleteFeedback(token, selectedProjectKey, id)
       const nextOffset =
         feedbacks.length === 1 && offset > 0 ? Math.max(0, offset - PAGE_SIZE) : offset
       setOffset(nextOffset)
@@ -325,38 +345,76 @@ export function FeedbacksDashboard() {
       />
 
       <section className="grid gap-6 lg:grid-cols-[1.1fr_1.9fr]">
-        <AdminCard className="space-y-6">
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold">项目选择</h2>
-          </div>
+        <div className="space-y-6">
+          <ProjectSelectorCard
+            selectId="feedback-project-select"
+            selectedProjectKey={selectedProjectKey}
+            projects={projects}
+            disabled={!hasToken || projectsLoading || projects.length === 0}
+            ringClassName="ring-rose-300"
+            onChange={setSelectedProjectKey}
+            warning={
+              authError ? (
+                <span className="inline-flex items-center gap-2">
+                  <AlertTriangle className="size-4" />
+                  {authError}
+                </span>
+              ) : undefined
+            }
+          />
 
-          <div className="space-y-2">
-            <label className="text-sm text-slate-300" htmlFor="feedback-project-select">
-              目标项目
-            </label>
-            <select
-              id="feedback-project-select"
-              className="w-full rounded-xl border border-white/20 bg-white/8 px-3 py-2 text-sm ring-rose-300 transition outline-none focus:ring-2"
-              value={selectedProjectId}
-              onChange={(event) => setSelectedProjectId(event.target.value)}
-              disabled={!hasToken || projectsLoading || projects.length === 0}
-            >
-              {projects.length === 0 ? <option value="">暂无可选项目</option> : null}
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name} ({project.project_key})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {authError ? (
-            <p className="inline-flex items-center gap-2 text-sm text-rose-300">
-              <AlertTriangle className="size-4" />
-              {authError}
-            </p>
-          ) : null}
-        </AdminCard>
+          <ProjectApiOverview
+            title="API Demo · 反馈"
+            projectKey={selectedProject?.project_key}
+            groups={[
+              {
+                label: "公开接口",
+                endpoints: [
+                  {
+                    method: "POST",
+                    path: "/api/v1/public/{projectKey}/feedbacks",
+                    description: "客户端提交反馈",
+                    auth: { tokenRequired: false },
+                    requestBody: {
+                      content: "希望增加批量导出功能",
+                      rating: 4,
+                      platform: "web",
+                      user_id: "u_1024",
+                      custom_data: { page: "settings", locale: "zh-CN" },
+                    },
+                  },
+                ],
+              },
+              {
+                label: "管理接口",
+                endpoints: [
+                  {
+                    method: "GET",
+                    path: "/api/v1/admin/projects/{projectKey}/feedbacks",
+                    description: "分页获取反馈",
+                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                  },
+                  {
+                    method: "PATCH",
+                    path: "/api/v1/admin/projects/{projectKey}/feedbacks/{id}",
+                    description: "编辑反馈",
+                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                    requestBody: {
+                      content: "已复现并记录需求，计划下个版本支持",
+                      rating: 5,
+                    },
+                  },
+                  {
+                    method: "DELETE",
+                    path: "/api/v1/admin/projects/{projectKey}/feedbacks/{id}",
+                    description: "删除反馈",
+                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                  },
+                ],
+              },
+            ]}
+          />
+        </div>
 
         <AdminCard className="space-y-6">
           <div className="space-y-2">
@@ -366,7 +424,7 @@ export function FeedbacksDashboard() {
 
           <form className="grid gap-3" onSubmit={handleSubmit}>
             <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">用户 ID（可选）</span>
+              <span className="text-slate-700 dark:text-slate-300">用户 ID</span>
               <input
                 type="text"
                 placeholder="例如：u_1024"
@@ -378,7 +436,7 @@ export function FeedbacksDashboard() {
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">评分（1-5，可选）</span>
+              <span className="text-slate-700 dark:text-slate-300">评分（1-5）</span>
               <input
                 type="number"
                 min={1}
@@ -425,7 +483,7 @@ export function FeedbacksDashboard() {
               />
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON（可选）</span>
+              <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
               <textarea
                 placeholder='例如：{"channel":"beta"}'
                 value={form.custom_data}
@@ -480,47 +538,57 @@ export function FeedbacksDashboard() {
           </div>
         ) : null}
 
-        {hasToken && !selectedProjectId ? (
+        {hasToken && !selectedProjectKey ? (
           <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-slate-300">
             暂无项目，请先去项目管理页创建项目。
           </div>
         ) : null}
 
-        {hasToken && selectedProjectId && loading ? (
+        {hasToken && selectedProjectKey && loading ? (
           <div className="flex items-center gap-2 rounded-2xl border border-white/15 bg-white/5 p-6 text-sm text-slate-200">
             <Loader2 className="size-4 animate-spin" />
             正在加载反馈列表...
           </div>
         ) : null}
 
-        {hasToken && selectedProjectId && !loading && error ? (
+        {hasToken && selectedProjectKey && !loading && error ? (
           <div className="rounded-2xl border border-rose-300/30 bg-rose-300/10 p-6 text-sm text-rose-200">
             {error}
           </div>
         ) : null}
 
-        {hasToken && selectedProjectId && !loading && !error && feedbacks.length === 0 ? (
+        {hasToken && selectedProjectKey && !loading && !error && feedbacks.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-slate-300">
             暂无反馈，等待客户端上报后在此管理。
           </div>
         ) : null}
 
-        {hasToken && selectedProjectId && !loading && !error && feedbacks.length > 0 ? (
+        {hasToken && selectedProjectKey && !loading && !error && feedbacks.length > 0 ? (
           <div className="space-y-3">
             {feedbacks.map((item) => (
-              <AdminItemCard key={item.id} className="border-white/15 bg-white/8">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="text-base font-medium">{item.content}</p>
-                    <p className="text-xs text-slate-300">
-                      创建于 {new Date(item.created_at).toLocaleString("zh-CN")}
-                    </p>
-                    <p className="text-xs text-slate-300">用户：{item.user_id ?? "匿名"}</p>
-                    <p className="text-xs text-slate-300">评分：{item.rating ?? "未评分"}</p>
-                    <p className="text-xs text-slate-300">平台：{item.platform ?? "未指定"}</p>
-                  </div>
-
-                  <div className="flex gap-2">
+              <ManagementListItem
+                key={item.id}
+                className="border-white/15 bg-white/8"
+                title={item.content}
+                meta={
+                  <>
+                    <p>创建于 {new Date(item.created_at * 1000).toLocaleString("zh-CN")}</p>
+                    <p>用户：{item.user_id ?? "匿名"}</p>
+                    <p>评分：{item.rating ?? "未评分"}</p>
+                    <p>平台：{item.platform ?? "未指定"}</p>
+                  </>
+                }
+                actions={
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-white/20 bg-white/5"
+                      onClick={() => copyFromFeedback(item)}
+                    >
+                      <Copy className="size-4" />
+                      复制配置
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"
@@ -538,9 +606,9 @@ export function FeedbacksDashboard() {
                       <Trash2 className="size-4" />
                       删除
                     </Button>
-                  </div>
-                </div>
-              </AdminItemCard>
+                  </>
+                }
+              />
             ))}
 
             <AdminPagination

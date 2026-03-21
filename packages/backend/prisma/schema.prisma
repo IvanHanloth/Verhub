@@ -32,8 +32,8 @@ model User {
   username     String   @unique
   passwordHash String
   role         UserRole @default(ADMIN)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt    Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   apiKeys      ApiKey[]
 }
 
@@ -42,15 +42,15 @@ model ApiKey {
   name        String
   keyHash     String   @unique
   previousKeyHash      String?
-  previousKeyExpiresAt DateTime?
+  previousKeyExpiresAt Int?
   scopes      String[] @default([])
   allProjects Boolean  @default(true)
   projectIds  String[] @default([])
   isActive    Boolean  @default(true)
-  lastUsedAt  DateTime?
-  expiresAt   DateTime?
-  createdAt   DateTime @default(now())
-  revokedAt   DateTime?
+  lastUsedAt  Int?
+  expiresAt   Int?
+  createdAt   Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  revokedAt   Int?
   createdById String?
 
   createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
@@ -59,13 +59,12 @@ model ApiKey {
 }
 
 model Project {
-  id            String         @id @default(cuid())
-  projectKey    String         @unique
+  projectKey    String         @id
   name          String
   repoUrl       String?
   description   String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdAt     Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt     Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   versions      Version[]
   announcements Announcement[]
   feedbacks     Feedback[]
@@ -75,17 +74,17 @@ model Project {
 
 model Action {
   id          String         @id @default(cuid())
-  projectId   String
+  projectKey  String
   name        String
   description String
   customData  Json?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  createdAt   Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt   Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   records     ActionRecord[]
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
-  @@index([projectId, createdAt])
+  @@index([projectKey, createdAt])
 }
 
 model ActionRecord {
@@ -93,7 +92,7 @@ model ActionRecord {
   actionId   String
   http       Json?
   customData Json?
-  createdAt  DateTime @default(now())
+  createdAt  Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   action Action @relation(fields: [actionId], references: [id], onDelete: Cascade)
 
@@ -102,62 +101,67 @@ model ActionRecord {
 
 model Version {
   id          String         @id @default(cuid())
-  projectId   String
+  projectKey  String
   version     String
   title       String?
   content     String?
-  downloadUrl String
+  downloadUrl String?
   forced      Boolean        @default(false)
+  isLatest    Boolean        @default(false)
+  isPreview   Boolean        @default(false)
   platform    ClientPlatform?
   customData  Json?
-  createdAt   DateTime       @default(now())
+  publishedAt Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  createdAt   Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
-  @@unique([projectId, version])
-  @@index([projectId, createdAt])
+  @@unique([projectKey, version])
+  @@index([projectKey, createdAt])
 }
 
 model Announcement {
   id        String   @id @default(cuid())
-  projectId String
+  projectKey String
   title     String
   content   String
   isPinned  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  author    String?
+  publishedAt Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  createdAt   Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt   Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
-  @@index([projectId, createdAt])
+  @@index([projectKey, createdAt])
 }
 
 model Feedback {
   id         String   @id @default(cuid())
-  projectId  String
+  projectKey String
   userId     String?
   rating     Int?
   content    String
   platform   ClientPlatform?
   customData Json?
-  createdAt  DateTime @default(now())
+  createdAt  Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
-  @@index([projectId, createdAt])
+  @@index([projectKey, createdAt])
 }
 
 model Log {
   id         String   @id @default(cuid())
-  projectId  String
+  projectKey String
   level      LogLevel
   content    String
   deviceInfo Json?
   customData Json?
-  createdAt  DateTime @default(now())
+  createdAt  Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
-  @@index([projectId, createdAt])
+  @@index([projectKey, createdAt])
   @@index([level, createdAt])
 }

@@ -1,4 +1,13 @@
-import { IsBoolean, IsIn, IsObject, IsOptional, IsString, MaxLength } from "class-validator"
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from "class-validator"
 
 const clientPlatforms = ["ios", "android", "windows", "mac", "web"] as const
 
@@ -19,13 +28,22 @@ export class CreateVersionDto {
   @MaxLength(4096)
   content?: string
 
+  @IsOptional()
   @IsString()
   @MaxLength(2048)
-  download_url!: string
+  download_url?: string
 
   @IsOptional()
   @IsBoolean()
   forced?: boolean
+
+  @IsOptional()
+  @IsBoolean()
+  is_latest?: boolean
+
+  @IsOptional()
+  @IsBoolean()
+  is_preview?: boolean
 
   @IsOptional()
   @IsIn(clientPlatforms)
@@ -34,4 +52,9 @@ export class CreateVersionDto {
   @IsOptional()
   @IsObject()
   custom_data?: Record<string, unknown>
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  published_at?: number
 }

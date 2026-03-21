@@ -28,22 +28,16 @@ type PublicActionRequest = {
 export class ActionsController {
   constructor(private readonly actionsService: ActionsService) {}
 
-  @Get("admin/projects/:projectId/actions")
+  @Get("admin/projects/:projectKey/actions")
   @UseGuards(JwtAdminGuard)
-  async findAllByProject(@Param("projectId") projectId: string, @Query() query: QueryActionsDto) {
-    return this.actionsService.findAllByProject(projectId, query)
+  async findAllByProject(@Param("projectKey") projectKey: string, @Query() query: QueryActionsDto) {
+    return this.actionsService.findAllByProject(projectKey, query)
   }
 
   @Post("admin/projects/actions")
   @UseGuards(JwtAdminGuard)
   async create(@Body() dto: CreateActionDto) {
     return this.actionsService.create(dto)
-  }
-
-  @Get("admin/actions/record/:action_record_id")
-  @UseGuards(JwtAdminGuard)
-  async findRecord(@Param("action_record_id") recordId: string) {
-    return this.actionsService.findRecord(recordId)
   }
 
   @Get("admin/actions/statistics")
@@ -56,6 +50,12 @@ export class ActionsController {
   @UseGuards(JwtAdminGuard)
   async getActionRecordStatistics() {
     return this.actionsService.getActionRecordStatistics()
+  }
+
+  @Get("admin/actions/record/:action_record_id")
+  @UseGuards(JwtAdminGuard)
+  async findRecord(@Param("action_record_id") recordId: string) {
+    return this.actionsService.findRecord(recordId)
   }
 
   @Get("admin/actions/:action_id")

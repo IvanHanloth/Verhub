@@ -96,13 +96,13 @@ describe("admin dashboard page", () => {
     expect(screen.getByText("暂无")).toBeInTheDocument()
   })
 
-  it("shows failure message when stats request fails", async () => {
+  it("shows partial failure warning when one stats request fails", async () => {
     mockedGetProjectsStats.mockRejectedValueOnce(new Error("stats down"))
 
     render(React.createElement(DashboardHomePage))
 
     await waitFor(() => {
-      expect(screen.getByText("stats down")).toBeInTheDocument()
+      expect(screen.getByText("部分统计加载失败：项目统计")).toBeInTheDocument()
     })
   })
 })

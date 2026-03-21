@@ -163,7 +163,7 @@ describe("AuthService", () => {
     expect(prisma.apiKey.findFirst).toHaveBeenCalled()
     expect(prisma.apiKey.update).toHaveBeenCalledWith({
       where: { id: "api-key-1" },
-      data: { lastUsedAt: expect.any(Date) },
+      data: { lastUsedAt: expect.any(Number) },
     })
   })
 
@@ -286,7 +286,7 @@ describe("AuthService", () => {
     expect(valid).toBe(true)
     expect(prisma.apiKey.update).toHaveBeenCalledWith({
       where: { id: "api-key-1" },
-      data: { lastUsedAt: expect.any(Date) },
+      data: { lastUsedAt: expect.any(Number) },
     })
   })
 
@@ -294,7 +294,7 @@ describe("AuthService", () => {
     const prisma = createPrismaMock()
     prisma.apiKey.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
       id: "expired-key-id",
-      expiresAt: new Date("2026-03-01T00:00:00.000Z"),
+      expiresAt: 1,
     })
 
     const warnSpy = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined)
@@ -357,6 +357,7 @@ describe("AuthService", () => {
       data: {
         username: "admin-next",
         passwordHash: expect.any(String),
+        updatedAt: expect.any(Number),
       },
       select: {
         id: true,
@@ -401,6 +402,7 @@ describe("AuthService", () => {
         username: "admin",
         passwordHash: expect.any(String),
         role: "ADMIN",
+        updatedAt: expect.any(Number),
       },
     })
     expect(writeBootstrapSpy).toHaveBeenCalledWith("admin", expect.any(String))
@@ -449,8 +451,8 @@ describe("AuthService", () => {
       id: "key-id",
       name: "ci-key",
       scopes: ["versions:write"],
-      expiresAt: new Date(Date.now() + 29 * 24 * 60 * 60 * 1000),
-      createdAt: new Date(),
+      expiresAt: Math.floor(Date.now() / 1000) + 29 * 24 * 60 * 60,
+      createdAt: Math.floor(Date.now() / 1000),
     })
 
     const service = new AuthService(
@@ -477,7 +479,7 @@ describe("AuthService", () => {
         allProjects: true,
         projectIds: [],
         createdById: "admin-id",
-        expiresAt: expect.any(Date),
+        expiresAt: expect.any(Number),
       },
       select: {
         id: true,
@@ -501,7 +503,7 @@ describe("AuthService", () => {
       allProjects: false,
       projectIds: ["project-1", "project-2"],
       expiresAt: null,
-      createdAt: new Date(),
+      createdAt: Math.floor(Date.now() / 1000),
     })
 
     const service = new AuthService(
@@ -571,7 +573,9 @@ describe("AuthService", () => {
     await service.onModuleInit()
 
     expect(writeBootstrapSpy).toHaveBeenCalledWith("admin", "provided-password")
-    expect(infoSpy).not.toHaveBeenCalled()
+    expect(infoSpy).not.toHaveBeenCalledWith(
+      expect.stringMatching(/^\[verhub\]\[bootstrap\] password=provided-password$/),
+    )
 
     infoSpy.mockRestore()
   })

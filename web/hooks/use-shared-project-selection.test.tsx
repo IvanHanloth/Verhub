@@ -5,12 +5,12 @@ import { beforeEach, describe, expect, it } from "vitest"
 import { useSharedProjectSelection } from "./use-shared-project-selection"
 
 function SyncProbe({ name }: { name: string }) {
-  const { selectedProjectId, setSelectedProjectId } = useSharedProjectSelection()
+  const { selectedProjectKey, setSelectedProjectKey } = useSharedProjectSelection()
 
   return (
     <div>
-      <p>{`${name}:${selectedProjectId || "(empty)"}`}</p>
-      <button type="button" onClick={() => setSelectedProjectId("project-2")}>
+      <p>{`${name}:${selectedProjectKey || "(empty)"}`}</p>
+      <button type="button" onClick={() => setSelectedProjectKey("project-2")}>
         {`set-${name}`}
       </button>
     </div>
@@ -23,7 +23,7 @@ describe("useSharedProjectSelection", () => {
   })
 
   it("loads initial selection from localStorage", async () => {
-    window.localStorage.setItem("verhub.admin.selectedProjectId", "project-1")
+    window.localStorage.setItem("verhub.admin.selectedProjectKey", "project-1")
 
     render(<SyncProbe name="probe" />)
 
@@ -42,6 +42,6 @@ describe("useSharedProjectSelection", () => {
 
     expect(await screen.findByText("left:project-2")).toBeInTheDocument()
     expect(await screen.findByText("right:project-2")).toBeInTheDocument()
-    expect(window.localStorage.getItem("verhub.admin.selectedProjectId")).toBe("project-2")
+    expect(window.localStorage.getItem("verhub.admin.selectedProjectKey")).toBe("project-2")
   })
 })

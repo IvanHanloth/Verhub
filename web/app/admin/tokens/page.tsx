@@ -20,6 +20,19 @@ import { ApiError } from "@/lib/api-client"
 import { getSessionToken } from "@/lib/auth-session"
 import { listProjects, type ProjectItem } from "@/lib/projects-api"
 
+function formatTimestamp(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "永不过期"
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return "无效时间"
+  }
+
+  return date.toLocaleString("zh-CN")
+}
+
 export default function TokenManagementPage() {
   const [items, setItems] = React.useState<ApiKeyItem[]>([])
   const [loading, setLoading] = React.useState(false)
@@ -27,7 +40,7 @@ export default function TokenManagementPage() {
   const [availableProjects, setAvailableProjects] = React.useState<ProjectItem[]>([])
   const [selectedScopes, setSelectedScopes] = React.useState<string[]>([])
   const [allProjects, setAllProjects] = React.useState(true)
-  const [selectedProjectIds, setSelectedProjectIds] = React.useState<string[]>([])
+  const [selectedProjectKeys, setSelectedProjectKeys] = React.useState<string[]>([])
   const [name, setName] = React.useState("")
   const [expiresInDays, setExpiresInDays] = React.useState(30)
   const [neverExpires, setNeverExpires] = React.useState(false)
@@ -83,7 +96,7 @@ export default function TokenManagementPage() {
       return
     }
 
-    if (!allProjects && selectedProjectIds.length === 0) {
+    if (!allProjects && selectedProjectKeys.length === 0) {
       setError("请选择至少一个项目范围，或启用“作用于全部项目”。")
       return
     }
@@ -93,14 +106,14 @@ export default function TokenManagementPage() {
         name: name.trim(),
         scopes: selectedScopes,
         all_projects: allProjects,
-        project_ids: allProjects ? [] : selectedProjectIds,
+        project_ids: allProjects ? [] : selectedProjectKeys,
         never_expires: neverExpires,
         expires_in_days: neverExpires ? undefined : expiresInDays,
       })
       setNewToken(response.token)
       setRotationToken(null)
       setName("")
-      setSelectedProjectIds([])
+      setSelectedProjectKeys([])
       setAllProjects(true)
       setNeverExpires(false)
       await load()
@@ -150,13 +163,13 @@ export default function TokenManagementPage() {
     })
   }
 
-  function toggleProject(projectId: string) {
-    setSelectedProjectIds((prev) => {
-      if (prev.includes(projectId)) {
-        return prev.filter((item) => item !== projectId)
+  function toggleProject(projectKey: string) {
+    setSelectedProjectKeys((prev) => {
+      if (prev.includes(projectKey)) {
+        return prev.filter((item) => item !== projectKey)
       }
 
-      return [...prev, projectId]
+      return [...prev, projectKey]
     })
   }
 
@@ -165,7 +178,7 @@ export default function TokenManagementPage() {
     setName(item.name)
     setSelectedScopes(item.scopes)
     setAllProjects(item.all_projects)
-    setSelectedProjectIds(item.project_ids)
+    setSelectedProjectKeys(item.project_ids)
     setNeverExpires(item.expires_at === null)
     setExpiresInDays(30)
     setError(null)
@@ -181,7 +194,7 @@ export default function TokenManagementPage() {
       return
     }
 
-    if (!allProjects && selectedProjectIds.length === 0) {
+    if (!allProjects && selectedProjectKeys.length === 0) {
       setError("请选择至少一个项目范围，或启用“作用于全部项目”。")
       return
     }
@@ -191,7 +204,7 @@ export default function TokenManagementPage() {
         name: name.trim(),
         scopes: selectedScopes,
         all_projects: allProjects,
-        project_ids: allProjects ? [] : selectedProjectIds,
+        project_ids: allProjects ? [] : selectedProjectKeys,
         never_expires: neverExpires,
         expires_in_days: neverExpires ? undefined : expiresInDays,
       })
@@ -318,7 +331,7 @@ export default function TokenManagementPage() {
                   <label key={project.id} className="inline-flex items-center gap-2">
                     <input
                       type="checkbox"
-                      checked={selectedProjectIds.includes(project.id)}
+                      checked={selectedProjectKeys.includes(project.id)}
                       onChange={() => toggleProject(project.id)}
                     />
                     <span>{project.name}</span>
@@ -374,7 +387,7 @@ export default function TokenManagementPage() {
                     项目范围: {item.all_projects ? "全部项目" : item.project_ids.join(", ")}
                   </p>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    过期: {item.expires_at ?? "永不过期"}
+                    过期: {formatTimestamp(item.expires_at)}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

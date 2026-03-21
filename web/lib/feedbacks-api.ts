@@ -9,7 +9,7 @@ export type FeedbackItem = {
   content: string
   platform: ClientPlatform | null
   custom_data: unknown
-  created_at: string
+  created_at: number
 }
 
 export type ListFeedbacksResponse = {
@@ -27,7 +27,7 @@ export type FeedbackMutationInput = {
 
 export async function listFeedbacks(
   token: string,
-  projectId: string,
+  projectKey: string,
   params: { limit: number; offset: number },
   signal?: AbortSignal,
 ): Promise<ListFeedbacksResponse> {
@@ -36,19 +36,22 @@ export async function listFeedbacks(
     offset: String(params.offset),
   })
 
-  return requestJson<ListFeedbacksResponse>(`/admin/projects/${projectId}/feedbacks?${query.toString()}`, {
-    token,
-    signal,
-  })
+  return requestJson<ListFeedbacksResponse>(
+    `/admin/projects/${projectKey}/feedbacks?${query.toString()}`,
+    {
+      token,
+      signal,
+    },
+  )
 }
 
 export async function updateFeedback(
   token: string,
-  projectId: string,
+  projectKey: string,
   id: string,
   input: FeedbackMutationInput,
 ): Promise<FeedbackItem> {
-  return requestJson<FeedbackItem>(`/admin/projects/${projectId}/feedbacks/${id}`, {
+  return requestJson<FeedbackItem>(`/admin/projects/${projectKey}/feedbacks/${id}`, {
     method: "PATCH",
     token,
     body: input,
@@ -57,10 +60,10 @@ export async function updateFeedback(
 
 export async function deleteFeedback(
   token: string,
-  projectId: string,
+  projectKey: string,
   id: string,
 ): Promise<{ success: true }> {
-  return requestJson<{ success: true }>(`/admin/projects/${projectId}/feedbacks/${id}`, {
+  return requestJson<{ success: true }>(`/admin/projects/${projectKey}/feedbacks/${id}`, {
     method: "DELETE",
     token,
   })

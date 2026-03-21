@@ -41,8 +41,8 @@ describe("ActionsDashboard", () => {
           name: "Verhub",
           repo_url: null,
           description: null,
-          created_at: "2026-01-01T00:00:00.000Z",
-          updated_at: "2026-01-01T00:00:00.000Z",
+          created_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
+          updated_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
         },
       ],
     })
@@ -56,7 +56,7 @@ describe("ActionsDashboard", () => {
           name: "打开设置",
           description: "用户点击设置入口",
           custom_data: null,
-          created_time: 1710000000000,
+          created_time: 1710000000,
         },
       ],
     })

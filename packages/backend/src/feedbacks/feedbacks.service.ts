@@ -14,12 +14,16 @@ type FeedbackItem = {
   content: string
   platform: "ios" | "android" | "windows" | "mac" | "web" | null
   custom_data: Prisma.JsonValue | null
-  created_at: string
+  created_at: number
 }
 
 type FeedbackListResponse = {
   total: number
   data: FeedbackItem[]
+}
+
+function normalizeProjectKey(projectKey: string): string {
+  return projectKey.trim().toLowerCase()
 }
 
 @Injectable()
@@ -46,13 +50,14 @@ export class FeedbacksService {
     }
   }
 
-  async findAll(projectId: string, query: QueryFeedbacksDto): Promise<FeedbackListResponse> {
-    await this.ensureProjectExistsById(projectId)
+  async findAll(projectKey: string, query: QueryFeedbacksDto): Promise<FeedbackListResponse> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    await this.ensureProjectExistsByKey(normalizedProjectKey)
 
     const [total, data] = await this.prisma.$transaction([
-      this.prisma.feedback.count({ where: { projectId } }),
+      this.prisma.feedback.count({ where: { projectKey: normalizedProjectKey } }),
       this.prisma.feedback.findMany({
-        where: { projectId },
+        where: { projectKey: normalizedProjectKey },
         take: query.limit,
         skip: query.offset,
         orderBy: { createdAt: "desc" },
@@ -65,11 +70,12 @@ export class FeedbacksService {
     }
   }
 
-  async findOne(projectId: string, id: string): Promise<FeedbackItem> {
+  async findOne(projectKey: string, id: string): Promise<FeedbackItem> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
     const feedback = await this.prisma.feedback.findFirst({
       where: {
         id,
-        projectId,
+        projectKey: normalizedProjectKey,
       },
     })
     if (!feedback) {
@@ -80,9 +86,10 @@ export class FeedbacksService {
   }
 
   async createByProjectKey(projectKey: string, dto: CreateFeedbackDto): Promise<FeedbackItem> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
     const project = await this.prisma.project.findUnique({
-      where: { projectKey },
-      select: { id: true },
+      where: { projectKey: normalizedProjectKey },
+      select: { projectKey: true },
     })
     if (!project) {
       throw new NotFoundException("Project not found")
@@ -90,7 +97,7 @@ export class FeedbacksService {
 
     const created = await this.prisma.feedback.create({
       data: {
-        projectId: project.id,
+        projectKey: project.projectKey,
         userId: dto.user_id,
         rating: dto.rating,
         content: dto.content,
@@ -102,11 +109,12 @@ export class FeedbacksService {
     return this.toFeedbackItem(created)
   }
 
-  async update(projectId: string, id: string, dto: UpdateFeedbackDto): Promise<FeedbackItem> {
+  async update(projectKey: string, id: string, dto: UpdateFeedbackDto): Promise<FeedbackItem> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
     const existing = await this.prisma.feedback.findFirst({
       where: {
         id,
-        projectId,
+        projectKey: normalizedProjectKey,
       },
     })
     if (!existing) {
@@ -127,11 +135,12 @@ export class FeedbacksService {
     return this.toFeedbackItem(updated)
   }
 
-  async remove(projectId: string, id: string): Promise<void> {
+  async remove(projectKey: string, id: string): Promise<void> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
     const existing = await this.prisma.feedback.findFirst({
       where: {
         id,
-        projectId,
+        projectKey: normalizedProjectKey,
       },
     })
     if (!existing) {
@@ -144,25 +153,25 @@ export class FeedbacksService {
   async updateById(id: string, dto: UpdateFeedbackDto): Promise<FeedbackItem> {
     const feedback = await this.prisma.feedback.findUnique({
       where: { id },
-      select: { projectId: true },
+      select: { projectKey: true },
     })
     if (!feedback) {
       throw new NotFoundException("Feedback not found")
     }
 
-    return this.update(feedback.projectId, id, dto)
+    return this.update(feedback.projectKey, id, dto)
   }
 
   async removeById(id: string): Promise<void> {
     const feedback = await this.prisma.feedback.findUnique({
       where: { id },
-      select: { projectId: true },
+      select: { projectKey: true },
     })
     if (!feedback) {
       throw new NotFoundException("Feedback not found")
     }
 
-    await this.remove(feedback.projectId, id)
+    await this.remove(feedback.projectKey, id)
   }
 
   getStatus(): { module: string; implemented: boolean } {
@@ -172,10 +181,10 @@ export class FeedbacksService {
     }
   }
 
-  private async ensureProjectExistsById(projectId: string): Promise<void> {
+  private async ensureProjectExistsByKey(projectKey: string): Promise<void> {
     const project = await this.prisma.project.findUnique({
-      where: { id: projectId },
-      select: { id: true },
+      where: { projectKey },
+      select: { projectKey: true },
     })
     if (!project) {
       throw new NotFoundException("Project not found")
@@ -209,7 +218,7 @@ export class FeedbacksService {
     content: string
     platform: ClientPlatform | null
     customData: Prisma.JsonValue | null
-    createdAt: Date
+    createdAt: number
   }): FeedbackItem {
     return {
       id: feedback.id,
@@ -218,7 +227,7 @@ export class FeedbacksService {
       content: feedback.content,
       platform: this.fromClientPlatform(feedback.platform),
       custom_data: feedback.customData,
-      created_at: feedback.createdAt.toISOString(),
+      created_at: feedback.createdAt,
     }
   }
 }

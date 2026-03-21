@@ -3,6 +3,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } f
 import { JwtAdminGuard } from "../auth/guards/jwt-admin.guard"
 
 import { CreateProjectDto } from "./dto/create-project.dto"
+import { PreviewGithubRepoDto } from "./dto/preview-github-repo.dto"
 import { QueryProjectsDto } from "./dto/query-projects.dto"
 import { UpdateProjectDto } from "./dto/update-project.dto"
 import { ProjectsService } from "./projects.service"
@@ -22,9 +23,14 @@ export class ProjectsController {
     return this.projectsService.getStatistics()
   }
 
-  @Get(":id")
-  async findOne(@Param("id") id: string) {
-    return this.projectsService.findOne(id)
+  @Get("github-repo-preview")
+  async previewFromGithubRepo(@Query() query: PreviewGithubRepoDto) {
+    return this.projectsService.previewFromGithubRepo(query.repo_url)
+  }
+
+  @Get(":projectKey")
+  async findOne(@Param("projectKey") projectKey: string) {
+    return this.projectsService.findOne(projectKey)
   }
 
   @Post()
@@ -32,14 +38,14 @@ export class ProjectsController {
     return this.projectsService.create(dto)
   }
 
-  @Patch(":id")
-  async update(@Param("id") id: string, @Body() dto: UpdateProjectDto) {
-    return this.projectsService.update(id, dto)
+  @Patch(":projectKey")
+  async update(@Param("projectKey") projectKey: string, @Body() dto: UpdateProjectDto) {
+    return this.projectsService.update(projectKey, dto)
   }
 
-  @Delete(":id")
-  async remove(@Param("id") id: string) {
-    await this.projectsService.remove(id)
+  @Delete(":projectKey")
+  async remove(@Param("projectKey") projectKey: string) {
+    await this.projectsService.remove(projectKey)
     return {
       success: true,
     }

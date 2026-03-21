@@ -1,4 +1,4 @@
-import { IsBoolean, IsOptional, IsString, MaxLength } from "class-validator"
+import { IsBoolean, IsInt, IsOptional, IsString, MaxLength } from "class-validator"
 
 export class CreateAnnouncementDto {
   @IsString()
@@ -12,4 +12,13 @@ export class CreateAnnouncementDto {
   @IsOptional()
   @IsBoolean()
   is_pinned?: boolean
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  author?: string
+
+  @IsOptional()
+  @IsInt()
+  published_at?: number
 }

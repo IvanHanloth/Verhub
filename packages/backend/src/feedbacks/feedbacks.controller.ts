@@ -11,32 +11,32 @@ import { FeedbacksService } from "./feedbacks.service"
 export class FeedbacksController {
   constructor(private readonly feedbacksService: FeedbacksService) {}
 
-  @Get("admin/projects/:projectId/feedbacks")
+  @Get("admin/projects/:projectKey/feedbacks")
   @UseGuards(JwtAdminGuard)
-  async findAll(@Param("projectId") projectId: string, @Query() query: QueryFeedbacksDto) {
-    return this.feedbacksService.findAll(projectId, query)
+  async findAll(@Param("projectKey") projectKey: string, @Query() query: QueryFeedbacksDto) {
+    return this.feedbacksService.findAll(projectKey, query)
   }
 
-  @Get("admin/projects/:projectId/feedbacks/:id")
+  @Get("admin/projects/:projectKey/feedbacks/:id")
   @UseGuards(JwtAdminGuard)
-  async findOne(@Param("projectId") projectId: string, @Param("id") id: string) {
-    return this.feedbacksService.findOne(projectId, id)
+  async findOne(@Param("projectKey") projectKey: string, @Param("id") id: string) {
+    return this.feedbacksService.findOne(projectKey, id)
   }
 
-  @Patch("admin/projects/:projectId/feedbacks/:id")
+  @Patch("admin/projects/:projectKey/feedbacks/:id")
   @UseGuards(JwtAdminGuard)
   async update(
-    @Param("projectId") projectId: string,
+    @Param("projectKey") projectKey: string,
     @Param("id") id: string,
     @Body() dto: UpdateFeedbackDto,
   ) {
-    return this.feedbacksService.update(projectId, id, dto)
+    return this.feedbacksService.update(projectKey, id, dto)
   }
 
-  @Delete("admin/projects/:projectId/feedbacks/:id")
+  @Delete("admin/projects/:projectKey/feedbacks/:id")
   @UseGuards(JwtAdminGuard)
-  async remove(@Param("projectId") projectId: string, @Param("id") id: string) {
-    await this.feedbacksService.remove(projectId, id)
+  async remove(@Param("projectKey") projectKey: string, @Param("id") id: string) {
+    await this.feedbacksService.remove(projectKey, id)
     return {
       success: true,
     }

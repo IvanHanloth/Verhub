@@ -54,7 +54,7 @@ export class JwtAdminGuard implements CanActivate {
         throw new UnauthorizedException("Admin account is invalid")
       }
 
-      if (!payload.iat || payload.iat < Math.floor(user.updatedAt.getTime() / 1000)) {
+      if (!payload.iat || payload.iat < user.updatedAt) {
         throw new UnauthorizedException("Token expired due to profile update")
       }
 

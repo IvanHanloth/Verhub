@@ -37,8 +37,8 @@ describe("LogsDashboard", () => {
           name: "Verhub",
           repo_url: null,
           description: null,
-          created_at: "2026-01-01T00:00:00.000Z",
-          updated_at: "2026-01-01T00:00:00.000Z",
+          created_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
+          updated_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
         },
       ],
     })
@@ -65,8 +65,8 @@ describe("LogsDashboard", () => {
           limit: 10,
           offset: 0,
           level: 3,
-          start_time: Date.parse("2026-03-19T10:00"),
-          end_time: Date.parse("2026-03-19T11:00"),
+          start_time: Math.floor(Date.parse("2026-03-19T10:00") / 1000),
+          end_time: Math.floor(Date.parse("2026-03-19T11:00") / 1000),
         },
         expect.any(AbortSignal),
       )

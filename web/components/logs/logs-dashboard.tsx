@@ -10,6 +10,8 @@ import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard, AdminItemCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
+import { ProjectApiOverview } from "@/components/admin/project-api-overview"
+import { ProjectSelectorCard } from "@/components/admin/project-selector-card"
 import { useSharedProjectSelection } from "@/hooks/use-shared-project-selection"
 import { listLogs, type LogItem, type LogLevel } from "@/lib/logs-api"
 import { listProjects, type ProjectItem } from "@/lib/projects-api"
@@ -48,7 +50,7 @@ function getErrorMessage(error: unknown): string {
   return "请求失败，请稍后重试。"
 }
 
-function toEpochMs(value: string): number | undefined {
+function toEpochSeconds(value: string): number | undefined {
   const trimmed = value.trim()
   if (!trimmed) {
     return undefined
@@ -59,7 +61,7 @@ function toEpochMs(value: string): number | undefined {
     return undefined
   }
 
-  return time
+  return Math.floor(time / 1000)
 }
 
 function levelLabel(level: LogLevel): string {
@@ -84,10 +86,10 @@ function levelBadgeClass(level: LogLevel): string {
   return mapping[level]
 }
 
-function formatDateTime(value: string): string {
-  const date = new Date(value)
+function formatDateTime(value: number): string {
+  const date = new Date(value * 1000)
   if (Number.isNaN(date.getTime())) {
-    return value
+    return String(value)
   }
 
   return new Intl.DateTimeFormat("zh-CN", {
@@ -107,7 +109,7 @@ export function LogsDashboard() {
 
   const [projects, setProjects] = React.useState<ProjectItem[]>([])
   const [projectsLoading, setProjectsLoading] = React.useState(false)
-  const { selectedProjectId, setSelectedProjectId } = useSharedProjectSelection()
+  const { selectedProjectKey, setSelectedProjectKey } = useSharedProjectSelection()
 
   const [logs, setLogs] = React.useState<LogItem[]>([])
   const [total, setTotal] = React.useState(0)
@@ -118,6 +120,11 @@ export function LogsDashboard() {
   const [draftFilters, setDraftFilters] = React.useState<FilterState>(emptyFilters)
   const [appliedFilters, setAppliedFilters] = React.useState<FilterState>(emptyFilters)
 
+  const selectedProject = React.useMemo(
+    () => projects.find((project) => project.id === selectedProjectKey) ?? null,
+    [projects, selectedProjectKey],
+  )
+
   const hasToken = token.trim().length > 0
   const page = Math.floor(offset / PAGE_SIZE) + 1
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -125,7 +132,7 @@ export function LogsDashboard() {
   const loadProjects = React.useCallback(async () => {
     if (!token) {
       setProjects([])
-      setSelectedProjectId("")
+      setSelectedProjectKey("")
       return
     }
 
@@ -133,16 +140,16 @@ export function LogsDashboard() {
     try {
       const response = await listProjects(token, { limit: PROJECT_PAGE_SIZE, offset: 0 })
       setProjects(response.data)
-      const hasCurrent = response.data.some((project) => project.id === selectedProjectId)
+      const hasCurrent = response.data.some((project) => project.id === selectedProjectKey)
       if (hasCurrent) {
         return
       }
 
       const firstProject = response.data[0]
       if (firstProject) {
-        setSelectedProjectId(firstProject.id)
+        setSelectedProjectKey(firstProject.id)
       } else {
-        setSelectedProjectId("")
+        setSelectedProjectKey("")
       }
     } catch (loadError) {
       if (isAuthError(loadError)) {
@@ -151,22 +158,22 @@ export function LogsDashboard() {
       }
       setAuthError(getErrorMessage(loadError))
       setProjects([])
-      setSelectedProjectId("")
+      setSelectedProjectKey("")
     } finally {
       setProjectsLoading(false)
     }
-  }, [selectedProjectId, setSelectedProjectId, token])
+  }, [selectedProjectKey, setSelectedProjectKey, token])
 
   const loadLogs = React.useCallback(
     async (nextOffset: number, signal?: AbortSignal) => {
-      if (!token || !selectedProjectId) {
+      if (!token || !selectedProjectKey) {
         setLogs([])
         setTotal(0)
         return
       }
 
-      const startTime = toEpochMs(appliedFilters.startTime)
-      const endTime = toEpochMs(appliedFilters.endTime)
+      const startTime = toEpochSeconds(appliedFilters.startTime)
+      const endTime = toEpochSeconds(appliedFilters.endTime)
 
       if (startTime !== undefined && endTime !== undefined && startTime > endTime) {
         setError("开始时间不能晚于结束时间。")
@@ -181,7 +188,7 @@ export function LogsDashboard() {
       try {
         const response = await listLogs(
           token,
-          selectedProjectId,
+          selectedProjectKey,
           {
             limit: PAGE_SIZE,
             offset: nextOffset,
@@ -213,7 +220,7 @@ export function LogsDashboard() {
         }
       }
     },
-    [appliedFilters, selectedProjectId, token],
+    [appliedFilters, selectedProjectKey, token],
   )
 
   React.useEffect(() => {
@@ -231,7 +238,7 @@ export function LogsDashboard() {
 
   React.useEffect(() => {
     setOffset(0)
-  }, [selectedProjectId])
+  }, [selectedProjectKey])
 
   function applyFilters(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -254,38 +261,69 @@ export function LogsDashboard() {
       />
 
       <section className="grid gap-6 lg:grid-cols-[1.05fr_1.95fr]">
-        <AdminCard className="space-y-6">
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold">项目选择</h2>
-          </div>
+        <div className="space-y-6">
+          <ProjectSelectorCard
+            selectId="logs-project-select"
+            selectedProjectKey={selectedProjectKey}
+            projects={projects}
+            disabled={!hasToken || projectsLoading || projects.length === 0}
+            ringClassName="ring-teal-300"
+            onChange={setSelectedProjectKey}
+            warning={
+              authError ? (
+                <span className="inline-flex items-center gap-2">
+                  <AlertTriangle className="size-4" />
+                  {authError}
+                </span>
+              ) : undefined
+            }
+          />
 
-          <div className="space-y-2">
-            <label className="text-sm text-slate-300" htmlFor="logs-project-select">
-              目标项目
-            </label>
-            <select
-              id="logs-project-select"
-              className="w-full rounded-xl border border-white/20 bg-white/8 px-3 py-2 text-sm ring-teal-300 transition outline-none focus:ring-2"
-              value={selectedProjectId}
-              onChange={(event) => setSelectedProjectId(event.target.value)}
-              disabled={!hasToken || projectsLoading || projects.length === 0}
-            >
-              {projects.length === 0 ? <option value="">暂无可选项目</option> : null}
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name} ({project.project_key})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {authError ? (
-            <p className="inline-flex items-center gap-2 text-sm text-rose-300">
-              <AlertTriangle className="size-4" />
-              {authError}
-            </p>
-          ) : null}
-        </AdminCard>
+          <ProjectApiOverview
+            title="API Demo · 日志"
+            projectKey={selectedProject?.project_key}
+            groups={[
+              {
+                label: "公开接口",
+                endpoints: [
+                  {
+                    method: "POST",
+                    path: "/api/v1/public/{projectKey}/logs",
+                    description: "客户端上报日志",
+                    auth: { tokenRequired: false },
+                    requestBody: {
+                      level: 2,
+                      message: "Network request timeout",
+                      stack_trace: "Error: timeout at api.ts:42",
+                      custom_data: { platform: "web", page: "/admin/settings" },
+                    },
+                  },
+                ],
+              },
+              {
+                label: "管理接口",
+                endpoints: [
+                  {
+                    method: "GET",
+                    path: "/api/v1/admin/projects/{projectKey}/logs",
+                    description: "按条件分页查询日志",
+                    auth: { tokenRequired: true, tokenType: "管理员 JWT" },
+                  },
+                  {
+                    method: "GET",
+                    path: "/api/v1/admin/logs/statistics",
+                    description: "查看日志聚合统计",
+                    auth: {
+                      tokenRequired: true,
+                      tokenType: "项目 API Key",
+                      scopes: ["logs:read"],
+                    },
+                  },
+                ],
+              },
+            ]}
+          />
+        </div>
 
         <AdminCard className="space-y-5">
           <form

@@ -8,7 +8,7 @@ export type LogItem = {
   content: string
   device_info: unknown
   custom_data: unknown
-  created_at: string
+  created_at: number
 }
 
 export type ListLogsParams = {
@@ -26,7 +26,7 @@ export type ListLogsResponse = {
 
 export async function listLogs(
   token: string,
-  projectId: string,
+  projectKey: string,
   params: ListLogsParams,
   signal?: AbortSignal,
 ): Promise<ListLogsResponse> {
@@ -47,7 +47,7 @@ export async function listLogs(
     query.set("end_time", String(params.end_time))
   }
 
-  return requestJson<ListLogsResponse>(`/admin/projects/${projectId}/logs?${query.toString()}`, {
+  return requestJson<ListLogsResponse>(`/admin/projects/${projectKey}/logs?${query.toString()}`, {
     token,
     signal,
   })

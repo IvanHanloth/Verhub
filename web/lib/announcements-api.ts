@@ -5,8 +5,10 @@ export type AnnouncementItem = {
   title: string
   content: string
   is_pinned: boolean
-  created_at: string
-  updated_at: string
+  author: string | null
+  published_at: number
+  created_at: number
+  updated_at: number
 }
 
 export type ListAnnouncementsResponse = {
@@ -18,11 +20,13 @@ export type AnnouncementMutationInput = {
   title: string
   content: string
   is_pinned?: boolean
+  author?: string
+  published_at?: number
 }
 
 export async function listAnnouncements(
   token: string,
-  projectId: string,
+  projectKey: string,
   params: { limit: number; offset: number },
   signal?: AbortSignal,
 ): Promise<ListAnnouncementsResponse> {
@@ -32,7 +36,7 @@ export async function listAnnouncements(
   })
 
   return requestJson<ListAnnouncementsResponse>(
-    `/admin/projects/${projectId}/announcements?${query.toString()}`,
+    `/admin/projects/${projectKey}/announcements?${query.toString()}`,
     {
       token,
       signal,
@@ -42,10 +46,10 @@ export async function listAnnouncements(
 
 export async function createAnnouncement(
   token: string,
-  projectId: string,
+  projectKey: string,
   input: AnnouncementMutationInput,
 ): Promise<AnnouncementItem> {
-  return requestJson<AnnouncementItem>(`/admin/projects/${projectId}/announcements`, {
+  return requestJson<AnnouncementItem>(`/admin/projects/${projectKey}/announcements`, {
     method: "POST",
     token,
     body: input,
@@ -54,11 +58,11 @@ export async function createAnnouncement(
 
 export async function updateAnnouncement(
   token: string,
-  projectId: string,
+  projectKey: string,
   id: string,
   input: AnnouncementMutationInput,
 ): Promise<AnnouncementItem> {
-  return requestJson<AnnouncementItem>(`/admin/projects/${projectId}/announcements/${id}`, {
+  return requestJson<AnnouncementItem>(`/admin/projects/${projectKey}/announcements/${id}`, {
     method: "PATCH",
     token,
     body: input,
@@ -67,10 +71,10 @@ export async function updateAnnouncement(
 
 export async function deleteAnnouncement(
   token: string,
-  projectId: string,
+  projectKey: string,
   id: string,
 ): Promise<{ success: true }> {
-  return requestJson<{ success: true }>(`/admin/projects/${projectId}/announcements/${id}`, {
+  return requestJson<{ success: true }>(`/admin/projects/${projectKey}/announcements/${id}`, {
     method: "DELETE",
     token,
   })

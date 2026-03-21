@@ -2,10 +2,10 @@
 
 import * as React from "react"
 
-const STORAGE_KEY = "verhub.admin.selectedProjectId"
+const STORAGE_KEY = "verhub.admin.selectedProjectKey"
 const EVENT_NAME = "verhub.admin.project.changed"
 
-function readStoredProjectId(): string {
+function readStoredProjectKey(): string {
   if (typeof window === "undefined") {
     return ""
   }
@@ -13,17 +13,17 @@ function readStoredProjectId(): string {
   return window.localStorage.getItem(STORAGE_KEY)?.trim() ?? ""
 }
 
-function emitChange(nextId: string) {
+function emitChange(nextKey: string) {
   if (typeof window === "undefined") {
     return
   }
 
-  window.dispatchEvent(new CustomEvent<string>(EVENT_NAME, { detail: nextId }))
+  window.dispatchEvent(new CustomEvent<string>(EVENT_NAME, { detail: nextKey }))
 }
 
 export function useSharedProjectSelection(defaultValue = "") {
-  const [selectedProjectId, setSelectedProjectIdState] = React.useState(() => {
-    const current = readStoredProjectId()
+  const [selectedProjectKey, setSelectedProjectKeyState] = React.useState(() => {
+    const current = readStoredProjectKey()
     return current || defaultValue
   })
 
@@ -37,12 +37,12 @@ export function useSharedProjectSelection(defaultValue = "") {
         return
       }
 
-      setSelectedProjectIdState(event.newValue?.trim() ?? "")
+      setSelectedProjectKeyState(event.newValue?.trim() ?? "")
     }
 
     const onCustomChange = (event: Event) => {
       const detail = (event as CustomEvent<string>).detail
-      setSelectedProjectIdState(detail?.trim() ?? "")
+      setSelectedProjectKeyState(detail?.trim() ?? "")
     }
 
     window.addEventListener("storage", onStorage)
@@ -53,9 +53,9 @@ export function useSharedProjectSelection(defaultValue = "") {
     }
   }, [])
 
-  const setSelectedProjectId = React.useCallback((nextId: string) => {
-    const normalized = nextId.trim()
-    setSelectedProjectIdState(normalized)
+  const setSelectedProjectKey = React.useCallback((nextKey: string) => {
+    const normalized = nextKey.trim()
+    setSelectedProjectKeyState(normalized)
 
     if (typeof window === "undefined") {
       return
@@ -71,7 +71,7 @@ export function useSharedProjectSelection(defaultValue = "") {
   }, [])
 
   return {
-    selectedProjectId,
-    setSelectedProjectId,
+    selectedProjectKey,
+    setSelectedProjectKey,
   }
 }

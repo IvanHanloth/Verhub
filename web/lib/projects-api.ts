@@ -6,8 +6,8 @@ export type ProjectItem = {
   name: string
   repo_url: string | null
   description: string | null
-  created_at: string
-  updated_at: string
+  created_at: number
+  updated_at: number
 }
 
 export type ListProjectsResponse = {
@@ -20,6 +20,13 @@ export type ProjectMutationInput = {
   name: string
   repo_url?: string
   description?: string
+}
+
+export type GithubRepoProjectPreview = {
+  project_key: string
+  name: string
+  repo_url: string
+  description: string | null
 }
 
 export type LoginResponse = {
@@ -50,7 +57,10 @@ export async function listProjects(
   })
 }
 
-export async function createProject(token: string, input: ProjectMutationInput): Promise<ProjectItem> {
+export async function createProject(
+  token: string,
+  input: ProjectMutationInput,
+): Promise<ProjectItem> {
   return requestJson<ProjectItem>("/admin/projects", {
     method: "POST",
     token,
@@ -75,4 +85,16 @@ export async function deleteProject(token: string, id: string): Promise<{ succes
     method: "DELETE",
     token,
   })
+}
+
+export async function previewProjectFromGithubRepo(
+  token: string,
+  repoUrl: string,
+): Promise<GithubRepoProjectPreview> {
+  const query = new URLSearchParams({ repo_url: repoUrl })
+
+  return requestJson<GithubRepoProjectPreview>(
+    `/admin/projects/github-repo-preview?${query.toString()}`,
+    { token },
+  )
 }

@@ -21,6 +21,7 @@ import { useTheme } from "next-themes"
 
 import { Button } from "@workspace/ui/components/button"
 
+import { getAdminProfile } from "@/lib/auth-api"
 import { clearSessionToken, getSessionToken } from "@/lib/auth-session"
 
 import { PageTransition } from "./page-transition"
@@ -55,6 +56,8 @@ export function DashboardShell({ children }: Props) {
   const [ready, setReady] = React.useState(false)
 
   React.useEffect(() => {
+    let cancelled = false
+
     const token = getSessionToken().trim()
     if (!token) {
       const returnTo = encodeURIComponent(pathname || "/admin")
@@ -62,7 +65,21 @@ export function DashboardShell({ children }: Props) {
       return
     }
 
-    setReady(true)
+    void getAdminProfile()
+      .then(() => {
+        if (!cancelled) {
+          setReady(true)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setReady(true)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [pathname, router])
 
   function logout() {

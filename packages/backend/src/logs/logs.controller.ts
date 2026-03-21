@@ -10,10 +10,10 @@ import { LogsService } from "./logs.service"
 export class LogsController {
   constructor(private readonly logsService: LogsService) {}
 
-  @Get("admin/projects/:projectId/logs")
+  @Get("admin/projects/:projectKey/logs")
   @UseGuards(JwtAdminGuard)
-  async findAll(@Param("projectId") projectId: string, @Query() query: QueryLogsDto) {
-    return this.logsService.findAll(projectId, query)
+  async findAll(@Param("projectKey") projectKey: string, @Query() query: QueryLogsDto) {
+    return this.logsService.findAll(projectKey, query)
   }
 
   @Post("public/:projectKey/logs")

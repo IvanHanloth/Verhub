@@ -10,7 +10,7 @@
 
 - `docker/verhub.Dockerfile`：统一构建镜像（backend + web）
 - `docker/app-entrypoint.sh`：应用入口，先拉起 backend 再启动 web
-- `docker/backend-entrypoint.sh`：backend 启动前执行 Prisma `db push`
+- `docker/backend-entrypoint.sh`：backend 启动前执行 Prisma `migrate deploy`
 - `docker-compose.yml`：完整服务编排
 - `.env.example`：Compose 环境变量示例
 

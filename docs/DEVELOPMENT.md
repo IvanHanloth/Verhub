@@ -82,7 +82,7 @@ docker compose up -d --build
 
 前端变量（`web/.env.local`，按需新增）：
 
-- `NEXT_PUBLIC_API_BASE_URL`：后端 API 地址，默认 `http://localhost:4000/api/v1`
+- `NEXT_PUBLIC_API_BASE_URL`：后端 API 地址，默认 `/api/v1`（通过 Next.js 代理转发）
 
 ## 3. 质量门禁与测试
 
@@ -123,10 +123,17 @@ pnpm --filter @workspace/backend test:e2e
 - 必填字段必须使用原生 `required` 属性，红色 `*` 由全局样式自动渲染
 - 新增或重构表单时，避免把字段名只放在 placeholder 中，必须保留可见 label
 
+## 3.4 版本发布规范
+
+- 版本创建/编辑支持字段：`is_latest`、`is_preview`、`published_at`。
+- `published_at` 使用 Unix 秒级时间戳。
+- 当项目配置 `repo_url`（`https://github.com/{owner}/{repo}`）后，可调用管理端 GitHub 预览接口自动填充版本草稿。
+- API 契约与前后端类型必须与 `verhub.openapi.yaml` 同步更新。
+
 ## 3.3 跨页面项目上下文规范
 
 - 后台项目上下文由 `web/hooks/use-shared-project-selection.ts` 管理
-- 持久化键：`verhub.admin.selectedProjectId`
+- 持久化键：`verhub.admin.selectedProjectKey`
 - 事件广播：`verhub.admin.project.changed`
 - 需要项目维度的页面（versions/announcements/feedbacks/logs/actions）应复用该 hook，避免各页面独立维护默认项目
 

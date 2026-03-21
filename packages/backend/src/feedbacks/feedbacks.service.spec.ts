@@ -22,7 +22,7 @@ function createPrismaMock() {
 describe("FeedbacksService", () => {
   it("creates feedback from project key", async () => {
     const prisma = createPrismaMock()
-    prisma.project.findUnique.mockResolvedValue({ id: "project-1" })
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "verhub" })
     prisma.feedback.create.mockResolvedValue({
       id: "feedback-1",
       userId: "user-1",
@@ -30,7 +30,7 @@ describe("FeedbacksService", () => {
       content: "great release",
       platform: "WEB",
       customData: { channel: "web" },
-      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      createdAt: 1767225600,
     })
 
     const service = new FeedbacksService(prisma as never)
@@ -44,7 +44,7 @@ describe("FeedbacksService", () => {
 
     expect(result.id).toBe("feedback-1")
     expect(result.platform).toBe("web")
-    expect(result.created_at).toBe("2026-01-01T00:00:00.000Z")
+    expect(result.created_at).toBe(1767225600)
   })
 
   it("throws when project key does not exist", async () => {

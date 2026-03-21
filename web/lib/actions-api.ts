@@ -51,7 +51,7 @@ function getTokenOrThrow() {
 }
 
 export async function listActions(
-  projectId: string,
+  projectKey: string,
   params: { limit: number; offset: number },
   signal?: AbortSignal,
 ): Promise<ListActionsResponse> {
@@ -61,7 +61,7 @@ export async function listActions(
   })
 
   return requestJson<ListActionsResponse>(
-    `/admin/projects/${projectId}/actions?${query.toString()}`,
+    `/admin/projects/${projectKey}/actions?${query.toString()}`,
     {
       token: getTokenOrThrow(),
       signal,

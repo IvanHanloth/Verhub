@@ -18,7 +18,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "admin:reset": "ts-node src/scripts/reset-admin.ts"
+    "admin:reset": "node dist/scripts/reset-admin.js || ts-node src/scripts/reset-admin.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.8",

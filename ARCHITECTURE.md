@@ -61,6 +61,14 @@ Token 范围模型（ApiKey）：
 - `previousKeyHash` + `previousKeyExpiresAt`：轮转后的旧 key 宽限期校验
 - 过期策略为“拒绝访问但不自动删除记录”
 
+版本发布策略（Version）：
+
+- `isLatest`：标记当前项目最新稳定版本（同项目应至多一个）。
+- `isPreview`：标记预发布版本（如 beta/rc）。
+- `publishedAt`：版本发布时间（Unix 秒级时间戳）。
+- 创建新稳定版本时默认自动提升为 latest；手动调整 latest 时后端负责同项目互斥维护。
+- 支持从项目 `repoUrl` 对应的 GitHub Release 拉取版本草稿，用于减少重复录入。
+
 ## 4. 前端架构
 
 前端管理端基于 Next.js App Router：

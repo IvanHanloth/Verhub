@@ -34,6 +34,10 @@ agent: "agent"
 - 所有计划内容都必须写入根目录 `TODO` 文件并可追踪进度（如 `[ ]` / `[~]` / `[x]`）。
 - 所有文档与接口文档必须随开发实时更新（例如 `README.md`、`docs/*`、`verhub.openapi.yaml`）。
 - 对数据库的任何变更都必须同步更新 Prisma schema 与相关迁移。
+- 数据库结构变更必须通过 Prisma migrate 流程落地（`prisma migrate dev` 生成迁移、`prisma migrate deploy` 执行迁移）。
+- 禁止将 `prisma db push` 用于生产/共享环境的结构演进；`db push` 仅允许用于本地临时空库调试且不得替代正式迁移。
+- 提交数据库变更时必须包含可审查的 migration SQL（位于 `packages/backend/prisma/migrations/*/migration.sql`），并在 PR/任务说明中标注迁移影响与回滚策略。
+- 若迁移涉及非空表新增必填列、主键/外键调整或数据回填，必须在迁移中提供显式数据迁移步骤与失败保护，禁止依赖运行时热修复脚本兜底。
 - 对 API 的任何变更都必须同步更新 OpenAPI 文档`verhub.openapi.yaml`与后端 DTO/响应结构。
 
 ## 3. 生成“可执行计划”（必须）

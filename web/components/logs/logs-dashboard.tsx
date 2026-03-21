@@ -256,7 +256,7 @@ export function LogsDashboard() {
     <section className="space-y-6">
       <AdminPageHeader
         title="日志审计中心"
-        description="按项目、级别和时间范围筛选日志，快速定位客户端与服务端运行问题。"
+        description="按项目、级别和时间范围筛选日志，定位运行问题。"
         badge="Verhub Logs"
       />
 
@@ -280,7 +280,7 @@ export function LogsDashboard() {
           />
 
           <ProjectApiOverview
-            title="API Demo · 日志"
+            title="接口示例 · 日志"
             projectKey={selectedProject?.project_key}
             groups={[
               {

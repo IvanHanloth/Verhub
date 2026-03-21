@@ -324,7 +324,7 @@ export function AnnouncementsDashboard() {
     <section className="space-y-6">
       <AdminPageHeader
         title="公告发布中心"
-        description="维护项目公告、置顶状态与历史记录，确保版本更新和运营通知及时触达。"
+        description="维护公告内容、置顶状态和发布时间。"
         badge="Verhub Announcements"
       />
 
@@ -348,7 +348,7 @@ export function AnnouncementsDashboard() {
           />
 
           <ProjectApiOverview
-            title="API Demo · 公告"
+            title="接口示例 · 公告"
             projectKey={selectedProject?.project_key}
             groups={[
               {

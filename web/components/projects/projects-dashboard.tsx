@@ -304,8 +304,8 @@ export function ProjectsDashboard() {
   return (
     <section className="space-y-6">
       <AdminPageHeader
-        title="项目管理工作台"
-        description="在同一个界面完成登录、分页查看、创建、编辑与删除，帮助你快速维护版本管理平台的项目元数据。"
+        title="项目管理"
+        description="维护项目基础信息，包括标识、名称、仓库、官网与发布时间。"
         badge="Verhub Projects"
         actions={
           <Button
@@ -330,7 +330,7 @@ export function ProjectsDashboard() {
           <div className="space-y-2">
             <h2 className="text-lg font-semibold">创建或编辑项目</h2>
             <p className="text-sm text-slate-200/90">
-              字段会按后端 DTO 校验规则提交，支持在同一表单切换编辑模式。
+              用于新增或修改项目信息。project_key 与 name 为必填项。
             </p>
           </div>
 

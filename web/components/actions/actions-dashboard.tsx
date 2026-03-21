@@ -205,7 +205,7 @@ export function ActionsDashboard() {
     <section className="space-y-5">
       <AdminPageHeader
         title="行为事件管理"
-        description="维护项目行为定义并查看最近上报记录，用于埋点治理与事件追踪。"
+        description="维护行为定义并查看最新上报记录。"
         badge="Verhub Actions"
       />
 
@@ -220,7 +220,7 @@ export function ActionsDashboard() {
           />
 
           <ProjectApiOverview
-            title="API Demo · 行为"
+            title="接口示例 · 行为"
             projectKey={selectedProject?.project_key}
             groups={[
               {
@@ -279,7 +279,7 @@ export function ActionsDashboard() {
           <div className="mb-4 space-y-1">
             <h2 className="text-lg font-semibold">{editingActionId ? "编辑行为" : "新增行为"}</h2>
             <p className="text-sm text-slate-700 dark:text-slate-300">
-              表单字段与后端 DTO 对齐，custom_data 需为 JSON 对象。
+              名称与描述为必填项，custom_data 需为 JSON 对象。
             </p>
           </div>
           <form className="grid gap-3" onSubmit={handleSubmit}>

@@ -470,7 +470,7 @@ export function VersionsDashboard() {
     <section className="space-y-6">
       <AdminPageHeader
         title="版本发布管理"
-        description="为指定项目发布客户端版本，配置平台、强更策略和下载地址，并按分页浏览历史版本。"
+        description="发布和维护项目版本，统一管理平台范围、更新策略和下载信息。"
         badge="Verhub Versions"
       />
 
@@ -494,7 +494,7 @@ export function VersionsDashboard() {
           />
 
           <ProjectApiOverview
-            title="API Demo · 版本"
+            title="接口示例 · 版本"
             projectKey={selectedProject?.project_key}
             groups={[
               {
@@ -571,8 +571,7 @@ export function VersionsDashboard() {
               {editingVersionId ? "编辑版本" : "发布新版本"}
             </h2>
             <p className="text-sm text-slate-700 dark:text-slate-300">
-              与后端 CreateVersionDto 对齐：支持 latest/preview 状态、发布时间和 GitHub Release
-              自动填充。
+              填写版本号和发布信息，可从 GitHub Release 导入已有内容。
             </p>
             {selectedProject?.repo_url ? (
               <div className="flex flex-wrap gap-2">

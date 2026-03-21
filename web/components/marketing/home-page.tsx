@@ -23,32 +23,32 @@ const features = [
   {
     icon: Layers,
     title: "项目资产管理",
-    description: "统一管理项目基础信息、作者、链接和发布状态，信息结构清晰可追踪。",
+    description: "统一维护项目基础信息、作者、仓库与官网链接，便于长期管理。",
   },
   {
     icon: Rocket,
     title: "多端版本发布",
-    description: "支持 iOS、Android、Web、桌面端等版本策略，下载链接聚合展示。",
+    description: "支持 iOS、Android、Web、桌面端版本发布，集中维护下载地址。",
   },
   {
     icon: Shield,
     title: "公告治理",
-    description: "支持置顶公告与时间维度编排，确保重要信息优先触达。",
+    description: "支持置顶与定时发布，让重要通知按优先级稳定触达。",
   },
   {
     icon: Code,
     title: "反馈闭环",
-    description: "收集评分与内容反馈，帮助团队快速定位问题并迭代。",
+    description: "统一收集评分与文本反馈，帮助团队持续改进版本体验。",
   },
   {
     icon: GitBranch,
     title: "可审计日志",
-    description: "具备结构化日志检索能力，支持运维、排错与分析场景。",
+    description: "按级别与时间检索日志，便于排障、复盘与问题追踪。",
   },
   {
     icon: CheckCircle2,
     title: "API Key 授权",
-    description: "按项目和权限范围颁发密钥，兼顾灵活接入与安全边界。",
+    description: "按项目与权限范围管理密钥，清晰控制接口访问边界。",
   },
 ]
 
@@ -97,13 +97,13 @@ export function HomePageView() {
               VERSION INTELLIGENCE HUB
             </p>
             <h1 className="mt-6 text-4xl leading-tight font-semibold sm:text-5xl md:text-6xl">
-              更好看的项目展示
+              统一管理项目与版本
               <br className="hidden sm:block" />
-              更高效的版本运营
+              构建稳定的发布协作流
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-7 text-slate-700 sm:text-lg dark:text-slate-300">
-              以文档门户的清晰结构，融合现代产品站的视觉张力。你可以同时管理项目版本、公告信息、反馈与日志，并通过统一
-              API 对外服务。
+              Verhub 提供项目、版本、公告、反馈与日志的一体化管理能力，并提供清晰的 API
+              文档与在线调试入口，方便开发团队协作。
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Button size="lg" className="gap-2" onClick={() => router.push("/admin")}>
@@ -124,8 +124,8 @@ export function HomePageView() {
               {[
                 ["模块", "项目 / 版本 / 公告 / 反馈 / 日志"],
                 ["访问方式", "Public API + Admin Console"],
-                ["文档能力", "接口详情 + 在线调试"],
-                ["部署方式", "Docker + Next.js + NestJS"],
+                ["文档能力", "接口说明 + 在线调试"],
+                ["适用场景", "版本发布 / 运营通知 / 反馈处理"],
               ].map(([label, value]) => (
                 <div
                   key={label}

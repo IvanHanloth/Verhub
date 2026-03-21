@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     default: "Verhub API Docs",
     template: "%s | Verhub API Docs",
   },
-  description: "Verhub 对外 API 文档与管理 API 文档中心",
+  description: "Verhub API 参考文档，涵盖公共接口与管理接口。",
   alternates: {
     canonical: "/doc",
   },

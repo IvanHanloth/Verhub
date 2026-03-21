@@ -90,7 +90,7 @@ export function ProjectApiOverview({ title, projectKey, groups }: ProjectApiOver
     <AdminItemCard className="border-slate-900/10 bg-white/70 p-4 dark:border-white/15 dark:bg-white/5">
       <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{title}</p>
       <p className="mt-1 text-xs text-slate-500 dark:text-slate-300">
-        点击接口跳转文档中心，并自动填充已知参数到 Try It Out。
+        点击接口进入文档页；已知参数会自动带入在线调试面板。
       </p>
       <div className="mt-3 space-y-3">
         {groups.map((group) => (

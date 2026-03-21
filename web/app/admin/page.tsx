@@ -55,9 +55,7 @@ export default function DashboardHomePage() {
       <AdminCard as="header" className="p-6">
         <p className="text-xs tracking-[0.2em] text-cyan-200 uppercase">Overview</p>
         <h2 className="mt-2 text-2xl font-semibold">后台首页</h2>
-        <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-          展示关键统计信息，并作为管理入口总览。
-        </p>
+        <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">统计信息展示。</p>
         {stats.loading ? <p className="mt-2 text-sm text-cyan-200">统计数据加载中...</p> : null}
         {stats.error ? <p className="mt-2 text-sm text-rose-300">{stats.error}</p> : null}
       </AdminCard>
@@ -142,9 +140,7 @@ export default function DashboardHomePage() {
 
       <AdminCard as="article" className="p-6">
         <h3 className="text-lg font-medium">日志级别分布</h3>
-        <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
-          首页与统计图表已合并，保留关键图形洞察。
-        </p>
+        <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">按日志级别查看数量分布。</p>
         <div className="mt-5 grid h-64 grid-cols-4 items-end gap-3">
           {[
             { label: "DEBUG", value: stats.logsDebug, color: "bg-sky-300/70" },

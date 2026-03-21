@@ -253,7 +253,7 @@ export default function TokenManagementPage() {
     <section className="space-y-5">
       <AdminPageHeader
         title="访问令牌管理"
-        description="集中创建、撤销与审计 API Token，支持按权限范围配置，保障后台调用安全。"
+        description="创建与维护 API Token，按权限和项目范围控制后台访问。"
         badge="Verhub Tokens"
       />
 

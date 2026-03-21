@@ -12,13 +12,13 @@ type DocIndexPageProps = {
 
 export const metadata: Metadata = {
   title: "API 文档总览",
-  description: "浏览 Verhub 对外 API 与常用管理 API 文档，包含请求参数、响应结构与调试说明。",
+  description: "查看 Verhub API 文档，按接口获取说明、参数、响应示例与在线调试入口。",
   alternates: {
     canonical: "/doc",
   },
   openGraph: {
     title: "Verhub API 文档总览",
-    description: "浏览 Verhub 对外 API 与常用管理 API 文档。",
+    description: "查看 Verhub API 文档与在线调试入口。",
     url: "/doc",
     type: "website",
   },
@@ -44,8 +44,7 @@ export default function DocIndexPage({ searchParams }: DocIndexPageProps) {
       <header className="space-y-2">
         <h2 className="text-2xl font-bold">欢迎使用 Verhub API 文档</h2>
         <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-          文档覆盖全部公开 API，以及对外常用管理
-          API（如新增版本、删除版本、新增公告等）。每个接口均提供独立页面，包含请求参数、响应体与在线调试能力。
+          按模块查看接口说明。每个接口页提供请求参数、响应示例、鉴权方式和在线调试能力，便于联调与排错。
         </p>
       </header>
 

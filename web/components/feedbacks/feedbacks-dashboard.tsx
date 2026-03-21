@@ -340,7 +340,7 @@ export function FeedbacksDashboard() {
     <section className="space-y-6">
       <AdminPageHeader
         title="用户反馈管理"
-        description="按项目查看并编辑反馈内容，统一维护评分、平台信息和扩展数据。"
+        description="查看并维护反馈内容、评分、平台信息与扩展数据。"
         badge="Verhub Feedbacks"
       />
 
@@ -364,7 +364,7 @@ export function FeedbacksDashboard() {
           />
 
           <ProjectApiOverview
-            title="API Demo · 反馈"
+            title="接口示例 · 反馈"
             projectKey={selectedProject?.project_key}
             groups={[
               {

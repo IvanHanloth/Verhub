@@ -66,7 +66,7 @@ export default function AdminSettingsPage() {
     <section className="space-y-5">
       <AdminPageHeader
         title="管理员账户设置"
-        description="在此更新后台管理员账号与密码。提交后将刷新会话，请使用新凭据重新登录。"
+        description="修改管理员账号与密码。保存后需使用新凭据重新登录。"
         badge="Verhub Settings"
       />
 

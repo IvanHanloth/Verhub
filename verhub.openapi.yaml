@@ -442,9 +442,34 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /admin/projects/github-repo-preview:
+    get:
+      tags: [Projects]
+      summary: 从 GitHub 仓库地址预览项目信息
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: repo_url
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+            maxLength: 512
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GithubRepoProjectPreview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /admin/projects/{id}:
     parameters:
-      - $ref: "#/components/parameters/ProjectIdById"
+      - $ref: "#/components/parameters/ProjectKeyById"
     get:
       tags: [Projects]
       summary: 获取单个项目
@@ -518,9 +543,9 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /admin/projects/{projectId}/versions:
+  /admin/projects/{projectKey}/versions:
     parameters:
-      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
     get:
       tags: [Versions]
       summary: 获取版本列表
@@ -568,9 +593,58 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /admin/projects/{projectId}/versions/{id}:
+  /admin/projects/{projectKey}/versions/github-release-preview:
     parameters:
-      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+    get:
+      tags: [Versions]
+      summary: 从 GitHub Release 预填版本草稿
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: tag
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 128
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GithubReleaseVersionPreview"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/projects/{projectKey}/versions/github-release-import:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+    post:
+      tags: [Versions]
+      summary: 从 GitHub Release 导入历史版本
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionImportResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/projects/{projectKey}/versions/{id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
       - $ref: "#/components/parameters/EntityId"
     get:
       tags: [Versions]
@@ -630,9 +704,9 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /admin/projects/{projectId}/versions/_status:
+  /admin/projects/{projectKey}/versions/_status:
     parameters:
-      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
     get:
       tags: [Versions]
       summary: Versions 模块状态
@@ -769,9 +843,9 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /admin/projects/{projectId}/announcements:
+  /admin/projects/{projectKey}/announcements:
     parameters:
-      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
     get:
       tags: [Announcements]
       summary: 获取公告列表
@@ -812,9 +886,9 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /admin/projects/{projectId}/announcements/{id}:
+  /admin/projects/{projectKey}/announcements/{id}:
     parameters:
-      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
       - $ref: "#/components/parameters/EntityId"
     get:
       tags: [Announcements]
@@ -868,9 +942,9 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /admin/projects/{projectId}/announcements/_status:
+  /admin/projects/{projectKey}/announcements/_status:
     parameters:
-      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
     get:
       tags: [Announcements]
       summary: Announcements 模块状态
@@ -973,9 +1047,9 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /admin/projects/{projectId}/feedbacks:
+  /admin/projects/{projectKey}/feedbacks:
     parameters:
-      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
     get:
       tags: [Feedbacks]
       summary: 获取反馈列表
@@ -995,9 +1069,9 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /admin/projects/{projectId}/feedbacks/{id}:
+  /admin/projects/{projectKey}/feedbacks/{id}:
     parameters:
-      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
       - $ref: "#/components/parameters/EntityId"
     get:
       tags: [Feedbacks]
@@ -1195,9 +1269,9 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /admin/projects/{projectId}/logs:
+  /admin/projects/{projectKey}/logs:
     parameters:
-      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
     get:
       tags: [Logs]
       summary: 查询日志
@@ -1291,9 +1365,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ModuleStatusResponse"
 
-  /admin/projects/{projectId}/actions:
+  /admin/projects/{projectKey}/actions:
     parameters:
-      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
     get:
       tags: [Actions]
       summary: 获取项目行为分类列表
@@ -1521,16 +1595,18 @@ components:
         type: integer
         minimum: 0
         default: 0
-    ProjectId:
-      name: projectId
+    ProjectKeyByPath:
+      name: projectKey
       in: path
       required: true
+      description: 项目主键 project_key（大小写不敏感）
       schema:
         type: string
-    ProjectIdById:
+    ProjectKeyById:
       name: id
       in: path
       required: true
+      description: 项目主键 project_key（大小写不敏感）
       schema:
         type: string
     EntityId:
@@ -1552,7 +1628,7 @@ components:
       schema:
         type: integer
         minimum: 0
-      description: Unix 时间戳（毫秒）
+      description: Unix 时间戳（秒）
     EndTime:
       name: end_time
       in: query
@@ -1560,7 +1636,7 @@ components:
       schema:
         type: integer
         minimum: 0
-      description: Unix 时间戳（毫秒）
+      description: Unix 时间戳（秒）
     LogLevel:
       name: level
       in: query
@@ -1610,8 +1686,8 @@ components:
           type: string
           example: ok
         timestamp:
-          type: string
-          format: date-time
+          type: integer
+          format: int64
 
     ErrorResponse:
       type: object
@@ -1779,20 +1855,20 @@ components:
         is_active:
           type: boolean
         created_at:
-          type: string
-          format: date-time
+          type: integer
+          format: int64
         expires_at:
-          type: [string, "null"]
-          format: date-time
+          type: [integer, "null"]
+          format: int64
         revoked_at:
-          type: [string, "null"]
-          format: date-time
+          type: [integer, "null"]
+          format: int64
         last_used_at:
-          type: [string, "null"]
-          format: date-time
+          type: [integer, "null"]
+          format: int64
         previous_key_expires_at:
-          type: [string, "null"]
-          format: date-time
+          type: [integer, "null"]
+          format: int64
 
     CreateApiTokenResponse:
       type: object
@@ -1815,11 +1891,11 @@ components:
           items:
             type: string
         expires_at:
-          type: [string, "null"]
-          format: date-time
+          type: [integer, "null"]
+          format: int64
         created_at:
-          type: string
-          format: date-time
+          type: integer
+          format: int64
 
     UpdateApiTokenDto:
       type: object
@@ -1864,11 +1940,11 @@ components:
           items:
             type: string
         expires_at:
-          type: [string, "null"]
-          format: date-time
+          type: [integer, "null"]
+          format: int64
         created_at:
-          type: string
-          format: date-time
+          type: integer
+          format: int64
 
     RotateApiTokenDto:
       type: object
@@ -1889,8 +1965,8 @@ components:
         grace_period_minutes:
           type: integer
         previous_key_expires_at:
-          type: [string, "null"]
-          format: date-time
+          type: [integer, "null"]
+          format: int64
 
     ListApiScopesResponse:
       type: object
@@ -1923,6 +1999,24 @@ components:
         description:
           type: string
           maxLength: 2048
+        author:
+          type: string
+          maxLength: 128
+        author_homepage_url:
+          type: string
+          format: uri
+          maxLength: 512
+        icon_url:
+          type: string
+          format: uri
+          maxLength: 1024
+        website_url:
+          type: string
+          format: uri
+          maxLength: 512
+        published_at:
+          type: integer
+          format: int64
 
     UpdateProjectDto:
       type: object
@@ -1939,10 +2033,42 @@ components:
         description:
           type: string
           maxLength: 2048
+        author:
+          type: string
+          maxLength: 128
+        author_homepage_url:
+          type: string
+          format: uri
+          maxLength: 512
+        icon_url:
+          type: string
+          format: uri
+          maxLength: 1024
+        website_url:
+          type: string
+          format: uri
+          maxLength: 512
+        published_at:
+          type: integer
+          format: int64
 
     ProjectItem:
       type: object
-      required: [id, project_key, name, repo_url, description, created_at, updated_at]
+      required:
+        [
+          id,
+          project_key,
+          name,
+          repo_url,
+          description,
+          author,
+          author_homepage_url,
+          icon_url,
+          website_url,
+          published_at,
+          created_at,
+          updated_at,
+        ]
       properties:
         id:
           type: string
@@ -1954,12 +2080,23 @@ components:
           type: [string, "null"]
         description:
           type: [string, "null"]
+        author:
+          type: [string, "null"]
+        author_homepage_url:
+          type: [string, "null"]
+        icon_url:
+          type: [string, "null"]
+        website_url:
+          type: [string, "null"]
+        published_at:
+          type: [integer, "null"]
+          format: int64
         created_at:
-          type: string
-          format: date-time
+          type: integer
+          format: int64
         updated_at:
-          type: string
-          format: date-time
+          type: integer
+          format: int64
 
     ProjectListResponse:
       type: object
@@ -1976,9 +2113,24 @@ components:
       type: string
       enum: [ios, android, windows, mac, web]
 
+    VersionDownloadLink:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          maxLength: 2048
+          format: uri
+        name:
+          type: string
+          maxLength: 128
+        platform:
+          type: string
+          maxLength: 64
+
     CreateVersionDto:
       type: object
-      required: [version, download_url]
+      required: [version]
       properties:
         version:
           type: string
@@ -1990,10 +2142,21 @@ components:
           type: string
           maxLength: 4096
         download_url:
-          type: string
+          type: [string, "null"]
           maxLength: 2048
+        download_links:
+          type: array
+          items:
+            $ref: "#/components/schemas/VersionDownloadLink"
         forced:
           type: boolean
+        is_latest:
+          type: boolean
+        is_preview:
+          type: boolean
+        published_at:
+          type: integer
+          format: int64
         platform:
           $ref: "#/components/schemas/ClientPlatform"
         custom_data:
@@ -2025,8 +2188,19 @@ components:
         download_url:
           type: string
           maxLength: 2048
+        download_links:
+          type: array
+          items:
+            $ref: "#/components/schemas/VersionDownloadLink"
         forced:
           type: boolean
+        is_latest:
+          type: boolean
+        is_preview:
+          type: boolean
+        published_at:
+          type: integer
+          format: int64
         platform:
           $ref: "#/components/schemas/ClientPlatform"
         custom_data:
@@ -2036,7 +2210,21 @@ components:
     VersionItem:
       type: object
       required:
-        [id, version, title, content, download_url, forced, platform, custom_data, created_at]
+        [
+          id,
+          version,
+          title,
+          content,
+          download_url,
+          download_links,
+          forced,
+          is_latest,
+          is_preview,
+          platform,
+          custom_data,
+          published_at,
+          created_at,
+        ]
       properties:
         id:
           type: string
@@ -2047,8 +2235,16 @@ components:
         content:
           type: [string, "null"]
         download_url:
-          type: string
+          type: [string, "null"]
+        download_links:
+          type: array
+          items:
+            $ref: "#/components/schemas/VersionDownloadLink"
         forced:
+          type: boolean
+        is_latest:
+          type: boolean
+        is_preview:
           type: boolean
         platform:
           oneOf:
@@ -2060,8 +2256,90 @@ components:
               additionalProperties: true
             - type: "null"
         created_at:
+          type: integer
+          format: int64
+        published_at:
+          type: integer
+          format: int64
+
+    GithubReleaseVersionPreview:
+      type: object
+      required: [version, forced, is_latest, is_preview, published_at, custom_data]
+      properties:
+        version:
           type: string
-          format: date-time
+        title:
+          type: string
+        content:
+          type: string
+        download_url:
+          type: string
+        download_links:
+          type: array
+          items:
+            $ref: "#/components/schemas/VersionDownloadLink"
+        forced:
+          type: boolean
+        is_latest:
+          type: boolean
+        is_preview:
+          type: boolean
+        published_at:
+          type: integer
+          format: int64
+        custom_data:
+          type: object
+          additionalProperties: true
+
+    GithubRepoProjectPreview:
+      type: object
+      required:
+        [
+          project_key,
+          name,
+          repo_url,
+          description,
+          author,
+          author_homepage_url,
+          icon_url,
+          website_url,
+          published_at,
+        ]
+      properties:
+        project_key:
+          type: string
+        name:
+          type: string
+        repo_url:
+          type: string
+          format: uri
+        description:
+          type: [string, "null"]
+        author:
+          type: [string, "null"]
+        author_homepage_url:
+          type: [string, "null"]
+          format: uri
+        icon_url:
+          type: [string, "null"]
+          format: uri
+        website_url:
+          type: [string, "null"]
+          format: uri
+        published_at:
+          type: [integer, "null"]
+          format: int64
+
+    VersionImportResult:
+      type: object
+      required: [imported, skipped, scanned]
+      properties:
+        imported:
+          type: integer
+        skipped:
+          type: integer
+        scanned:
+          type: integer
 
     VersionListResponse:
       type: object
@@ -2086,6 +2364,12 @@ components:
           maxLength: 4096
         is_pinned:
           type: boolean
+        author:
+          type: string
+          maxLength: 64
+        published_at:
+          type: integer
+          format: int64
 
     CreateProjectAnnouncementDto:
       allOf:
@@ -2108,10 +2392,16 @@ components:
           maxLength: 4096
         is_pinned:
           type: boolean
+        author:
+          type: string
+          maxLength: 64
+        published_at:
+          type: integer
+          format: int64
 
     AnnouncementItem:
       type: object
-      required: [id, title, content, is_pinned, created_at, updated_at]
+      required: [id, title, content, is_pinned, published_at, created_at, updated_at]
       properties:
         id:
           type: string
@@ -2121,12 +2411,17 @@ components:
           type: string
         is_pinned:
           type: boolean
+        author:
+          type: [string, "null"]
+        published_at:
+          type: integer
+          format: int64
         created_at:
-          type: string
-          format: date-time
+          type: integer
+          format: int64
         updated_at:
-          type: string
-          format: date-time
+          type: integer
+          format: int64
 
     AnnouncementListResponse:
       type: object
@@ -2200,8 +2495,8 @@ components:
               additionalProperties: true
             - type: "null"
         created_at:
-          type: string
-          format: date-time
+          type: integer
+          format: int64
 
     FeedbackListResponse:
       type: object
@@ -2255,8 +2550,8 @@ components:
               additionalProperties: true
             - type: "null"
         created_at:
-          type: string
-          format: date-time
+          type: integer
+          format: int64
 
     LogListResponse:
       type: object

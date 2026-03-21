@@ -1,132 +1,139 @@
-# Verhub Monorepo
+# Verhub
 
-Verhub is a version management platform with the following core capabilities:
+Verhub 是一个面向团队协作的版本与发布管理平台，帮助你统一管理项目版本、公告、反馈与行为日志，建立从发布到回收反馈的完整闭环。
 
-- Version management
-- Announcement management
-- Feedback management
-- Log management
-- Admin-side project management
+## 核心能力
 
-This repository uses `pnpm` + `turbo` monorepo architecture.
+- 版本管理：维护版本信息、下载链接、发布状态（latest / preview）
+- 公告管理：统一发布更新公告与通知内容
+- 反馈管理：集中收集并追踪用户反馈处理进度
+- 日志管理：记录关键行为事件，支持排障与审计
+- 后台管理：支持多项目视角下的运营管理
 
-## Workspace Structure
+## 技术栈
 
-- `web`: Next.js admin web app (React + shadcn + Tailwind CSS)
-- `packages/ui`: shared UI component library
-- `packages/backend`: NestJS backend service (PostgreSQL + Prisma)
-- `packages/eslint-config`: shared ESLint config
-- `packages/typescript-config`: shared TypeScript config
+- Monorepo：pnpm + turbo
+- 前端：Next.js + React + Tailwind CSS
+- 后端：NestJS
+- 数据库：PostgreSQL
+- ORM：Prisma
+- 工程质量：TypeScript + ESLint + Prettier + Husky + lint-staged
 
-## Tech Stack
+## 仓库结构
 
-- Package manager: `pnpm`
-- Monorepo orchestration: `turbo`
-- Frontend: `Next.js` + `React` + `shadcn/ui` + `Tailwind CSS`
-- Backend: `NestJS`
-- Database: `PostgreSQL`
-- ORM: `Prisma`
-- Engineering tools: `ESLint` + `Prettier` + `lint-staged` + `Husky`
+```text
+.
+├─ web/                     # 前端应用（管理后台 + 对外页面）
+├─ packages/backend/        # NestJS 后端服务
+├─ packages/ui/             # 共享 UI 组件
+├─ docs/                    # 现有工程文档（开发、Docker）
+├─ doc/                     # VitePress 文档站点
+└─ .github/workflows/       # CI/CD 工作流
+```
 
-## Quick Start
+## 快速开始
 
-1. Install dependencies
+### 1. 安装依赖
 
 ```bash
 pnpm install
 ```
 
-1. Configure backend environment
+### 2. 配置后端环境变量
 
 ```bash
 cp packages/backend/.env.example packages/backend/.env
 ```
 
-1. Run development mode
+请根据本地环境修改数据库连接、JWT 密钥等配置。
+
+### 3. 启动开发环境
 
 ```bash
 pnpm dev
 ```
 
-## Docker Production Deployment
+默认访问地址：
 
-Use Docker Compose for a production-like local deployment:
+- 前端：`http://localhost:3000`
+- 后端：`http://localhost:4000`
+
+## Docker 部署
+
+在仓库根目录执行：
 
 ```bash
 cp .env.example .env
 docker compose up -d --build
 ```
 
-This will start:
+该命令会启动数据库、后端和前端容器，适合本地生产态验证与自建部署场景。
 
-- PostgreSQL
-- Verhub unified app container (`http://localhost:3000`, 内置 backend + web)
+更多细节请查看：
 
-Detailed Docker and native Docker run guide: `docs/DOCKER.md`.
+- `docs/DOCKER.md`
 
-## Modern Admin Auth Flow
+## 文档站点（VitePress）
 
-- Admin pages are under `/admin` with left sidebar navigation.
-- Unauthenticated access to `/admin` is redirected to `/login`.
-- Login supports username/password only; direct token input login is disabled.
-- Successful login issues a short-lived JWT session and redirects back to the original path.
-- Long-lived API tokens can be created/revoked in `Admin -> Token 管理`.
-- Token scope no longer supports `admin:profile:update`; API tokens cannot modify admin profile.
-- Token can be configured as `all projects` or project whitelist (`project_ids`).
-- Token permissions and project range can be edited online without changing token value.
-- Token rotation supports user-defined grace period for old token.
-- Expired token is rejected by API auth but is not auto-deleted from records.
-- Non-expiring token creation is supported and should be used with caution.
+项目已在 `doc/` 目录集成 VitePress 文档站点。
 
-## Bootstrap Admin Behavior
+常用命令：
 
-- Backend stores admin credentials in database (`User` table).
-- On first startup with empty database, backend auto-creates `admin` with a random password.
-- The bootstrap credential is written to a temporary file `verhub.bootstrap-admin.txt`.
-- After first successful login, this temporary credential file is removed automatically.
+```bash
+# 本地开发
+pnpm docs:dev
 
-## Quality Commands
+# 构建文档
+pnpm docs:build
 
-- Lint all workspaces: `pnpm -r lint`
-- Type check all workspaces: `pnpm -r typecheck`
-- Format all files: `pnpm format`
-- Check formatting: `pnpm format:check`
-- Frontend tests: `pnpm --filter web test`
+# 预览构建结果
+pnpm docs:preview
+```
 
-## Backend Commands
+文档内容包含：
 
-- Start backend in watch mode: `pnpm --filter @workspace/backend dev`
-- Generate Prisma client: `pnpm --filter @workspace/backend prisma:generate`
-- Run Prisma migrations: `pnpm --filter @workspace/backend prisma:migrate`
-- Unit tests: `pnpm --filter @workspace/backend test`
-- E2E tests: `pnpm --filter @workspace/backend test:e2e`
+- 项目介绍
+- 快速开始
+- 部署指南
+- 开发指南
+- 用户指南
+- 运维建议与常见问题
 
-## Commit Gate
+## GitHub Actions
 
-The repository enables `Husky` + `lint-staged` pre-commit checks.
+- `CI`：执行基础质量检查（lint、typecheck、后端单测）
+- `Docs Deploy`：当 `doc/**` 内容变更时自动构建并部署文档到 GitHub Pages
 
-When committing, staged files are automatically:
+如果你首次启用文档部署，请在仓库设置中确认：
 
-- linted and auto-fixed by ESLint
-- formatted by Prettier
+1. 已启用 GitHub Pages
+2. Source 设置为 GitHub Actions
 
-## Development Guide
+## 开发命令速查
 
-- Detailed local setup, environment variables, and commit conventions: `docs/DEVELOPMENT.md`
-- Docker production deployment guide: `docs/DOCKER.md`
+```bash
+# 全仓质量检查
+pnpm lint
+pnpm typecheck
 
-## Current Progress
+# 后端
+pnpm --filter @workspace/backend dev
+pnpm --filter @workspace/backend test
+pnpm --filter @workspace/backend prisma:generate
 
-Current milestone has completed:
+# 前端
+pnpm --filter web dev
+pnpm --filter web test
+```
 
-- monorepo and engineering tooling baseline
-- backend NestJS scaffolding
-- PostgreSQL Prisma schema baseline
-- project module CRUD API (with pagination)
-- version and announcement module CRUD API
-- feedback module CRUD API (public create + admin query/update/delete)
-- log upload/query API (public upload + admin filtered query)
-- auth module (admin JWT login + API key validation)
-- Next.js admin homepage framework (App Router + shadcn)
+## 贡献指南
 
-Next milestones continue from `TODO` in repository root.
+1. 创建功能分支并保持单次改动聚焦
+2. 提交前执行 lint / typecheck / 必要测试
+3. 提交 PR 时说明变更目的、影响范围与验证步骤
+
+仓库已启用 Husky + lint-staged，提交时会自动进行基础代码质量校验。
+
+## 许可证
+
+建议使用 MIT License（如与你的组织策略不同，请按需调整）。

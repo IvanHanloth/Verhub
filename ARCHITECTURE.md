@@ -66,8 +66,15 @@ Token 范围模型（ApiKey）：
 - `isLatest`：标记当前项目最新稳定版本（同项目应至多一个）。
 - `isPreview`：标记预发布版本（如 beta/rc）。
 - `publishedAt`：版本发布时间（Unix 秒级时间戳）。
+- `downloadLinks`：结构化下载链接数组，支持多资源与可选元数据（name/platform）。
 - 创建新稳定版本时默认自动提升为 latest；手动调整 latest 时后端负责同项目互斥维护。
 - 支持从项目 `repoUrl` 对应的 GitHub Release 拉取版本草稿，用于减少重复录入。
+- 支持在后台按项目从 GitHub Release 批量导入历史版本；若数据库已有同版本号，则跳过导入并保留数据库记录。
+
+项目展示元数据（Project）：
+
+- 新增可选字段：`author`、`authorHomepageUrl`、`iconUrl`、`websiteUrl`、`publishedAt`。
+- 用于公共项目展示页与客户端启动信息补全；GitHub 仓库预览可自动回填上述信息。
 
 ## 4. 前端架构
 

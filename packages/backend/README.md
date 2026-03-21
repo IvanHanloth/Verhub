@@ -16,7 +16,7 @@ NestJS backend for Verhub using PostgreSQL + Prisma.
 Reset command reuses bootstrap behavior: it sets admin username to `admin`, resets password, writes `verhub.bootstrap-admin.txt`, and prints credentials in console.
 
 - Local: `pnpm --filter @workspace/backend admin:reset`
-- Docker: `docker compose exec verhub pnpm --filter @workspace/backend admin:reset`
+- Docker: `docker compose exec backend pnpm --filter @workspace/backend admin:reset`
 
 ## Environment
 

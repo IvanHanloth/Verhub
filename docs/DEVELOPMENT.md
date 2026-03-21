@@ -48,7 +48,7 @@ pnpm dev
 
 ## 1.6 Docker 生产封装与运行
 
-- Docker 相关文件：`docker/verhub.Dockerfile`、`docker/app-entrypoint.sh`、`docker/backend-entrypoint.sh`、`docker-compose.yml`
+- Docker 相关文件：`docker/backend.Dockerfile`、`docker/frontend.Dockerfile`、`docker/nginx/default.conf`、`docker/frontend-entrypoint.sh`、`docker/backend-entrypoint.sh`、`docker-compose.yml`
 - 示例环境变量：`.env.example`
 - 使用与排障文档：`docs/DOCKER.md`
 

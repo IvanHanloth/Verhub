@@ -24,16 +24,16 @@ services:
     ports:
       - "5432:5432"
 
-  # Verhub 应用（前后端一体化）
-  app:
+  backend:
     build:
       context: .
-      dockerfile: docker/verhub.Dockerfile
-    image: verhub:latest
-    container_name: verhub-app
+      dockerfile: docker/backend.Dockerfile
+    image: verhub-backend:latest
+    container_name: verhub-backend
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      PORT: 4000
       # 后端配置
       DATABASE_URL: postgresql://${VERHUB_POSTGRES_USER:-verhub}:${VERHUB_POSTGRES_PASSWORD:-change-this-strong-db-password}@postgres:5432/${VERHUB_POSTGRES_DB:-verhub}?schema=public
       JWT_SECRET: ${JWT_SECRET}
@@ -41,7 +41,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       BOOTSTRAP_SECRET_DIR: /bootstrap
       API_KEY_SALT: ${API_KEY_SALT}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,16 +51,40 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+          "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
         ]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     volumes:
       - bootstrap-secrets:/bootstrap
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    image: verhub-frontend:latest
+    container_name: verhub-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     ports:
-      - "${VERHUB_PORT:-3000}:3000"
+      - "${VERHUB_HTTP_PORT:-80}:80"
+      - "${VERHUB_HTTPS_PORT:-443}:443"
 
 volumes:
   postgres-data:

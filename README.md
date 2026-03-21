@@ -136,4 +136,4 @@ pnpm --filter web test
 
 ## 许可证
 
-建议使用 MIT License（如与你的组织策略不同，请按需调整）。
+Apache License 2.0

@@ -1,5 +1,6 @@
 import type { ApiEndpointDoc } from "@/lib/api-docs/types"
 import { getDefaultErrorResponses } from "@/lib/api-docs/error-examples"
+import { toApiDocDisplayPath } from "@/lib/api-docs/utils"
 
 import { ApiMethodBadge } from "./api-method-badge"
 import { ApiParameterTable } from "./api-parameter-table"
@@ -33,7 +34,7 @@ export function ApiEndpointDetails({ doc }: Props) {
               URL
             </p>
             <code className="font-mono text-sm break-all text-slate-800 dark:text-slate-100">
-              {doc.path}
+              {toApiDocDisplayPath(doc.path)}
             </code>
           </div>
         </header>

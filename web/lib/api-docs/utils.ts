@@ -4,6 +4,7 @@ import type { HttpMethod } from "./types"
 
 type PathParamInput = Record<string, string>
 type QueryParamInput = Record<string, string>
+const DOC_API_PREFIX = "/api/v1"
 
 export function createEndpointSlug(method: HttpMethod, path: string): string {
   const normalized = path
@@ -44,4 +45,14 @@ export function buildTryItOutUrl(
 
   const queryString = query.toString()
   return queryString ? `${base}${resolvedPath}?${queryString}` : `${base}${resolvedPath}`
+}
+
+export function toApiDocDisplayPath(path: string): string {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`
+
+  if (normalizedPath === DOC_API_PREFIX || normalizedPath.startsWith(`${DOC_API_PREFIX}/`)) {
+    return normalizedPath
+  }
+
+  return `${DOC_API_PREFIX}${normalizedPath}`
 }

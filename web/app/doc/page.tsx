@@ -3,6 +3,7 @@ import Link from "next/link"
 
 import { ApiMethodBadge } from "@/components/docs/api-method-badge"
 import { listApiEndpointDocs } from "@/lib/api-docs/registry"
+import { toApiDocDisplayPath } from "@/lib/api-docs/utils"
 
 type DocIndexPageProps = {
   searchParams?: {
@@ -30,12 +31,14 @@ export default function DocIndexPage({ searchParams }: DocIndexPageProps) {
     .trim()
     .toLowerCase()
   const docs = listApiEndpointDocs().filter((item) => {
+    const displayPath = toApiDocDisplayPath(item.path)
+
     if (!keyword) {
       return true
     }
 
     const target =
-      `${item.method} ${item.title} ${item.path} ${item.module} ${item.description}`.toLowerCase()
+      `${item.method} ${item.title} ${displayPath} ${item.module} ${item.description}`.toLowerCase()
     return target.includes(keyword)
   })
 
@@ -64,7 +67,7 @@ export default function DocIndexPage({ searchParams }: DocIndexPageProps) {
               </span>
             </div>
             <p className="line-clamp-1 font-mono text-xs text-slate-500 dark:text-slate-400">
-              {doc.path}
+              {toApiDocDisplayPath(doc.path)}
             </p>
           </Link>
         ))}

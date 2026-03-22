@@ -5,6 +5,7 @@ import {
   Bell,
   ClipboardList,
   FolderKanban,
+  Info,
   Laptop,
   KeyRound,
   LayoutDashboard,
@@ -23,6 +24,7 @@ import { Button } from "@workspace/ui/components/button"
 
 import { getAdminProfile } from "@/lib/auth-api"
 import { clearSessionToken, getSessionToken } from "@/lib/auth-session"
+import { ThemeLogo } from "@/components/branding/theme-logo"
 
 import { PageTransition } from "./page-transition"
 
@@ -46,6 +48,7 @@ const navItems: NavItem[] = [
   { href: "/admin/logs", label: "日志管理", icon: ClipboardList },
   { href: "/admin/tokens", label: "Token 管理", icon: KeyRound },
   { href: "/admin/settings", label: "管理员设置", icon: Settings },
+  { href: "/admin/about", label: "关于 Verhub", icon: Info },
 ]
 
 const adminPageTitles: Record<string, string> = {
@@ -58,6 +61,7 @@ const adminPageTitles: Record<string, string> = {
   "/admin/logs": "日志管理",
   "/admin/tokens": "Token 管理",
   "/admin/settings": "管理员设置",
+  "/admin/about": "关于 Verhub",
 }
 
 export function DashboardShell({ children }: Props) {
@@ -132,6 +136,7 @@ export function DashboardShell({ children }: Props) {
                 </p>
                 <h1 className="mt-1 text-xl font-semibold">控制台</h1>
               </div>
+              <ThemeLogo className="hidden lg:inline-flex" imgClassName="h-8 w-auto" alt="Verhub" />
               <button
                 type="button"
                 className="rounded-md border border-slate-900/20 px-2 py-1 text-xs lg:hidden dark:border-white/20"

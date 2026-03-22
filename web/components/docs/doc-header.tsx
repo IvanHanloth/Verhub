@@ -6,6 +6,8 @@ import { Moon, Search, Sun } from "lucide-react"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useTheme } from "next-themes"
 
+import { ThemeLogo } from "@/components/branding/theme-logo"
+
 export function DocHeader() {
   const pathname = usePathname()
   const router = useRouter()
@@ -39,8 +41,9 @@ export function DocHeader() {
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <Link
             href="/doc"
-            className="shrink-0 text-lg font-bold text-slate-900 dark:text-slate-50"
+            className="inline-flex shrink-0 items-center gap-2 text-lg font-bold text-slate-900 dark:text-slate-50"
           >
+            <ThemeLogo imgClassName="h-7 w-auto" alt="Verhub" />
             API 文档中心
           </Link>
           <label className="relative w-full max-w-xl">

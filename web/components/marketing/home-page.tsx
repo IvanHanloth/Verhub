@@ -18,6 +18,7 @@ import {
 import { Button } from "@workspace/ui/components/button"
 
 import { getSessionToken } from "@/lib/auth-session"
+import { ThemeLogo } from "@/components/branding/theme-logo"
 
 const features = [
   {
@@ -72,6 +73,7 @@ export function HomePageView() {
       <nav className="sticky top-0 z-30 border-b border-slate-900/10 bg-[#f5f4ef]/85 backdrop-blur-xl dark:border-white/10 dark:bg-[#05070d]/70">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 sm:px-10">
           <div className="flex items-center gap-2 text-xl font-semibold tracking-tight">
+            <ThemeLogo imgClassName="h-7 w-auto" alt="Verhub" />
             <Sparkles className="size-5 text-[#e6662a]" />
             Verhub
           </div>

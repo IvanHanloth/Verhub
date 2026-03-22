@@ -1,7 +1,7 @@
 # Verhub
 
 <p align="center">
-  <img src="doc/public/logo-light-500.png" alt="Verhub Logo" width="100" />
+  <img src="doc/public/logo-500.png" alt="Verhub Logo" width="100" />
 </p>
 
 Verhub 是一个自部署的统一多项目版本、公告、反馈与行为日志管理系统，建立软件从发布到回收反馈的完整闭环，帮助团队高效运营与持续改进。

@@ -1,44 +1,69 @@
 # 项目介绍
 
-## Verhub 是什么
+## 什么是 Verhub
 
-Verhub 是一个面向发布管理场景的全栈平台，核心目标是帮助团队高效完成版本生命周期管理。
+Verhub 是一个自部署的统一多项目版本、公告、反馈与行为日志管理系统，建立软件从发布到回收反馈的完整闭环，帮助团队高效运营与持续改进。
 
-它提供以下能力：
+## 核心能力
 
-- 项目管理：维护多个项目的基础信息与展示配置
-- 版本管理：发布版本、维护下载链接、标记 latest / preview
-- 公告管理：集中发布更新说明和活动通知
-- 反馈管理：接收并处理用户反馈
-- 日志管理：记录行为事件用于排障与审计
+- 项目管理：维护项目信息，快速生成项目落地页链接
+- 版本管理：维护版本信息、下载链接、发布状态（latest / preview）
+- 公告管理：统一发布更新公告与通知内容
+- 反馈管理：集中收集并追踪用户反馈处理进度
+- 日志管理：记录关键行为事件，支持排障与审计
 
-## 适用场景
+支持从Github快速同步项目与版本数据，提供多语言 SDK（TypeScript/Python/vanilla JS）方便集成。每个项目自带独立落地页展示项目信息、版本历史与公告内容，帮助用户快速了解项目动态。
 
-- 桌面应用或客户端的版本发布中心
-- 团队内部产品的更新公告与反馈闭环
-- 多项目统一运营后台
-- 需要对外提供简洁 API 的发布平台
+## 演示
 
-## 核心特性
+Verhub 项目的版本发布是基于作者部署的Verhub实例的，访问 <https://verhub.hanloth.cn> 查看该站点。
+由于已经投入实际使用，不提供后台账号。如有需要请自行部署。
 
-1. 现代化技术栈：Next.js + NestJS + Prisma
-2. 可扩展权限机制：JWT 登录 + API Key 调用
-3. Monorepo 架构：共享配置、统一工程规范
-4. 可部署形态灵活：本地开发、Docker 容器化部署
+## 技术栈
+
+- 前端：Next.js + React + Tailwind CSS
+- 后端：NestJS
+- 数据库：PostgreSQL
+- ORM：Prisma
+- 工程质量：TypeScript + ESLint + Prettier + Husky + lint-staged
+
+## 文档
+
+- 开发文档: <https://ivanhanloth.github.io/Verhub/guide/introduction>
+- API 文档: <https://verhub.hanloth.cn/doc> 或自部署后访问 `/doc`查看和调试。
 
 ## 仓库结构
 
 ```text
 .
-├─ web/                 # Next.js 前端（管理后台 + 对外页面）
-├─ packages/backend/    # NestJS 后端服务
-├─ packages/ui/         # 共享 UI 组件
-├─ docs/                # 现有工程文档（开发、Docker）
-└─ doc/                 # VitePress 站点文档
+├─ web/                     # 前端应用（管理后台 + 对外页面）
+├─ packages/backend/        # NestJS 后端服务
+├─ packages/ui/             # 共享 UI 组件
+├─ sdk/                     # 多语言 SDK（TypeScript/Python/vanilla JS）
+├─ doc/                     # VitePress 文档站点
+└─ .github/workflows/       # CI/CD 工作流
 ```
 
-## 版本策略建议
+## 实际应用
 
-- 建议遵循 SemVer（如 `1.4.2`）
-- 将重大变更通过公告同步给用户
-- 生产环境发布前先在 preview 版本验证
+Verhub 已经在多个实际项目中投入使用，帮助团队高效管理版本发布与用户反馈，持续提升软件质量和用户满意度。
+
+- [Bili23 Downloader](https://github.com/ScottSloan/Bili23-Downloader)
+- [Boss Key](https://github.com/IvanHanloth/Boss-Key)
+- [Verhub](https://github.com/IvanHanloth/Verhub)
+
+## 贡献指南
+
+1. 创建功能分支并保持单次改动聚焦
+2. 提交前执行 lint / typecheck / 必要测试
+3. 提交 PR 时说明变更目的、影响范围与验证步骤
+
+仓库已启用 Husky + lint-staged，提交时会自动进行基础代码质量校验。
+
+## 鸣谢
+
+感谢 Github Copilot 在开发过程中提供的智能代码补全与建议，极大提升了开发效率和代码质量。
+
+## 许可证
+
+Apache License 2.0

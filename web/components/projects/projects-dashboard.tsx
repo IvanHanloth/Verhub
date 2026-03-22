@@ -1,7 +1,17 @@
 "use client"
 
 import * as React from "react"
-import { CheckCircle2, Copy, Loader2, PencilLine, Plus, RefreshCcw, Trash2 } from "lucide-react"
+import {
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  Loader2,
+  PencilLine,
+  Plus,
+  RefreshCcw,
+  Trash2,
+} from "lucide-react"
+import Link from "next/link"
 
 import { Button } from "@workspace/ui/components/button"
 
@@ -569,6 +579,21 @@ export function ProjectsDashboard() {
                 }
                 actions={
                   <>
+                    <Button
+                      asChild
+                      type="button"
+                      variant="outline"
+                      className="border-white/20 bg-white/5"
+                    >
+                      <Link
+                        href={`/projects/${project.project_key}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <ExternalLink className="size-4" />
+                        项目展示页
+                      </Link>
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"

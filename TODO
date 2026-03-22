@@ -109,3 +109,69 @@
 - [x] 接口同步：更新 verhub.openapi.yaml（路径参数、请求/响应字段、错误码）
 - [x] 文档同步：更新 README.md、docs/DEVELOPMENT.md、ARCHITECTURE.md
 - [x] 验证：执行 backend/web typecheck + 关键测试并记录结果
+
+## 2026-03-21 对外 API 文档中心（进行中）
+
+- [x] 规划：梳理公开 API 与对外管理 API 范围，定义页面信息架构
+- [x] TDD：新增 API 文档工具函数测试（slug、路径参数替换、Try It Out URL 组装）
+- [x] TDD：新增文档注册表测试（公开 API 覆盖、关键管理 API 覆盖、slug 唯一）
+- [x] 领域建模：新增文档数据模型与统一注册表（模块、鉴权、请求/响应示例）
+- [x] 页面实现：新增 /doc 文档中心（顶部导航 + 左侧目录 + 右侧内容）
+- [x] 页面实现：新增 /doc/[slug] 单接口详情页（一个接口一个页面）
+- [x] 组件实现：抽离通用文档组件（方法徽章、参数表格、代码块、详情容器）
+- [x] 组件实现：Try It Out 支持 path/query/header/body 输入与在线请求
+- [x] 能力实现：支持 URL 模板参数（{projectKey}/{id}）替换与请求 URL 预览
+- [x] 反馈修复：文档主内容加宽、移动端去重目录并修复内容可见性
+- [x] 反馈修复：文档过滤不展示接口（管理员登录/API Key 列表/GitHub Release 预览）
+- [x] 反馈修复：补充失败响应示例并优化 Try It Out JSON 响应格式化显示
+- [x] 反馈修复：首页增加文档入口并移除冗余 API 说明区块
+- [x] 反馈增强：响应示例改为 Tab 切换展示（成功/失败）
+- [x] 反馈增强：Try It Out 在宽屏下改为右侧悬浮
+- [x] 反馈增强：Try It Out 支持 URL Query 预填（path/query/body/token）
+- [x] 反馈增强：文档鉴权表述统一为 Token，公开 API 移除 Token 要求
+- [x] 反馈增强：后台 API Demo 改为跳转 /doc 并自动填充已知参数
+- [x] 反馈修复：补齐缺失文档接口（更新公告/编辑行为定义/编辑反馈/删除反馈/查询行为定义）
+- [x] 反馈修复：清理 API Demo 冗余字段（tokenType/scopes）与不一致路径占位符
+- [x] 反馈增强：文档标题栏调整为左标题+左搜索+右侧按钮布局
+- [x] 反馈增强：新增配色切换按钮并保留回到 /doc 目录入口
+- [x] 反馈增强：API 搜索框联动侧边栏与 /doc 列表过滤
+- [x] 文档同步：更新 README.md 与 docs/DEVELOPMENT.md 的 API 文档说明
+- [x] 验证：执行 web test + typecheck，修复问题并记录
+
+## 2026-03-21 项目展示页 + GitHub 历史导入 + 多下载链接（进行中）
+
+- [x] TDD：补充项目元字段（author/author_homepage_url/icon_url/website_url/published_at）测试
+- [x] TDD：补充版本多下载链接与 GitHub 历史导入去重测试
+- [x] Prisma：Project 增加展示页元字段，Version 增加 download_links JSON 字段
+- [x] Migration：提交可审查 SQL（含 downloadUrl -> downloadLinks 回填）
+- [x] 后端：Projects DTO/Service/响应结构支持新增可选字段
+- [x] 后端：GitHub 仓库预览返回作者与图标等元信息
+- [x] 后端：Versions DTO/Service 支持 download_links
+- [x] 后端：新增版本历史导入接口（重复版本号跳过，保留数据库记录）
+- [x] 前端：项目管理页支持编辑/展示新增字段
+- [x] 前端：版本管理页支持历史导入按钮与多下载链接配置
+- [x] 前端：新增项目展示页（项目信息 + 公告 + 版本历史）
+- [x] 接口文档：更新 verhub.openapi.yaml 与 web 文档注册表示例
+- [x] 文档：更新 README.md/ARCHITECTURE.md 功能说明
+- [x] 验证：执行受影响 backend/web 测试与 typecheck
+
+## 2026-03-21 登录跳转修复 + 多语言 SDK 启动（进行中）
+
+- [x] TDD：补充“已登录访问 /login 自动跳转”测试（含 returnTo 安全场景）
+- [x] 修复登录重定向策略（proxy matcher + redirect 决策）
+- [x] 设计统一 SDK 命名空间与方法矩阵（以 web 文档展示接口为准）
+- [x] 实现 TypeScript SDK（public + admin）
+- [x] 实现 Python SDK（public + admin）
+- [x] 实现 vanilla JS SDK（public only）
+- [x] 文档补充：SDK 使用指南与接口覆盖说明
+- [x] 文档补充：CI/CD 中自动增加版本与公告示例
+- [x] 验证：执行受影响 web test + typecheck
+
+## 2026-03-21 SDK 规范化（版本号 + 显式参数 + 注释）（进行中）
+
+- [x] vanilla JS：新增可直接 script 标签使用的 global 构建文件
+- [x] 三端 SDK：统一增加版本号常量/属性
+- [x] 三端 SDK：方法改为显式参数，移除泛化 payload 入参
+- [x] 三端 SDK：补齐 Javadoc/参数注释
+- [x] 文档：更新三端 SDK README 使用说明
+- [x] 验证：执行 JS 导入与 Python 语法编译检查

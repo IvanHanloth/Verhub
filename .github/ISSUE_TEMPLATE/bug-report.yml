@@ -1,0 +1,92 @@
+name: "🐛 Bug 报告"
+description: "提交缺陷问题（固定格式）"
+title: "[Bug] "
+labels:
+  - "type: bug"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请按模板完整填写，信息不完整的 Issue 可能会被标记为 `need more info`。
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前确认
+      description: 为提高排查效率，请先确认以下事项。
+      options:
+        - label: 我已在最新代码/版本中复现该问题
+          required: true
+        - label: 我已搜索现有 Issues，确认不是重复问题
+          required: true
+        - label: 我已使用规范标题（以 [Bug] 开头）
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 使用版本
+      description: 请填写当前版本号或提交哈希。
+      placeholder: "例如: v1.2.3 或 1a2b3c4"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 运行环境
+      description: 操作系统、Node 版本、包管理器、浏览器（如适用）。
+      placeholder: |
+        - OS: Windows 11
+        - Node: 22.x
+        - pnpm: 10.x
+        - Browser: Chrome 123
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请按步骤描述，确保他人可复现。
+      placeholder: |
+        1. 进入 ...
+        2. 点击 ...
+        3. 看到报错 ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+      placeholder: "描述你期望发生的结果"
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      placeholder: "描述实际发生的结果"
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志与报错信息
+      description: 请粘贴完整报错或关键日志。
+      render: shell
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 截图或录屏
+      description: 如有 UI 问题，请附截图或录屏。
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: 补充信息
+      description: 其他可能有帮助的信息（例如回归范围、临时绕过方案）。

@@ -43,12 +43,12 @@ pnpm format
 
 ### 使用 docker compose 联调
 
-请参考部署文档中的模板，保存为 `docker-compose.release.yml`，然后执行：
+请参考部署文档中的模板，保存为 `docker-compose.yml`，然后执行：
 
 ```bash
-docker compose --env-file .env -f docker-compose.release.yml pull
-docker compose --env-file .env -f docker-compose.release.yml up -d
-docker compose --env-file .env -f docker-compose.release.yml ps
+docker compose --env-file .env -f docker-compose.yml pull
+docker compose --env-file .env -f docker-compose.yml up -d
+docker compose --env-file .env -f docker-compose.yml ps
 ```
 
 ### 使用 docker run 联调
@@ -69,7 +69,6 @@ docker run -d --name verhub-backend --network verhub-net \
   -e DATABASE_URL='postgresql://verhub:change-this-strong-db-password@verhub-postgres:5432/verhub?schema=public' \
   -e JWT_SECRET='please-change-me' \
   -e API_KEY_SALT='please-change-me-too' \
-  -e CORS_ORIGIN='http://localhost' \
   -v verhub-bootstrap:/bootstrap \
   docker.io/ivanhanloth/verhub-backend:latest
 
@@ -77,6 +76,8 @@ docker run -d --name verhub-frontend --network verhub-net \
   -p 80:80 -p 443:443 \
   docker.io/ivanhanloth/verhub-frontend:latest
 ```
+
+后端默认允许所有来源的跨域请求，不再需要通过环境变量配置来源白名单。
 
 ## 数据库与 Prisma
 

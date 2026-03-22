@@ -2,18 +2,20 @@
 
 本文提供 Verhub 的推荐部署方式与生产环境建议。
 
-## 镜像策略说明（先看）
+## 镜像策略说明
 
-Verhub 当前只提供分离镜像：
+Verhub 当前通过两个渠道提供镜像：
 
-- `docker.io/ivanhanloth/verhub-backend`
-- `docker.io/ivanhanloth/verhub-frontend`
-- `ghcr.io/ivanhanloth/verhub-backend`
-- `ghcr.io/ivanhanloth/verhub-frontend`
+- Docker hub
+  - `docker.io/ivanhanloth/verhub-backend`
+  - `docker.io/ivanhanloth/verhub-frontend`
+- GitHub Container Registry
+  - `ghcr.io/ivanhanloth/verhub-backend`
+  - `ghcr.io/ivanhanloth/verhub-frontend`
 
-推荐分离镜像的原因：
+我们没有提供统一镜像的原因：
 
-1. 前后端可以独立升级与回滚
+1. 前后端可以独立扩展与回滚
 2. 资源配额与扩缩容策略可独立设置
 3. 生产问题定位更直接
 
@@ -60,7 +62,7 @@ services:
         max-file: "3" # 最多保留 3 个旧文件
 
   backend:
-    image: ${VERHUB_BACKEND_IMAGE:-docker.io/ivanhanloth/verhub-backend}:${VERHUB_TAG:-latest}
+    image: ${VERHUB_BACKEND_IMAGE:-ivanhanloth/verhub-backend}:${VERHUB_TAG:-latest}
     container_name: verhub-backend
     restart: unless-stopped
     networks:
@@ -74,7 +76,6 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       BOOTSTRAP_SECRET_DIR: /bootstrap
       API_KEY_SALT: ${API_KEY_SALT}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,10 +89,10 @@ services:
       start_period: 15s
     volumes:
       - bootstrap-secrets:/bootstrap
-    logging: *default-logging # 引用日志配置
+    logging: *default-logging
 
   frontend:
-    image: ${VERHUB_FRONTEND_IMAGE:-docker.io/ivanhanloth/verhub-frontend}:${VERHUB_TAG:-latest}
+    image: ${VERHUB_FRONTEND_IMAGE:-ivanhanloth/verhub-frontend}:${VERHUB_TAG:-latest}
     container_name: verhub-frontend
     restart: unless-stopped
     networks:
@@ -110,7 +111,7 @@ services:
     ports:
       - "${VERHUB_HTTP_PORT:-80}:80"
       - "${VERHUB_HTTPS_PORT:-443}:443"
-    logging: *default-logging # 引用日志配置
+    logging: *default-logging
 
 volumes:
   postgres-data:
@@ -122,12 +123,12 @@ volumes:
 在同目录创建 `.env`：
 
 ```dotenv
-# 镜像版本（latest 或 v1.2.3）
+# 镜像版本（latest 或 v1.0.0）
 VERHUB_TAG=latest
 
 # 如果要切换到 GHCR，可改成：ghcr.io/ivanhanloth/verhub-backend / verhub-frontend
-VERHUB_BACKEND_IMAGE=docker.io/ivanhanloth/verhub-backend
-VERHUB_FRONTEND_IMAGE=docker.io/ivanhanloth/verhub-frontend
+VERHUB_BACKEND_IMAGE=ivanhanloth/verhub-backend
+VERHUB_FRONTEND_IMAGE=ivanhanloth/verhub-frontend
 
 # PostgreSQL
 VERHUB_POSTGRES_DB=verhub
@@ -141,7 +142,6 @@ API_KEY_SALT=please-change-this-api-key-salt
 # Backend 可选
 JWT_EXPIRES_IN=2h
 ADMIN_PASSWORD=
-CORS_ORIGIN=http://localhost
 
 # 暴露端口
 VERHUB_HTTP_PORT=80
@@ -153,30 +153,30 @@ VERHUB_HTTPS_PORT=443
 首次启动：
 
 ```bash
-docker compose --env-file .env -f docker-compose.release.yml pull
-docker compose --env-file .env -f docker-compose.release.yml up -d
-docker compose --env-file .env -f docker-compose.release.yml ps
+docker compose --env-file .env -f docker-compose.yml pull
+docker compose --env-file .env -f docker-compose.yml up -d
+docker compose --env-file .env -f docker-compose.yml ps
 ```
 
 升级到新版本（例如 `v1.3.0`）：
 
 ```bash
 sed -i 's/^VERHUB_TAG=.*/VERHUB_TAG=v1.3.0/' .env
-docker compose --env-file .env -f docker-compose.release.yml pull
-docker compose --env-file .env -f docker-compose.release.yml up -d
+docker compose --env-file .env -f docker-compose.yml pull
+docker compose --env-file .env -f docker-compose.yml up -d
 ```
 
 查看日志：
 
 ```bash
-docker compose --env-file .env -f docker-compose.release.yml logs -f backend frontend
+docker compose --env-file .env -f docker-compose.yml logs -f backend frontend
 ```
 
 ### 关键说明
 
 - 前端容器通过 Nginx 暴露服务入口
-- 后端容器通常仅在内部网络暴露
-- 数据持久化由 PostgreSQL 卷负责
+- 后端容器端口仅在内部网络暴露
+- 数据持久化由 PostgreSQL 卷负责，首次启动会自动创建数据库与表结构，可以尝试复用已有数据库，但需自行确保兼容性
 
 ## 方案二：docker run（不使用 compose）
 
@@ -196,7 +196,6 @@ docker run -d --name verhub-backend --network verhub-net \
   -e DATABASE_URL='postgresql://verhub:change-this-strong-db-password@verhub-postgres:5432/verhub?schema=public' \
   -e JWT_SECRET='please-change-this-jwt-secret' \
   -e API_KEY_SALT='please-change-this-api-key-salt' \
-  -e CORS_ORIGIN='http://localhost' \
   -v verhub-bootstrap:/bootstrap \
   docker.io/ivanhanloth/verhub-backend:latest
 
@@ -216,10 +215,9 @@ docker run -d --name verhub-frontend --network verhub-net \
 ## 生产环境配置建议
 
 1. 强制使用高强度 `JWT_SECRET`
-2. 设置明确的 `CORS_ORIGIN`
-3. 限制数据库公网访问
-4. 对镜像与依赖定期进行漏洞扫描
-5. 开启日志采集与错误告警
+2. 限制数据库公网访问，避免暴露默认端口
+3. 对镜像与依赖定期进行漏洞扫描
+4. 开启日志采集与错误告警
 
 ## 升级发布建议
 

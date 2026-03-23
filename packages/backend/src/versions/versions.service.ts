@@ -379,7 +379,7 @@ export class VersionsService {
       reasons.push("outside_optional_update_range")
     }
 
-    if (currentRecord?.isDeprecated) {
+    if (currentRecord?.isDeprecated && hasNewer) {
       required = true
       reasons.push("current_version_deprecated")
     }

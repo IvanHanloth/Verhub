@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { listProjects } from "@/lib/projects-api"
 import {
+  checkVersionUpdate,
   listVersions,
   createVersion,
   deleteVersion,
@@ -20,6 +21,7 @@ vi.mock("@/lib/projects-api", () => ({
 }))
 
 vi.mock("@/lib/versions-api", () => ({
+  checkVersionUpdate: vi.fn(),
   listVersions: vi.fn(),
   createVersion: vi.fn(),
   deleteVersion: vi.fn(),
@@ -29,6 +31,7 @@ vi.mock("@/lib/versions-api", () => ({
 }))
 
 const mockedListProjects = vi.mocked(listProjects)
+const mockedCheckVersionUpdate = vi.mocked(checkVersionUpdate)
 const mockedListVersions = vi.mocked(listVersions)
 const mockedCreateVersion = vi.mocked(createVersion)
 const mockedDeleteVersion = vi.mocked(deleteVersion)
@@ -43,6 +46,7 @@ describe("VersionsDashboard", () => {
 
     mockedListProjects.mockReset()
     mockedListVersions.mockReset()
+    mockedCheckVersionUpdate.mockReset()
     mockedCreateVersion.mockReset()
     mockedDeleteVersion.mockReset()
     mockedUpdateVersion.mockReset()
@@ -75,6 +79,7 @@ describe("VersionsDashboard", () => {
         {
           id: "version-1",
           version: "1.0.0",
+          comparable_version: "1.0.0",
           title: "稳定版",
           content: "old content",
           download_url: "https://example.com/1.0.0",
@@ -93,6 +98,7 @@ describe("VersionsDashboard", () => {
     mockedUpdateVersion.mockResolvedValue({
       id: "version-1",
       version: "1.0.0",
+      comparable_version: "1.0.0",
       title: "稳定版-更新",
       content: "new content",
       download_url: "https://example.com/1.0.0",
@@ -107,6 +113,51 @@ describe("VersionsDashboard", () => {
     })
 
     mockedDeleteVersion.mockResolvedValue({ success: true })
+    mockedCheckVersionUpdate.mockResolvedValue({
+      should_update: true,
+      required: false,
+      reason_codes: ["newer_version_available"],
+      current_version: "1.0.0",
+      current_comparable_version: "1.0.0",
+      latest_version: {
+        id: "version-latest",
+        version: "1.1.0",
+        comparable_version: "1.1.0",
+        title: "latest",
+        content: null,
+        download_url: null,
+        download_links: [],
+        forced: false,
+        is_latest: true,
+        is_preview: false,
+        platform: null,
+        custom_data: null,
+        published_at: 1774087200,
+        created_at: 1774087200,
+      },
+      latest_preview_version: null,
+      target_version: {
+        id: "version-latest",
+        version: "1.1.0",
+        comparable_version: "1.1.0",
+        title: "latest",
+        content: null,
+        download_url: null,
+        download_links: [],
+        forced: false,
+        is_latest: true,
+        is_preview: false,
+        platform: null,
+        custom_data: null,
+        published_at: 1774087200,
+        created_at: 1774087200,
+      },
+      milestone: {
+        current: null,
+        latest: null,
+        latest_in_current: null,
+      },
+    })
     mockedImportVersionsFromGithubReleases.mockResolvedValue({
       imported: 2,
       skipped: 1,
@@ -115,6 +166,7 @@ describe("VersionsDashboard", () => {
 
     mockedPreviewVersionFromGithubRelease.mockResolvedValue({
       version: "1.2.3",
+      comparable_version: "1.2.3",
       title: "Verhub v1.2.3",
       content: "release note",
       download_url: "https://downloads.example.com/verhub-1.2.3.zip",
@@ -252,7 +304,7 @@ describe("VersionsDashboard", () => {
     await screen.findByText("1.0.0")
     await user.click(screen.getByRole("button", { name: "复制配置" }))
 
-    expect(screen.getByDisplayValue("1.0.0")).toBeInTheDocument()
+    expect(screen.getByPlaceholderText("例如：2.3.0")).toHaveValue("1.0.0")
     expect(screen.getByDisplayValue("稳定版")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "发布版本" })).toBeInTheDocument()
   })
@@ -308,9 +360,7 @@ describe("VersionsDashboard", () => {
     })
 
     expect(screen.getByPlaceholderText("例如：2.3.0")).toHaveValue("1.2.3")
-    expect(screen.getByPlaceholderText("例如：2.3.0-rc.1（留空则尝试由版本号推导）")).toHaveValue(
-      "1.2.3",
-    )
+    expect(screen.getByPlaceholderText("例如：2.3.0-rc.1")).toHaveValue("1.2.3")
     expect(screen.getByDisplayValue("Verhub v1.2.3")).toBeInTheDocument()
     expect(screen.getByLabelText("预发布版本")).toBeChecked()
   })

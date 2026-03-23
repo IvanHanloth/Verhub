@@ -421,4 +421,69 @@ describe("VersionsService", () => {
     )
     expect(result.target_version.version).toBe("1.5.0")
   })
+
+  it("does not require downgrade when current deprecated version is already newer than stable candidate", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValueOnce({
+      projectKey: "project-1",
+      optionalUpdateMinComparableVersion: null,
+      optionalUpdateMaxComparableVersion: null,
+    })
+    prisma.version.findFirst
+      .mockResolvedValueOnce({
+        id: "latest-stable",
+        projectKey: "project-1",
+        version: "2.0.0",
+        comparableVersion: "2.0.0",
+        title: null,
+        content: null,
+        downloadUrl: null,
+        downloadLinks: null,
+        forced: false,
+        isLatest: true,
+        isPreview: false,
+        milestone: null,
+        isDeprecated: false,
+        platform: null,
+        customData: null,
+        publishedAt: 10,
+        createdAt: 10,
+      })
+      .mockResolvedValueOnce({
+        id: "latest-preview",
+        projectKey: "project-1",
+        version: "3.0.0-rc.1",
+        comparableVersion: "3.0.0-rc.1",
+        title: null,
+        content: null,
+        downloadUrl: null,
+        downloadLinks: null,
+        forced: false,
+        isLatest: false,
+        isPreview: true,
+        milestone: null,
+        isDeprecated: false,
+        platform: null,
+        customData: null,
+        publishedAt: 11,
+        createdAt: 11,
+      })
+      .mockResolvedValueOnce({
+        version: "3.0.0-rc.1",
+        comparableVersion: "3.0.0-rc.1",
+        milestone: null,
+        isDeprecated: true,
+      })
+
+    const service = new VersionsService(prisma as never)
+    const result = await service.checkUpdateByProjectKey("project-1", {
+      current_version: "3.0.0-rc.1",
+      include_preview: false,
+    })
+
+    expect(result.should_update).toBe(false)
+    expect(result.required).toBe(false)
+    expect(result.reason_codes).toEqual([])
+    expect(result.target_version.version).toBe("2.0.0")
+  })
 })

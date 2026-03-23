@@ -12,7 +12,6 @@ const config = {
     nav: [
       { text: "首页", link: "/" },
       { text: "项目介绍", link: "/guide/introduction" },
-      { text: "更新策略", link: "/guide/update-policy" },
       { text: "部署指南", link: "/guide/deployment" },
       { text: "开发指南", link: "/guide/development" },
       { text: "用户指南", link: "/guide/user-guide" },
@@ -49,8 +48,8 @@ const config = {
       provider: "local"
     },
     footer: {
-      message: "Released under the MIT License.",
-      copyright: "Copyright © 2026 Verhub"
+      message: "Released under the Apache 2.0 License.",
+      copyright: "Copyright © 2026 Verhub by IvanHanloth"
     }
   }
 };

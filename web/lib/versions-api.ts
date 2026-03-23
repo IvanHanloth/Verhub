@@ -34,7 +34,7 @@ export type ListVersionsResponse = {
 
 export type CreateVersionInput = {
   version: string
-  comparable_version?: string
+  comparable_version: string
   title?: string
   content?: string
   download_url?: string

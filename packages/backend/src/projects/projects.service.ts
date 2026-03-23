@@ -10,7 +10,7 @@ import { PrismaService } from "../database/prisma.service"
 import { CreateProjectDto } from "./dto/create-project.dto"
 import { QueryProjectsDto } from "./dto/query-projects.dto"
 import { UpdateProjectDto } from "./dto/update-project.dto"
-import { parseComparableVersion } from "../versions/version-comparator"
+import { compareComparableVersions, parseComparableVersion } from "../versions/version-comparator"
 
 type ProjectItem = {
   id: string
@@ -146,10 +146,16 @@ export class ProjectsService {
       throw new NotFoundException("Project not found")
     }
 
-    this.validateComparableRange(
-      dto.optional_update_min_comparable_version,
-      dto.optional_update_max_comparable_version,
-    )
+    const effectiveMin =
+      dto.optional_update_min_comparable_version ??
+      project.optionalUpdateMinComparableVersion ??
+      undefined
+    const effectiveMax =
+      dto.optional_update_max_comparable_version ??
+      project.optionalUpdateMaxComparableVersion ??
+      undefined
+
+    this.validateComparableRange(effectiveMin, effectiveMax)
 
     try {
       const updated = await this.prisma.project.update({
@@ -289,18 +295,15 @@ export class ProjectsService {
   }
 
   private validateComparableRange(min?: string, max?: string): void {
-    let parsedMin: string | undefined
-    let parsedMax: string | undefined
-
     if (min) {
-      parsedMin = parseComparableVersion(min)
+      parseComparableVersion(min)
     }
 
     if (max) {
-      parsedMax = parseComparableVersion(max)
+      parseComparableVersion(max)
     }
 
-    if (parsedMin !== undefined && parsedMax !== undefined && parsedMin > parsedMax) {
+    if (min !== undefined && max !== undefined && compareComparableVersions(min, max) > 0) {
       throw new BadRequestException(
         "optional_update_min_comparable_version must be less than or equal to optional_update_max_comparable_version",
       )

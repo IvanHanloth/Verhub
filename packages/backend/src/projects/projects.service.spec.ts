@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from "@nestjs/common"
+import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common"
 
 import { ProjectsService } from "./projects.service"
 
@@ -137,5 +137,34 @@ describe("ProjectsService", () => {
     await service.remove("project-1")
 
     expect(prisma.project.delete).toHaveBeenCalledWith({ where: { projectKey: "project-1" } })
+  })
+
+  it("validates comparable range against existing values on partial update", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({
+      projectKey: "project-1",
+      name: "Project",
+      repoUrl: null,
+      description: null,
+      author: null,
+      authorHomepageUrl: null,
+      iconUrl: null,
+      websiteUrl: null,
+      publishedAt: null,
+      optionalUpdateMinComparableVersion: undefined,
+      optionalUpdateMaxComparableVersion: "1.0.0",
+      createdAt: 1,
+      updatedAt: 1,
+    })
+
+    const service = new ProjectsService(prisma as never)
+
+    await expect(
+      service.update("project-1", {
+        optional_update_min_comparable_version: "2.0.0",
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException)
+
+    expect(prisma.project.update).not.toHaveBeenCalled()
   })
 })

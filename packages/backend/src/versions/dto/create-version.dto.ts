@@ -40,10 +40,9 @@ export class CreateVersionDto {
   @MaxLength(64)
   version!: string
 
-  @IsOptional()
   @IsString()
   @MaxLength(64)
-  comparable_version?: string
+  comparable_version!: string
 
   @IsOptional()
   @IsString()

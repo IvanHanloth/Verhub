@@ -6,8 +6,7 @@ hero:
   text: "版本与发布管理平台"
   tagline: 多项目统一版本、公告、反馈与行为日志管理，面向团队协作与持续交付。
   image:
-    light: /logo-light-500.png
-    dark: /logo-dark-500.png
+    src: /logo-500.png
     alt: Verhub Logo
   actions:
     - theme: brand

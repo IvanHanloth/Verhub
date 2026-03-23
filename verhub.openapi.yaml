@@ -2209,7 +2209,7 @@ components:
 
     CreateVersionDto:
       type: object
-      required: [version]
+      required: [version, comparable_version]
       properties:
         version:
           type: string

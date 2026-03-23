@@ -289,12 +289,21 @@ export class ProjectsService {
   }
 
   private validateComparableRange(min?: string, max?: string): void {
+    let parsedMin: string | undefined
+    let parsedMax: string | undefined
+
     if (min) {
-      parseComparableVersion(min)
+      parsedMin = parseComparableVersion(min)
     }
 
     if (max) {
-      parseComparableVersion(max)
+      parsedMax = parseComparableVersion(max)
+    }
+
+    if (parsedMin !== undefined && parsedMax !== undefined && parsedMin > parsedMax) {
+      throw new BadRequestException(
+        "optional_update_min_comparable_version must be less than or equal to optional_update_max_comparable_version",
+      )
     }
   }
 

@@ -324,9 +324,14 @@ export function ProjectShowcaseView({
                           preview
                         </span>
                       ) : null}
-                      {item.forced ? (
+                      {item.is_deprecated ? (
                         <span className="rounded-full bg-rose-300/25 px-2 py-0.5 text-xs text-rose-900 dark:text-rose-100">
-                          forced
+                          deprecated
+                        </span>
+                      ) : null}
+                      {item.milestone ? (
+                        <span className="rounded-full bg-violet-300/25 px-2 py-0.5 text-xs text-violet-900 dark:text-violet-100">
+                          {item.milestone}
                         </span>
                       ) : null}
                     </div>

@@ -11,6 +11,7 @@ export type VersionDownloadLink = {
 export type VersionItem = {
   id: string
   version: string
+  comparable_version?: string
   title: string | null
   content: string | null
   download_url: string | null
@@ -18,6 +19,8 @@ export type VersionItem = {
   forced: boolean
   is_latest: boolean
   is_preview: boolean
+  milestone?: string | null
+  is_deprecated?: boolean
   platform: ClientPlatform | null
   custom_data: Record<string, unknown> | null
   published_at: number
@@ -31,13 +34,15 @@ export type ListVersionsResponse = {
 
 export type CreateVersionInput = {
   version: string
+  comparable_version?: string
   title?: string
   content?: string
   download_url?: string
   download_links?: VersionDownloadLink[]
-  forced?: boolean
   is_latest?: boolean
   is_preview?: boolean
+  milestone?: string
+  is_deprecated?: boolean
   platform?: ClientPlatform
   custom_data?: Record<string, unknown>
   published_at?: number
@@ -45,6 +50,7 @@ export type CreateVersionInput = {
 
 export type GithubReleaseVersionPreview = {
   version: string
+  comparable_version?: string
   title?: string
   content?: string
   download_url?: string
@@ -52,9 +58,33 @@ export type GithubReleaseVersionPreview = {
   forced: boolean
   is_latest: boolean
   is_preview: boolean
+  milestone?: string
+  is_deprecated?: boolean
   custom_data: Record<string, unknown>
   published_at: number
   platform?: ClientPlatform
+}
+
+export type CheckVersionUpdateInput = {
+  current_version?: string
+  current_comparable_version?: string
+  include_preview?: boolean
+}
+
+export type CheckVersionUpdateResponse = {
+  should_update: boolean
+  required: boolean
+  reason_codes: string[]
+  current_version: string | null
+  current_comparable_version: string
+  latest_version: VersionItem
+  latest_preview_version: VersionItem | null
+  target_version: VersionItem
+  milestone: {
+    current: string | null
+    latest: string | null
+    latest_in_current: VersionItem | null
+  }
 }
 
 export async function listVersions(
@@ -143,4 +173,16 @@ export async function importVersionsFromGithubReleases(
       token,
     },
   )
+}
+
+export async function checkVersionUpdate(
+  projectKey: string,
+  input: CheckVersionUpdateInput,
+  signal?: AbortSignal,
+): Promise<CheckVersionUpdateResponse> {
+  return requestJson<CheckVersionUpdateResponse>(`/public/${projectKey}/versions/check-update`, {
+    method: "POST",
+    body: input,
+    signal,
+  })
 }

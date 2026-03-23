@@ -11,6 +11,8 @@ export type ProjectItem = {
   icon_url: string | null
   website_url: string | null
   published_at: number | null
+  optional_update_min_comparable_version?: string | null
+  optional_update_max_comparable_version?: string | null
   created_at: number
   updated_at: number
 }
@@ -30,6 +32,8 @@ export type ProjectMutationInput = {
   icon_url?: string
   website_url?: string
   published_at?: number
+  optional_update_min_comparable_version?: string
+  optional_update_max_comparable_version?: string
 }
 
 export type GithubRepoProjectPreview = {
@@ -42,6 +46,8 @@ export type GithubRepoProjectPreview = {
   icon_url: string | null
   website_url: string | null
   published_at: number | null
+  optional_update_min_comparable_version?: string | null
+  optional_update_max_comparable_version?: string | null
 }
 
 export type LoginResponse = {

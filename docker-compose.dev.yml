@@ -1,0 +1,105 @@
+name: verhub
+
+networks:
+  verhub-net:
+    driver: bridge
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: verhub-postgres
+    restart: unless-stopped
+    networks:
+      - verhub-net
+    environment:
+      POSTGRES_DB: ${VERHUB_POSTGRES_DB:-verhub}
+      POSTGRES_USER: ${VERHUB_POSTGRES_USER:-verhub}
+      POSTGRES_PASSWORD: ${VERHUB_POSTGRES_PASSWORD}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${VERHUB_POSTGRES_USER:-verhub} -d ${VERHUB_POSTGRES_DB:-verhub}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    logging: &default-logging
+      driver: "json-file"
+      options:
+        max-size: "20m" # 单个日志文件最大 20MB
+        max-file: "3" # 最多保留 3 个旧文件
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      target: backend-runtime
+      args:
+        VERHUB_BUILD_VERSION: ${VERHUB_BUILD_VERSION:-dev}
+        VERHUB_BUILD_PUBLISHED_AT: ${VERHUB_BUILD_PUBLISHED_AT:-unknown}
+    image: ${VERHUB_BACKEND_IMAGE:-verhub-backend-dev}:${VERHUB_TAG:-dev}
+    pull_policy: never
+    container_name: verhub-backend
+    restart: unless-stopped
+    networks:
+      - verhub-net
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${VERHUB_POSTGRES_USER:-verhub}:${VERHUB_POSTGRES_PASSWORD}@postgres:5432/${VERHUB_POSTGRES_DB:-verhub}?schema=public
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-2h}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      BOOTSTRAP_SECRET_DIR: /bootstrap
+      API_KEY_SALT: ${API_KEY_SALT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    volumes:
+      - bootstrap-secrets:/bootstrap
+    logging: *default-logging # 引用日志配置
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+      target: frontend-runtime
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
+        VERHUB_BUILD_VERSION: ${VERHUB_BUILD_VERSION:-dev}
+        VERHUB_BUILD_PUBLISHED_AT: ${VERHUB_BUILD_PUBLISHED_AT:-unknown}
+    image: ${VERHUB_FRONTEND_IMAGE:-verhub-frontend-dev}:${VERHUB_TAG:-dev}
+    pull_policy: never
+    container_name: verhub-frontend
+    restart: unless-stopped
+    networks:
+      - verhub-net
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --no-verbose --tries=1 --spider http://127.0.0.1/healthz || exit 1
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    ports:
+      - "${VERHUB_HTTP_PORT:-80}:80"
+      - "${VERHUB_HTTPS_PORT:-443}:443"
+    logging: *default-logging # 引用日志配置
+
+volumes:
+  postgres-data:
+  bootstrap-secrets:

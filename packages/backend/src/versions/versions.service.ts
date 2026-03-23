@@ -9,14 +9,21 @@ import {
 import { Prisma, ClientPlatform } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
+import { CheckVersionUpdateDto } from "./dto/check-version-update.dto"
 import { CreateVersionDto } from "./dto/create-version.dto"
 import { PreviewGithubReleaseDto } from "./dto/preview-github-release.dto"
 import { QueryVersionsDto } from "./dto/query-versions.dto"
 import { UpdateVersionDto } from "./dto/update-version.dto"
+import {
+  compareComparableVersions,
+  isComparableVersionInRange,
+  parseComparableVersion,
+} from "./version-comparator"
 
 type VersionItem = {
   id: string
   version: string
+  comparable_version: string
   title: string | null
   content: string | null
   download_url: string | null
@@ -24,6 +31,8 @@ type VersionItem = {
   forced: boolean
   is_latest: boolean
   is_preview: boolean
+  milestone: string | null
+  is_deprecated: boolean
   platform: "ios" | "android" | "windows" | "mac" | "web" | null
   custom_data: Prisma.JsonValue | null
   published_at: number
@@ -37,6 +46,7 @@ type VersionListResponse = {
 
 type GithubReleasePreview = {
   version: string
+  comparable_version: string
   title?: string
   content?: string
   download_url?: string
@@ -44,6 +54,8 @@ type GithubReleasePreview = {
   forced: boolean
   is_latest: boolean
   is_preview: boolean
+  milestone?: string
+  is_deprecated: boolean
   published_at: number
   custom_data: Record<string, unknown>
 }
@@ -52,6 +64,42 @@ type VersionImportResult = {
   imported: number
   skipped: number
   scanned: number
+}
+
+type VersionRecord = {
+  id: string
+  projectKey: string
+  version: string
+  comparableVersion: string | null
+  title: string | null
+  content: string | null
+  downloadUrl: string | null
+  forced: boolean
+  isLatest: boolean
+  isPreview: boolean
+  milestone: string | null
+  isDeprecated: boolean
+  platform: ClientPlatform | null
+  customData: Prisma.JsonValue | null
+  downloadLinks: Prisma.JsonValue | null
+  publishedAt: number
+  createdAt: number
+}
+
+type CheckVersionUpdateResponse = {
+  should_update: boolean
+  required: boolean
+  reason_codes: string[]
+  current_version: string | null
+  current_comparable_version: string
+  latest_version: VersionItem
+  latest_preview_version: VersionItem | null
+  target_version: VersionItem
+  milestone: {
+    current: string | null
+    latest: string | null
+    latest_in_current: VersionItem | null
+  }
 }
 
 function nowSeconds(): number {
@@ -191,6 +239,203 @@ export class VersionsService {
     return this.toVersionItem(fallbackAny)
   }
 
+  async findLatestPreviewByProjectKey(projectKey: string): Promise<VersionItem> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    await this.ensureProjectExists(normalizedProjectKey)
+
+    const latestPreview = await this.prisma.version.findFirst({
+      where: { projectKey: normalizedProjectKey, isPreview: true },
+      orderBy: [{ comparableVersion: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
+    })
+
+    if (!latestPreview) {
+      throw new NotFoundException("Preview version not found")
+    }
+
+    return this.toVersionItem(latestPreview)
+  }
+
+  async findByVersionNumber(projectKey: string, version: string): Promise<VersionItem> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    await this.ensureProjectExists(normalizedProjectKey)
+
+    const found = await this.prisma.version.findFirst({
+      where: {
+        projectKey: normalizedProjectKey,
+        version: version.trim(),
+      },
+    })
+
+    if (!found) {
+      throw new NotFoundException("Version not found")
+    }
+
+    return this.toVersionItem(found)
+  }
+
+  async checkUpdateByProjectKey(
+    projectKey: string,
+    dto: CheckVersionUpdateDto,
+  ): Promise<CheckVersionUpdateResponse> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    const project = await this.prisma.project.findUnique({
+      where: { projectKey: normalizedProjectKey },
+      select: {
+        projectKey: true,
+        optionalUpdateMinComparableVersion: true,
+        optionalUpdateMaxComparableVersion: true,
+      },
+    })
+    if (!project) {
+      throw new NotFoundException("Project not found")
+    }
+
+    const includePreview = dto.include_preview ?? false
+    const latestStable = await this.prisma.version.findFirst({
+      where: {
+        projectKey: normalizedProjectKey,
+        isPreview: false,
+        comparableVersion: { not: null },
+      },
+      orderBy: [{ comparableVersion: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
+    })
+    const latestPreview = await this.prisma.version.findFirst({
+      where: {
+        projectKey: normalizedProjectKey,
+        isPreview: true,
+        comparableVersion: { not: null },
+      },
+      orderBy: [{ comparableVersion: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
+    })
+
+    const latestCandidate = includePreview
+      ? this.pickHigherVersion(latestStable, latestPreview)
+      : latestStable
+
+    if (!latestCandidate) {
+      throw new NotFoundException("Version not found")
+    }
+
+    let currentRecord: {
+      version: string
+      comparableVersion: string | null
+      milestone: string | null
+      isDeprecated: boolean
+    } | null = null
+
+    if (dto.current_version) {
+      currentRecord = await this.prisma.version.findFirst({
+        where: {
+          projectKey: normalizedProjectKey,
+          version: dto.current_version.trim(),
+        },
+        select: {
+          version: true,
+          comparableVersion: true,
+          milestone: true,
+          isDeprecated: true,
+        },
+      })
+    }
+
+    const currentComparableVersion =
+      dto.current_comparable_version?.trim() || currentRecord?.comparableVersion || ""
+    if (!currentComparableVersion) {
+      throw new BadRequestException(
+        "current_comparable_version is required when current version record does not provide comparable_version",
+      )
+    }
+    parseComparableVersion(currentComparableVersion)
+
+    if (project.optionalUpdateMinComparableVersion) {
+      parseComparableVersion(project.optionalUpdateMinComparableVersion)
+    }
+    if (project.optionalUpdateMaxComparableVersion) {
+      parseComparableVersion(project.optionalUpdateMaxComparableVersion)
+    }
+
+    const latestComparableVersion = latestCandidate.comparableVersion
+    if (!latestComparableVersion) {
+      throw new BadRequestException("Latest version comparable_version is not configured")
+    }
+
+    const hasNewer =
+      compareComparableVersions(latestComparableVersion, currentComparableVersion) > 0
+    const reasons: string[] = []
+    let required = false
+    let targetVersion = latestCandidate
+
+    if (hasNewer) {
+      reasons.push("newer_version_available")
+    }
+
+    const isInOptionalRange = isComparableVersionInRange(
+      currentComparableVersion,
+      project.optionalUpdateMinComparableVersion,
+      project.optionalUpdateMaxComparableVersion,
+    )
+    if (hasNewer && !isInOptionalRange) {
+      required = true
+      reasons.push("outside_optional_update_range")
+    }
+
+    if (currentRecord?.isDeprecated) {
+      required = true
+      reasons.push("current_version_deprecated")
+    }
+
+    const currentMilestone = currentRecord?.milestone ?? null
+    const latestMilestone = latestCandidate.milestone
+    let milestoneTarget: VersionRecord | null = null
+
+    if (hasNewer) {
+      const milestoneCandidatesRaw = await this.prisma.version.findMany({
+        where: {
+          projectKey: normalizedProjectKey,
+          milestone: { not: null },
+          comparableVersion: { not: null },
+        },
+      })
+      const milestoneCandidates = Array.isArray(milestoneCandidatesRaw)
+        ? milestoneCandidatesRaw
+        : []
+
+      const blockers = milestoneCandidates
+        .filter((item): item is VersionRecord & { comparableVersion: string } =>
+          Boolean(item.comparableVersion),
+        )
+        .filter(
+          (item) =>
+            compareComparableVersions(item.comparableVersion, currentComparableVersion) > 0 &&
+            compareComparableVersions(item.comparableVersion, latestComparableVersion) <= 0,
+        )
+        .sort((a, b) => compareComparableVersions(a.comparableVersion, b.comparableVersion))
+
+      milestoneTarget = blockers[0] ?? null
+      if (milestoneTarget) {
+        required = true
+        reasons.push("milestone_guard")
+        targetVersion = milestoneTarget
+      }
+    }
+
+    return {
+      should_update: hasNewer || required,
+      required,
+      reason_codes: reasons,
+      current_version: currentRecord?.version ?? dto.current_version?.trim() ?? null,
+      current_comparable_version: currentComparableVersion,
+      latest_version: this.toVersionItem(latestCandidate),
+      latest_preview_version: latestPreview ? this.toVersionItem(latestPreview) : null,
+      target_version: this.toVersionItem(targetVersion),
+      milestone: {
+        current: currentMilestone,
+        latest: latestMilestone,
+        latest_in_current: milestoneTarget ? this.toVersionItem(milestoneTarget) : null,
+      },
+    }
+  }
+
   async create(projectKey: string, dto: CreateVersionDto): Promise<VersionItem> {
     const normalizedProjectKey = normalizeProjectKey(projectKey)
     await this.ensureProjectExists(normalizedProjectKey)
@@ -199,6 +444,7 @@ export class VersionsService {
       const isPreview = dto.is_preview ?? false
       const isLatest = dto.is_latest ?? !isPreview
       const publishedAt = dto.published_at ?? nowSeconds()
+      const comparableVersion = this.resolveComparableVersion(dto.comparable_version, dto.version)
 
       const downloadData = this.resolveDownloadData(dto.download_url, dto.download_links)
 
@@ -206,13 +452,16 @@ export class VersionsService {
         data: {
           projectKey: normalizedProjectKey,
           version: dto.version,
+          comparableVersion,
           title: dto.title,
           content: dto.content,
           downloadUrl: downloadData.downloadUrl,
           downloadLinks: downloadData.downloadLinks,
-          forced: dto.forced ?? false,
+          forced: false,
           isLatest,
           isPreview,
+          milestone: dto.milestone ?? null,
+          isDeprecated: dto.is_deprecated ?? false,
           platform: this.toClientPlatform(dto.platform),
           customData: dto.custom_data as Prisma.InputJsonValue | undefined,
           publishedAt,
@@ -274,18 +523,25 @@ export class VersionsService {
             ? false
             : version.isLatest
       const nextPublishedAt = dto.published_at
+      const nextComparableVersion =
+        dto.comparable_version === undefined && dto.version === undefined
+          ? undefined
+          : this.resolveComparableVersion(dto.comparable_version, dto.version ?? version.version)
 
       const updated = await this.prisma.version.update({
         where: { id },
         data: {
           version: dto.version,
+          comparableVersion: nextComparableVersion,
           title: dto.title,
           content: dto.content,
           downloadUrl: nextDownloadData.downloadUrl ?? nextDownloadUrl,
           downloadLinks: nextDownloadData.downloadLinks,
-          forced: dto.forced,
+          forced: false,
           isLatest: nextIsLatest,
           isPreview: nextIsPreview,
+          milestone: dto.milestone,
+          isDeprecated: dto.is_deprecated,
           platform: this.toClientPlatform(dto.platform),
           customData: dto.custom_data as Prisma.InputJsonValue | undefined,
           publishedAt: nextPublishedAt,
@@ -420,6 +676,7 @@ export class VersionsService {
 
     return {
       version: this.normalizeVersionTag(releaseTag),
+      comparable_version: this.normalizeVersionTag(releaseTag),
       title: payload.name?.trim() || undefined,
       content: payload.body?.trim() || undefined,
       download_url: downloadUrl,
@@ -427,6 +684,7 @@ export class VersionsService {
       forced: false,
       is_latest: !isPreview,
       is_preview: isPreview,
+      is_deprecated: false,
       published_at: Number.isFinite(publishedAt) ? publishedAt : nowSeconds(),
       custom_data: {
         source: "github-release",
@@ -478,6 +736,7 @@ export class VersionsService {
         skipped += 1
         continue
       }
+      parseComparableVersion(normalizedVersion)
 
       const releaseLinks = this.toGithubReleaseDownloadLinks(release.assets)
       const downloadUrl =
@@ -490,6 +749,7 @@ export class VersionsService {
         data: {
           projectKey: normalizedProjectKey,
           version: normalizedVersion,
+          comparableVersion: normalizedVersion,
           title: release.name?.trim() || null,
           content: release.body?.trim() || null,
           downloadUrl,
@@ -497,6 +757,8 @@ export class VersionsService {
           forced: false,
           isLatest: false,
           isPreview: Boolean(release.prerelease),
+          milestone: null,
+          isDeprecated: false,
           platform: undefined,
           customData: {
             source: "github-release-import",
@@ -583,6 +845,15 @@ export class VersionsService {
     return trimmed.startsWith("v") || trimmed.startsWith("V") ? trimmed.slice(1) : trimmed
   }
 
+  private resolveComparableVersion(
+    comparableVersion: string | undefined,
+    semantic: string,
+  ): string {
+    const candidate = comparableVersion?.trim() || this.normalizeVersionTag(semantic)
+    parseComparableVersion(candidate)
+    return candidate
+  }
+
   private async ensureProjectExists(projectKey: string): Promise<void> {
     const project = await this.prisma.project.findUnique({ where: { projectKey } })
     if (!project) {
@@ -611,26 +882,13 @@ export class VersionsService {
     return platform.toLowerCase() as "ios" | "android" | "windows" | "mac" | "web"
   }
 
-  private toVersionItem(version: {
-    id: string
-    version: string
-    title: string | null
-    content: string | null
-    downloadUrl: string | null
-    forced: boolean
-    isLatest: boolean
-    isPreview: boolean
-    platform: ClientPlatform | null
-    customData: Prisma.JsonValue | null
-    downloadLinks: Prisma.JsonValue | null
-    publishedAt: number
-    createdAt: number
-  }): VersionItem {
+  private toVersionItem(version: VersionRecord): VersionItem {
     const normalizedLinks = this.parseDownloadLinks(version.downloadLinks)
 
     return {
       id: version.id,
       version: version.version,
+      comparable_version: version.comparableVersion ?? version.version,
       title: version.title,
       content: version.content,
       download_url: version.downloadUrl,
@@ -643,11 +901,33 @@ export class VersionsService {
       forced: version.forced,
       is_latest: version.isLatest,
       is_preview: version.isPreview,
+      milestone: version.milestone,
+      is_deprecated: version.isDeprecated,
       platform: this.fromClientPlatform(version.platform),
       custom_data: version.customData,
       published_at: version.publishedAt,
       created_at: version.createdAt,
     }
+  }
+
+  private pickHigherVersion(
+    stable: VersionRecord | null,
+    preview: VersionRecord | null,
+  ): VersionRecord | null {
+    if (!stable) {
+      return preview
+    }
+    if (!preview) {
+      return stable
+    }
+
+    if (!stable.comparableVersion || !preview.comparableVersion) {
+      return preview.publishedAt >= stable.publishedAt ? preview : stable
+    }
+
+    return compareComparableVersions(preview.comparableVersion, stable.comparableVersion) >= 0
+      ? preview
+      : stable
   }
 
   private isUniqueViolation(error: unknown): boolean {

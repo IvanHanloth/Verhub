@@ -32,6 +32,8 @@ describe("ProjectsService", () => {
           iconUrl: null,
           websiteUrl: null,
           publishedAt: null,
+          optionalUpdateMinComparableVersion: null,
+          optionalUpdateMaxComparableVersion: null,
           createdAt: 1767225600,
           updatedAt: 1767312000,
         },
@@ -53,6 +55,8 @@ describe("ProjectsService", () => {
       icon_url: null,
       website_url: null,
       published_at: null,
+      optional_update_min_comparable_version: null,
+      optional_update_max_comparable_version: null,
       created_at: 1767225600,
       updated_at: 1767312000,
     })
@@ -92,6 +96,8 @@ describe("ProjectsService", () => {
       icon_url: "https://avatars.githubusercontent.com/u/1?v=4",
       website_url: "https://example.com",
       published_at: Math.floor(Date.parse("2026-03-20T10:00:00.000Z") / 1000),
+      optional_update_min_comparable_version: null,
+      optional_update_max_comparable_version: null,
     })
 
     fetchMock.mockRestore()

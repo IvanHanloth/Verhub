@@ -12,7 +12,6 @@ import {
   Layers,
   Rocket,
   Shield,
-  Sparkles,
 } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
@@ -66,7 +65,7 @@ export function HomePageView() {
     <main className="relative min-h-svh overflow-hidden bg-[#f5f4ef] text-slate-900 dark:bg-[#05070d] dark:text-slate-100">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-28 left-[-8%] h-96 w-96 rounded-full bg-[#ff8f3a]/25 blur-3xl" />
-        <div className="absolute top-[28%] right-[-10%] h-[28rem] w-[28rem] rounded-full bg-[#4aa7a3]/20 blur-3xl" />
+        <div className="absolute top-[28%] right-[-10%] h-112 w-md rounded-full bg-[#4aa7a3]/20 blur-3xl" />
         <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.46),transparent_40%,rgba(16,24,40,0.05))] dark:bg-[linear-gradient(120deg,rgba(3,8,18,0.35),transparent_45%,rgba(255,255,255,0.06))]" />
       </div>
 
@@ -74,7 +73,6 @@ export function HomePageView() {
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4 sm:px-10">
           <div className="flex items-center gap-2 text-xl font-semibold tracking-tight">
             <ThemeLogo imgClassName="h-7 w-auto" alt="Verhub" />
-            <Sparkles className="size-5 text-[#e6662a]" />
             Verhub
           </div>
           <div className="flex items-center gap-2">

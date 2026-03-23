@@ -10,6 +10,7 @@ import { PrismaService } from "../database/prisma.service"
 import { CreateProjectDto } from "./dto/create-project.dto"
 import { QueryProjectsDto } from "./dto/query-projects.dto"
 import { UpdateProjectDto } from "./dto/update-project.dto"
+import { parseComparableVersion } from "../versions/version-comparator"
 
 type ProjectItem = {
   id: string
@@ -22,6 +23,8 @@ type ProjectItem = {
   icon_url: string | null
   website_url: string | null
   published_at: number | null
+  optional_update_min_comparable_version: string | null
+  optional_update_max_comparable_version: string | null
   created_at: number
   updated_at: number
 }
@@ -41,6 +44,8 @@ type GithubRepoPreview = {
   icon_url: string | null
   website_url: string | null
   published_at: number | null
+  optional_update_min_comparable_version: string | null
+  optional_update_max_comparable_version: string | null
 }
 
 function nowSeconds(): number {
@@ -101,6 +106,11 @@ export class ProjectsService {
   }
 
   async create(dto: CreateProjectDto): Promise<ProjectItem> {
+    this.validateComparableRange(
+      dto.optional_update_min_comparable_version,
+      dto.optional_update_max_comparable_version,
+    )
+
     try {
       const project = await this.prisma.project.create({
         data: {
@@ -113,6 +123,8 @@ export class ProjectsService {
           iconUrl: dto.icon_url,
           websiteUrl: dto.website_url,
           publishedAt: dto.published_at,
+          optionalUpdateMinComparableVersion: dto.optional_update_min_comparable_version,
+          optionalUpdateMaxComparableVersion: dto.optional_update_max_comparable_version,
         },
       })
 
@@ -134,6 +146,11 @@ export class ProjectsService {
       throw new NotFoundException("Project not found")
     }
 
+    this.validateComparableRange(
+      dto.optional_update_min_comparable_version,
+      dto.optional_update_max_comparable_version,
+    )
+
     try {
       const updated = await this.prisma.project.update({
         where: { projectKey: project.projectKey },
@@ -148,6 +165,8 @@ export class ProjectsService {
           iconUrl: dto.icon_url,
           websiteUrl: dto.website_url,
           publishedAt: dto.published_at,
+          optionalUpdateMinComparableVersion: dto.optional_update_min_comparable_version,
+          optionalUpdateMaxComparableVersion: dto.optional_update_max_comparable_version,
           updatedAt: nowSeconds(),
         },
       })
@@ -224,6 +243,8 @@ export class ProjectsService {
       icon_url: payload.owner?.avatar_url?.trim() || null,
       website_url: payload.homepage?.trim() || null,
       published_at: Number.isFinite(publishedAt) ? publishedAt : null,
+      optional_update_min_comparable_version: null,
+      optional_update_max_comparable_version: null,
     }
   }
 
@@ -244,6 +265,8 @@ export class ProjectsService {
     iconUrl: string | null
     websiteUrl: string | null
     publishedAt: number | null
+    optionalUpdateMinComparableVersion: string | null
+    optionalUpdateMaxComparableVersion: string | null
     createdAt: number
     updatedAt: number
   }): ProjectItem {
@@ -258,8 +281,29 @@ export class ProjectsService {
       icon_url: project.iconUrl,
       website_url: project.websiteUrl,
       published_at: project.publishedAt,
+      optional_update_min_comparable_version: project.optionalUpdateMinComparableVersion,
+      optional_update_max_comparable_version: project.optionalUpdateMaxComparableVersion,
       created_at: project.createdAt,
       updated_at: project.updatedAt,
+    }
+  }
+
+  private validateComparableRange(min?: string, max?: string): void {
+    let parsedMin: string | undefined
+    let parsedMax: string | undefined
+
+    if (min) {
+      parsedMin = parseComparableVersion(min)
+    }
+
+    if (max) {
+      parsedMax = parseComparableVersion(max)
+    }
+
+    if (parsedMin !== undefined && parsedMax !== undefined && parsedMin > parsedMax) {
+      throw new BadRequestException(
+        "optional_update_min_comparable_version must be less than or equal to optional_update_max_comparable_version",
+      )
     }
   }
 

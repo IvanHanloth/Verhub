@@ -292,11 +292,19 @@ export class VersionsService {
 
     const includePreview = dto.include_preview ?? false
     const latestStable = await this.prisma.version.findFirst({
-      where: { projectKey: normalizedProjectKey, isPreview: false },
+      where: {
+        projectKey: normalizedProjectKey,
+        isPreview: false,
+        comparableVersion: { not: null },
+      },
       orderBy: [{ comparableVersion: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
     })
     const latestPreview = await this.prisma.version.findFirst({
-      where: { projectKey: normalizedProjectKey, isPreview: true },
+      where: {
+        projectKey: normalizedProjectKey,
+        isPreview: true,
+        comparableVersion: { not: null },
+      },
       orderBy: [{ comparableVersion: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
     })
 

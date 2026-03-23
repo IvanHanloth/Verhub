@@ -20,7 +20,13 @@ export function ThemeLogo({
 }: ThemeLogoProps) {
   return (
     <span className={cn("inline-flex items-center", className)}>
-      <Image src="/logo-500.png" alt={alt} width={width} height={height} className={imgClassName} />
+      <Image
+        src={"/images/logo-500.png"}
+        alt={alt}
+        width={width}
+        height={height}
+        className={imgClassName}
+      />
     </span>
   )
 }

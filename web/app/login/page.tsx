@@ -62,21 +62,23 @@ function LoginPageContent() {
         <div className="w-full max-w-5xl">
           <section className="rounded-3xl border border-slate-900/10 bg-white/75 p-4 shadow-2xl backdrop-blur-xl sm:p-6 lg:p-8 dark:border-white/15 dark:bg-black/35">
             <div className="grid gap-6 md:grid-cols-[1.05fr_0.95fr] md:items-stretch">
-              <div className="relative overflow-hidden rounded-2xl border-slate-900/10 bg-white/80 px-6 py-10 lg:py-15 dark:border-white/15 dark:bg-white/5">
-                <div className="space-y-4 md:space-y-5">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-cyan-600/30 bg-cyan-100/60 px-3 py-1 text-xs tracking-[0.2em] text-cyan-800 uppercase dark:border-cyan-200/30 dark:bg-cyan-200/10 dark:text-cyan-100">
-                    <ShieldCheck className="size-3.5" />
-                    Verhub Admin
+              <div className="relative flex flex-col-reverse overflow-hidden rounded-2xl border-slate-900/10 bg-white/80 px-6 py-5 lg:py-10 dark:border-white/15 dark:bg-white/5">
+                <div>
+                  <div className="space-y-1 md:space-y-2">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-cyan-600/30 bg-cyan-100/60 px-3 py-1 text-xs tracking-[0.2em] text-cyan-800 uppercase dark:border-cyan-200/30 dark:bg-cyan-200/10 dark:text-cyan-100">
+                      <ShieldCheck className="size-3.5" />
+                      Verhub Admin
+                    </div>
+                    <h1 className="text-3xl leading-tight font-semibold text-balance sm:text-4xl md:text-[2.6rem]">
+                      登录
+                    </h1>
+                    <p className="max-w-md text-sm leading-relaxed text-slate-700 sm:text-base dark:text-slate-200/90">
+                      Verhub后台管理页面
+                    </p>
                   </div>
-                  <h1 className="text-3xl leading-tight font-semibold text-balance sm:text-4xl md:text-[2.6rem]">
-                    登录
-                  </h1>
-                  <p className="max-w-md text-sm leading-relaxed text-slate-700 sm:text-base dark:text-slate-200/90">
-                    Verhub后台管理页面
-                  </p>
-                </div>
-                <div className="absolute -right-25 -bottom-25 -z-20 opacity-30">
-                  <ThemeLogo imgClassName="h-full" alt="Verhub" width={300} height={300} />
+                  <div className="absolute -top-25 -right-25 -z-20 opacity-50">
+                    <ThemeLogo imgClassName="h-full" alt="Verhub" width={300} height={300} />
+                  </div>
                 </div>
               </div>
               <div className="rounded-2xl border-slate-900/10 bg-white/80 px-6 py-10 lg:py-15 dark:border-white/15 dark:bg-white/5">

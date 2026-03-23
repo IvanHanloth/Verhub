@@ -65,11 +65,22 @@ Token 范围模型（ApiKey）：
 
 - `isLatest`：标记当前项目最新稳定版本（同项目应至多一个）。
 - `isPreview`：标记预发布版本（如 beta/rc）。
+- `version`：语义化版本号（展示用，可保留历史命名习惯）。
+- `comparableVersion`：可比较版本号（规则计算用），格式支持 `1.2.3`、`1.2.3-alpha`、`1.2.3-rc.2`。
+- `milestone`：里程碑标识；跨里程碑更新时需先升级到当前里程碑最新版本。
+- `isDeprecated`：版本废弃标记；命中后更新检查接口会返回必更。
 - `publishedAt`：版本发布时间（Unix 秒级时间戳）。
 - `downloadLinks`：结构化下载链接数组，支持多资源与可选元数据（name/platform）。
 - 创建新稳定版本时默认自动提升为 latest；手动调整 latest 时后端负责同项目互斥维护。
 - 支持从项目 `repoUrl` 对应的 GitHub Release 拉取版本草稿，用于减少重复录入。
 - 支持在后台按项目从 GitHub Release 批量导入历史版本；若数据库已有同版本号，则跳过导入并保留数据库记录。
+
+项目级更新治理（Project）：
+
+- `optionalUpdateMinComparableVersion` 与 `optionalUpdateMaxComparableVersion` 定义“可选更新范围”。
+- 当前版本落在范围内：有新版本时可选更新。
+- 当前版本超出范围：有新版本时强制更新。
+- 公开接口 `POST /public/{projectKey}/versions/check-update` 统一返回更新判定、原因码、目标版本与里程碑上下文。
 
 项目展示元数据（Project）：
 

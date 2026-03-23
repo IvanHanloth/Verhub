@@ -7,12 +7,12 @@ const config = {
   lastUpdated: true,
   themeConfig: {
     logo: {
-      light: "/logo-light-500.png",
-      dark: "/logo-dark-500.png"
+      src: "/logo-500.png"
     },
     nav: [
       { text: "首页", link: "/" },
       { text: "项目介绍", link: "/guide/introduction" },
+      { text: "更新策略", link: "/guide/update-policy" },
       { text: "部署指南", link: "/guide/deployment" },
       { text: "开发指南", link: "/guide/development" },
       { text: "用户指南", link: "/guide/user-guide" },
@@ -37,6 +37,7 @@ const config = {
         text: "研发协作",
         items: [
           { text: "开发指南", link: "/guide/development" },
+          { text: "更新策略", link: "/guide/update-policy" },
           { text: "贡献指南", link: "/guide/contributing" },
           { text: "用户指南", link: "/guide/user-guide" },
           { text: "架构概览", link: "/reference/architecture" }

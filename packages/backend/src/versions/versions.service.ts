@@ -31,8 +31,9 @@ type VersionItem = {
   forced: boolean
   is_latest: boolean
   is_preview: boolean
-  milestone: string | null
+  is_milestone: boolean
   is_deprecated: boolean
+  platforms: Array<"ios" | "android" | "windows" | "mac" | "web">
   platform: "ios" | "android" | "windows" | "mac" | "web" | null
   custom_data: Prisma.JsonValue | null
   published_at: number
@@ -54,7 +55,7 @@ type GithubReleasePreview = {
   forced: boolean
   is_latest: boolean
   is_preview: boolean
-  milestone?: string
+  is_milestone: boolean
   is_deprecated: boolean
   published_at: number
   custom_data: Record<string, unknown>
@@ -77,8 +78,9 @@ type VersionRecord = {
   forced: boolean
   isLatest: boolean
   isPreview: boolean
-  milestone: string | null
+  isMilestone: boolean
   isDeprecated: boolean
+  platforms: ClientPlatform[]
   platform: ClientPlatform | null
   customData: Prisma.JsonValue | null
   downloadLinks: Prisma.JsonValue | null
@@ -96,8 +98,8 @@ type CheckVersionUpdateResponse = {
   latest_preview_version: VersionItem | null
   target_version: VersionItem
   milestone: {
-    current: string | null
-    latest: string | null
+    current: boolean
+    latest: boolean
     latest_in_current: VersionItem | null
   }
 }
@@ -319,7 +321,7 @@ export class VersionsService {
     let currentRecord: {
       version: string
       comparableVersion: string | null
-      milestone: string | null
+      isMilestone: boolean
       isDeprecated: boolean
     } | null = null
 
@@ -332,7 +334,7 @@ export class VersionsService {
         select: {
           version: true,
           comparableVersion: true,
-          milestone: true,
+          isMilestone: true,
           isDeprecated: true,
         },
       })
@@ -384,15 +386,15 @@ export class VersionsService {
       reasons.push("current_version_deprecated")
     }
 
-    const currentMilestone = currentRecord?.milestone ?? null
-    const latestMilestone = latestCandidate.milestone
+    const currentMilestone = currentRecord?.isMilestone ?? false
+    const latestMilestone = latestCandidate.isMilestone
     let milestoneTarget: VersionRecord | null = null
 
-    if (hasNewer) {
+    if (hasNewer && required) {
       const milestoneCandidatesRaw = await this.prisma.version.findMany({
         where: {
           projectKey: normalizedProjectKey,
-          milestone: { not: null },
+          isMilestone: true,
           comparableVersion: { not: null },
         },
       })
@@ -413,7 +415,6 @@ export class VersionsService {
 
       milestoneTarget = blockers[0] ?? null
       if (milestoneTarget) {
-        required = true
         reasons.push("milestone_guard")
         targetVersion = milestoneTarget
       }
@@ -460,8 +461,9 @@ export class VersionsService {
           forced: false,
           isLatest,
           isPreview,
-          milestone: dto.milestone ?? null,
+          isMilestone: dto.is_milestone ?? false,
           isDeprecated: dto.is_deprecated ?? false,
+          platforms: this.toClientPlatforms(dto.platforms, dto.platform),
           platform: this.toClientPlatform(dto.platform),
           customData: dto.custom_data as Prisma.InputJsonValue | undefined,
           publishedAt,
@@ -540,8 +542,12 @@ export class VersionsService {
           forced: false,
           isLatest: nextIsLatest,
           isPreview: nextIsPreview,
-          milestone: dto.milestone,
+          isMilestone: dto.is_milestone,
           isDeprecated: dto.is_deprecated,
+          platforms:
+            dto.platforms !== undefined || dto.platform !== undefined
+              ? this.toClientPlatforms(dto.platforms, dto.platform)
+              : undefined,
           platform: this.toClientPlatform(dto.platform),
           customData: dto.custom_data as Prisma.InputJsonValue | undefined,
           publishedAt: nextPublishedAt,
@@ -684,6 +690,7 @@ export class VersionsService {
       forced: false,
       is_latest: !isPreview,
       is_preview: isPreview,
+      is_milestone: false,
       is_deprecated: false,
       published_at: Number.isFinite(publishedAt) ? publishedAt : nowSeconds(),
       custom_data: {
@@ -757,8 +764,9 @@ export class VersionsService {
           forced: false,
           isLatest: false,
           isPreview: Boolean(release.prerelease),
-          milestone: null,
+          isMilestone: false,
           isDeprecated: false,
+          platforms: [],
           platform: undefined,
           customData: {
             source: "github-release-import",
@@ -872,6 +880,35 @@ export class VersionsService {
     return value as ClientPlatform
   }
 
+  private toClientPlatforms(
+    platforms: Array<"ios" | "android" | "windows" | "mac" | "web"> | undefined,
+    fallbackPlatform: "ios" | "android" | "windows" | "mac" | "web" | undefined,
+  ): ClientPlatform[] {
+    if (platforms && platforms.length > 0) {
+      return Array.from(
+        new Set(platforms.map((item) => item.trim().toUpperCase() as ClientPlatform)),
+      )
+    }
+
+    if (fallbackPlatform) {
+      return [fallbackPlatform.trim().toUpperCase() as ClientPlatform]
+    }
+
+    return []
+  }
+
+  private fromClientPlatforms(
+    platforms: ClientPlatform[] | null | undefined,
+  ): Array<"ios" | "android" | "windows" | "mac" | "web"> {
+    if (!platforms || platforms.length === 0) {
+      return []
+    }
+
+    return platforms.map((item) => item.toLowerCase()) as Array<
+      "ios" | "android" | "windows" | "mac" | "web"
+    >
+  }
+
   private fromClientPlatform(
     platform: ClientPlatform | null,
   ): "ios" | "android" | "windows" | "mac" | "web" | null {
@@ -901,8 +938,9 @@ export class VersionsService {
       forced: version.forced,
       is_latest: version.isLatest,
       is_preview: version.isPreview,
-      milestone: version.milestone,
+      is_milestone: version.isMilestone,
       is_deprecated: version.isDeprecated,
+      platforms: this.fromClientPlatforms(version.platforms),
       platform: this.fromClientPlatform(version.platform),
       custom_data: version.customData,
       published_at: version.publishedAt,

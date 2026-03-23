@@ -3,29 +3,42 @@
 import * as React from "react"
 import {
   AlertTriangle,
-  CheckCircle2,
   Copy,
   DownloadCloud,
   Loader2,
   PencilLine,
   Plus,
+  Save,
   Sparkles,
   Star,
   Trash2,
 } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@workspace/ui/components/dialog"
 
 import { ApiError, isAuthError } from "@/lib/api-client"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
-import { ManagementListItem } from "@/components/admin/management-list-item"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { ProjectApiOverview } from "@/components/admin/project-api-overview"
 import { ProjectSelectorCard } from "@/components/admin/project-selector-card"
 import { useSharedProjectSelection } from "@/hooks/use-shared-project-selection"
+import {
+  extractComparableVersionFromVersion,
+  validateComparableVersion,
+} from "@/lib/comparable-version"
 import { listProjects, type ProjectItem } from "@/lib/projects-api"
+import { scrollToPageTop } from "@/lib/scroll"
 import {
   checkVersionUpdate,
   createVersion,
@@ -52,9 +65,6 @@ const platformOptions: Array<{ label: string; value: ClientPlatform }> = [
   { label: "Web", value: "web" },
 ]
 
-const COMPARABLE_VERSION_PATTERN =
-  /^(?<core>\d+(?:\.\d+)*)(?:-(?<tag>alpha|beta|rc)(?:\.(?<tail>\d+(?:\.\d+)*))?)?$/
-
 type VersionFormState = {
   version: string
   comparable_version: string
@@ -64,10 +74,10 @@ type VersionFormState = {
   download_links_json: string
   is_latest: boolean
   is_preview: boolean
-  milestone: string
+  is_milestone: boolean
   is_deprecated: boolean
   published_at: string
-  platform: "" | ClientPlatform
+  platforms: ClientPlatform[]
   custom_data: string
 }
 
@@ -80,10 +90,10 @@ const emptyVersionForm: VersionFormState = {
   download_links_json: "",
   is_latest: true,
   is_preview: false,
-  milestone: "",
+  is_milestone: false,
   is_deprecated: false,
   published_at: "",
-  platform: "",
+  platforms: [],
   custom_data: "",
 }
 
@@ -168,55 +178,13 @@ function toCreateInput(form: VersionFormState): CreateVersionInput {
     download_links: parseDownloadLinks(form.download_links_json),
     is_latest: form.is_latest,
     is_preview: form.is_preview,
-    milestone: form.milestone.trim() || undefined,
+    is_milestone: form.is_milestone,
     is_deprecated: form.is_deprecated,
-    platform: form.platform || undefined,
+    platforms: form.platforms,
+    platform: form.platforms[0],
     custom_data: parseJsonInput(form.custom_data),
     published_at: toTimestampSeconds(form.published_at),
   }
-}
-
-function validateComparableVersion(value: string): string | null {
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return "可比较版本号为必填项。"
-  }
-
-  if (!COMPARABLE_VERSION_PATTERN.test(trimmed)) {
-    return "格式不合法：应为 1.2.3 / 1.2.3-alpha / 1.2.3-rc.2"
-  }
-
-  return null
-}
-
-function extractComparableVersionFromVersion(version: string): string | null {
-  const trimmed = version.trim().replace(/^v/i, "")
-  if (!trimmed) {
-    return null
-  }
-
-  if (COMPARABLE_VERSION_PATTERN.test(trimmed)) {
-    return trimmed
-  }
-
-  const coreMatch = trimmed.match(/\d+(?:\.\d+)*/)
-  if (!coreMatch) {
-    return null
-  }
-
-  const suffix = trimmed.slice((coreMatch.index ?? 0) + coreMatch[0].length)
-  const prereleaseMatch = suffix.match(/[-_.]?(alpha|beta|rc)(?:[-_.]?(\d+(?:[._]\d+)*))?/i)
-  if (!prereleaseMatch) {
-    return coreMatch[0]
-  }
-
-  const tag = prereleaseMatch[1]?.toLowerCase()
-  if (!tag) {
-    return coreMatch[0]
-  }
-  const tail = prereleaseMatch[2]?.replace(/_/g, ".")
-  const candidate = tail ? `${coreMatch[0]}-${tag}.${tail}` : `${coreMatch[0]}-${tag}`
-  return COMPARABLE_VERSION_PATTERN.test(candidate) ? candidate : coreMatch[0]
 }
 
 export function VersionsDashboard() {
@@ -234,10 +202,12 @@ export function VersionsDashboard() {
   const [versionsError, setVersionsError] = React.useState<string | null>(null)
 
   const [form, setForm] = React.useState<VersionFormState>(emptyVersionForm)
-  const [editingVersionId, setEditingVersionId] = React.useState<string | null>(null)
   const [submitLoading, setSubmitLoading] = React.useState(false)
-  const [submitMessage, setSubmitMessage] = React.useState<string | null>(null)
   const [githubLoading, setGithubLoading] = React.useState(false)
+  const [editDialogOpen, setEditDialogOpen] = React.useState(false)
+  const [editingVersionId, setEditingVersionId] = React.useState<string | null>(null)
+  const [editForm, setEditForm] = React.useState<VersionFormState>(emptyVersionForm)
+  const [savingEdit, setSavingEdit] = React.useState(false)
   const [simulationCurrentVersion, setSimulationCurrentVersion] = React.useState("")
   const [simulationCurrentComparableVersion, setSimulationCurrentComparableVersion] =
     React.useState("")
@@ -249,7 +219,7 @@ export function VersionsDashboard() {
   const [simulationError, setSimulationError] = React.useState<string | null>(null)
 
   const selectedProject = React.useMemo(
-    () => projects.find((project) => project.id === selectedProjectKey) ?? null,
+    () => projects.find((project) => project.project_key === selectedProjectKey) ?? null,
     [projects, selectedProjectKey],
   )
 
@@ -269,14 +239,14 @@ export function VersionsDashboard() {
     try {
       const response = await listProjects(token, { limit: PROJECT_PAGE_SIZE, offset: 0 })
       setProjects(response.data)
-      const hasCurrent = response.data.some((project) => project.id === selectedProjectKey)
+      const hasCurrent = response.data.some((project) => project.project_key === selectedProjectKey)
       if (hasCurrent) {
         return
       }
 
       const firstProject = response.data[0]
       if (firstProject) {
-        setSelectedProjectKey(firstProject.id)
+        setSelectedProjectKey(firstProject.project_key)
       } else {
         setSelectedProjectKey("")
       }
@@ -354,39 +324,32 @@ export function VersionsDashboard() {
     event.preventDefault()
 
     if (!token) {
-      setSubmitMessage("请先登录后再操作。")
+      toast.error("请先登录后再操作。")
       return
     }
 
     if (!selectedProjectKey) {
-      setSubmitMessage("请先选择一个项目。")
+      toast.error("请先选择一个项目。")
       return
     }
 
     setSubmitLoading(true)
-    setSubmitMessage(null)
 
     try {
       const payload = toCreateInput(form)
       if (!payload.version) {
-        setSubmitMessage("version 为必填项。")
+        toast.error("version 为必填项。")
         return
       }
 
       if (comparableVersionError) {
-        setSubmitMessage(comparableVersionError)
+        toast.error(comparableVersionError)
         return
       }
 
-      if (editingVersionId) {
-        await updateVersion(token, selectedProjectKey, editingVersionId, payload)
-        setSubmitMessage("版本已更新。")
-      } else {
-        await createVersion(token, selectedProjectKey, payload)
-        setSubmitMessage("版本已发布。")
-      }
+      await createVersion(token, selectedProjectKey, payload)
+      toast.success("版本已发布。")
       setForm(emptyVersionForm)
-      setEditingVersionId(null)
       setOffset(0)
       await loadVersions(0)
     } catch (error) {
@@ -394,7 +357,7 @@ export function VersionsDashboard() {
         setToken("")
         setAuthError("登录状态已过期，请重新登录。")
       }
-      setSubmitMessage(getErrorMessage(error))
+      toast.error(getErrorMessage(error))
     } finally {
       setSubmitLoading(false)
     }
@@ -402,7 +365,7 @@ export function VersionsDashboard() {
 
   function beginEdit(version: VersionItem) {
     setEditingVersionId(version.id)
-    setForm({
+    setEditForm({
       version: version.version,
       comparable_version: version.comparable_version ?? "",
       title: version.title ?? "",
@@ -412,13 +375,44 @@ export function VersionsDashboard() {
         version.download_links.length > 0 ? JSON.stringify(version.download_links, null, 2) : "",
       is_latest: version.is_latest,
       is_preview: version.is_preview,
-      milestone: version.milestone ?? "",
+      is_milestone: version.is_milestone ?? false,
       is_deprecated: version.is_deprecated ?? false,
       published_at: toDateTimeLocal(version.published_at),
-      platform: version.platform ?? "",
+      platforms:
+        version.platforms && version.platforms.length > 0
+          ? version.platforms
+          : version.platform
+            ? [version.platform]
+            : [],
       custom_data: version.custom_data ? JSON.stringify(version.custom_data, null, 2) : "",
     })
-    setSubmitMessage(null)
+    setEditDialogOpen(true)
+    scrollToPageTop()
+  }
+
+  async function handleSaveEdit() {
+    if (!token || !selectedProjectKey || !editingVersionId) {
+      return
+    }
+
+    const editComparableError = validateComparableVersion(editForm.comparable_version)
+    if (editComparableError) {
+      toast.error(editComparableError)
+      return
+    }
+
+    setSavingEdit(true)
+    try {
+      await updateVersion(token, selectedProjectKey, editingVersionId, toCreateInput(editForm))
+      toast.success("版本已更新。")
+      setEditDialogOpen(false)
+      setEditingVersionId(null)
+      await loadVersions(offset)
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    } finally {
+      setSavingEdit(false)
+    }
   }
 
   function copyFromVersion(version: VersionItem) {
@@ -433,27 +427,32 @@ export function VersionsDashboard() {
         version.download_links.length > 0 ? JSON.stringify(version.download_links, null, 2) : "",
       is_latest: version.is_latest,
       is_preview: version.is_preview,
-      milestone: version.milestone ?? "",
+      is_milestone: version.is_milestone ?? false,
       is_deprecated: version.is_deprecated ?? false,
       published_at: toDateTimeLocal(version.published_at),
-      platform: version.platform ?? "",
+      platforms:
+        version.platforms && version.platforms.length > 0
+          ? version.platforms
+          : version.platform
+            ? [version.platform]
+            : [],
       custom_data: version.custom_data ? JSON.stringify(version.custom_data, null, 2) : "",
     })
-    setSubmitMessage("已复制配置到表单，可直接发布新版本。")
+    toast.success("已复制配置到表单，可直接发布新版本。")
+    scrollToPageTop()
   }
 
   async function handlePrefillFromGithubRelease() {
     if (!token) {
-      setSubmitMessage("请先登录后再操作。")
+      toast.error("请先登录后再操作。")
       return
     }
     if (!selectedProjectKey) {
-      setSubmitMessage("请先选择一个项目。")
+      toast.error("请先选择一个项目。")
       return
     }
 
     setGithubLoading(true)
-    setSubmitMessage(null)
 
     try {
       const release = await previewVersionFromGithubRelease(token, selectedProjectKey, {
@@ -470,18 +469,24 @@ export function VersionsDashboard() {
           release.download_links.length > 0 ? JSON.stringify(release.download_links, null, 2) : "",
         is_latest: release.is_latest,
         is_preview: release.is_preview,
-        milestone: release.milestone ?? "",
+        is_milestone: release.is_milestone ?? false,
         is_deprecated: release.is_deprecated ?? false,
         published_at: toDateTimeLocal(release.published_at),
+        platforms:
+          release.platforms && release.platforms.length > 0
+            ? release.platforms
+            : release.platform
+              ? [release.platform]
+              : prev.platforms,
         custom_data: release.custom_data ? JSON.stringify(release.custom_data, null, 2) : "",
       }))
-      setSubmitMessage("已从 GitHub Release 自动填充版本表单。")
+      toast.success("已从 GitHub Release 自动填充版本表单。")
     } catch (error) {
       if (isAuthError(error)) {
         setToken("")
         setAuthError("登录状态已过期，请重新登录。")
       }
-      setSubmitMessage(getErrorMessage(error))
+      toast.error(`GitHub Release 获取失败：${getErrorMessage(error)}`)
     } finally {
       setGithubLoading(false)
     }
@@ -511,45 +516,38 @@ export function VersionsDashboard() {
 
   async function handleImportFromGithubReleaseHistory() {
     if (!token) {
-      setSubmitMessage("请先登录后再操作。")
+      toast.error("请先登录后再操作。")
       return
     }
     if (!selectedProjectKey) {
-      setSubmitMessage("请先选择一个项目。")
+      toast.error("请先选择一个项目。")
       return
     }
 
     setGithubLoading(true)
-    setSubmitMessage(null)
     try {
       const result = await importVersionsFromGithubReleases(token, selectedProjectKey)
-      setSubmitMessage(
+      toast.success(
         `历史版本导入完成：新增 ${result.imported} 条，跳过 ${result.skipped} 条，共扫描 ${result.scanned} 条。`,
       )
       await loadVersions(0)
       setOffset(0)
     } catch (error) {
-      setSubmitMessage(getErrorMessage(error))
+      toast.error(`GitHub 历史版本导入失败：${getErrorMessage(error)}`)
     } finally {
       setGithubLoading(false)
     }
   }
 
-  function resetForm() {
-    setEditingVersionId(null)
-    setForm(emptyVersionForm)
-    setSubmitMessage(null)
-  }
-
   function handleExtractComparableVersion() {
     const extracted = extractComparableVersionFromVersion(form.version)
     if (!extracted) {
-      setSubmitMessage("无法从版本号提取可比较版本号，请手动填写。")
+      toast.error("无法从版本号提取可比较版本号，请手动填写。")
       return
     }
 
     setForm((prev) => ({ ...prev, comparable_version: extracted }))
-    setSubmitMessage("已从版本号提取可比较版本号。")
+    toast.success("已从版本号提取可比较版本号。")
   }
 
   async function handleSimulateCheckUpdate() {
@@ -676,7 +674,7 @@ export function VersionsDashboard() {
                       ],
                       is_latest: true,
                       is_preview: false,
-                      milestone: "M2",
+                      is_milestone: true,
                       is_deprecated: false,
                       published_at: 1774050000,
                       platform: "web",
@@ -690,7 +688,7 @@ export function VersionsDashboard() {
                     auth: { tokenRequired: true },
                     requestBody: {
                       title: "稳定版-修订",
-                      milestone: "M2",
+                      is_milestone: true,
                       is_deprecated: true,
                       custom_data: { release_note: "hotfix" },
                     },
@@ -709,9 +707,7 @@ export function VersionsDashboard() {
 
         <AdminCard className="space-y-6">
           <div className="space-y-2">
-            <h2 className="text-lg font-semibold">
-              {editingVersionId ? "编辑版本" : "发布新版本"}
-            </h2>
+            <h2 className="text-lg font-semibold">发布新版本</h2>
             <p className="text-sm text-slate-700 dark:text-slate-300">
               填写版本号和发布信息，可从 GitHub Release 导入已有内容。
             </p>
@@ -803,21 +799,19 @@ export function VersionsDashboard() {
                 maxLength={2048}
               />
             </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">里程碑</span>
+            <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
               <input
-                type="text"
-                placeholder="例如：M1 / 2026-Q2"
-                value={form.milestone}
+                type="checkbox"
+                checked={form.is_milestone}
                 onChange={(event) =>
-                  setForm((prev) => ({ ...prev, milestone: event.target.value }))
+                  setForm((prev) => ({ ...prev, is_milestone: event.target.checked }))
                 }
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-                maxLength={64}
+                className="size-4 rounded border-white/30 bg-white/10"
               />
+              标记为里程碑版本
             </label>
             <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">版本标题</span>
+              <span className="text-slate-700 dark:text-slate-300">版本标题（创建）</span>
               <input
                 type="text"
                 placeholder="例如：稳定版更新"
@@ -865,27 +859,34 @@ export function VersionsDashboard() {
             </label>
 
             <div className="grid gap-3 sm:grid-cols-2 sm:items-center">
-              <label className="space-y-1 text-sm">
-                <span className="text-slate-700 dark:text-slate-300">平台范围</span>
-                <select
-                  aria-label="版本平台"
-                  value={form.platform}
-                  onChange={(event) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      platform: event.target.value as "" | ClientPlatform,
-                    }))
-                  }
-                  className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-                >
-                  <option value="">全部平台（默认）</option>
+              <div className="rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10">
+                <p className="mb-2 text-slate-700 dark:text-slate-300">
+                  平台范围（多选，空表示全部）
+                </p>
+                <div className="flex flex-wrap gap-3">
                   {platformOptions.map((item) => (
-                    <option key={item.value} value={item.value}>
+                    <label
+                      key={item.value}
+                      className="inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={form.platforms.includes(item.value)}
+                        onChange={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            platforms: prev.platforms.includes(item.value)
+                              ? prev.platforms.filter((platform) => platform !== item.value)
+                              : [...prev.platforms, item.value],
+                          }))
+                        }
+                        className="size-4"
+                      />
                       {item.label}
-                    </option>
+                    </label>
                   ))}
-                </select>
-              </label>
+                </div>
+              </div>
               <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                 <input
                   type="checkbox"
@@ -949,26 +950,8 @@ export function VersionsDashboard() {
               ) : (
                 <Plus className="size-4" />
               )}
-              {editingVersionId ? "保存版本" : "发布版本"}
+              发布版本
             </Button>
-
-            {editingVersionId ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="border-white/25 bg-white/5"
-                onClick={resetForm}
-              >
-                取消编辑
-              </Button>
-            ) : null}
-
-            {submitMessage ? (
-              <p className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-100">
-                <CheckCircle2 className="size-4 text-emerald-300" />
-                {submitMessage}
-              </p>
-            ) : null}
           </form>
         </AdminCard>
       </section>
@@ -1037,8 +1020,8 @@ export function VersionsDashboard() {
             <p>目标版本：{simulationResult.target_version.version}</p>
             <p>判定原因：{simulationResult.reason_codes.join("、") || "无"}</p>
             <p>
-              里程碑：当前 {simulationResult.milestone.current ?? "无"}，最新
-              {simulationResult.milestone.latest ?? "无"}
+              里程碑：当前 {simulationResult.milestone.current ? "是" : "否"}，最新
+              {simulationResult.milestone.latest ? "是" : "否"}
             </p>
           </div>
         ) : null}
@@ -1093,99 +1076,111 @@ export function VersionsDashboard() {
         !versionsError &&
         versions.length > 0 ? (
           <div className="space-y-3">
-            {versions.map((version) => (
-              <ManagementListItem
-                key={version.id}
-                title={version.version}
-                subtitle={
-                  <p className="font-mono text-xs text-slate-700 dark:text-cyan-100/90">
-                    ID: {version.id}
-                  </p>
-                }
-                meta={
-                  <>
-                    <p>发布时间 {new Date(version.published_at * 1000).toLocaleString("zh-CN")}</p>
-                    <p>创建于 {new Date(version.created_at * 1000).toLocaleString("zh-CN")}</p>
-                    <p>
-                      平台：{version.platform ?? "全部"} | comparable：
-                      {version.comparable_version ?? "未设置"} | milestone：
-                      {version.milestone ?? "无"} | 废弃：
-                      {version.is_deprecated ? "是" : "否"} | latest：
-                      {version.is_latest ? "是" : "否"} | preview：
-                      {version.is_preview ? "是" : "否"}
-                    </p>
-                  </>
-                }
-                content={
-                  <>
-                    <p className="inline-flex items-center gap-2">
-                      {version.title ?? "无标题"}
-                      {version.is_latest ? <Star className="size-4 text-amber-500" /> : null}
-                      {version.is_preview ? <Sparkles className="size-4 text-sky-500" /> : null}
-                    </p>
-                    {version.content ? <p className="mt-1">{version.content}</p> : null}
-                    {version.download_links.length > 0 ? (
-                      <div className="mt-1 space-y-1">
-                        {version.download_links.map((link, index) => (
+            <div className="overflow-x-auto rounded-2xl border border-slate-900/15 bg-white/70 dark:border-white/10 dark:bg-white/5">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-100/80 text-left text-slate-700 dark:bg-white/10 dark:text-slate-200">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">版本</th>
+                    <th className="px-3 py-2 font-medium">状态</th>
+                    <th className="px-3 py-2 font-medium">下载</th>
+                    <th className="px-3 py-2 font-medium">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {versions.map((version) => (
+                    <tr
+                      key={version.id}
+                      className="border-t border-slate-900/10 dark:border-white/10"
+                    >
+                      <td className="px-3 py-2 align-top">
+                        <p className="inline-flex items-center gap-2 font-medium text-slate-900 dark:text-slate-100">
+                          {version.version}
+                          {version.is_latest ? <Star className="size-4 text-amber-500" /> : null}
+                          {version.is_preview ? <Sparkles className="size-4 text-sky-500" /> : null}
+                        </p>
+                        <p className="font-mono text-xs text-slate-600 dark:text-slate-300">
+                          ID: {version.id}
+                        </p>
+                        <p className="text-xs text-slate-600 dark:text-slate-300">
+                          comparable: {version.comparable_version ?? "未设置"}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs text-slate-700 dark:text-slate-300">
+                        <p>
+                          平台：
+                          {version.platforms && version.platforms.length > 0
+                            ? version.platforms.join(", ")
+                            : (version.platform ?? "全部")}
+                        </p>
+                        <p>里程碑：{version.is_milestone ? "是" : "否"}</p>
+                        <p>废弃：{version.is_deprecated ? "是" : "否"}</p>
+                        <p>发布：{new Date(version.published_at * 1000).toLocaleString("zh-CN")}</p>
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs text-slate-700 dark:text-slate-300">
+                        {version.download_links.length > 0 ? (
+                          <div className="space-y-1">
+                            {version.download_links.map((link, index) => (
+                              <a
+                                key={`${version.id}-${index}`}
+                                className="block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
+                                href={link.url}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {link.name ? `${link.name} · ` : ""}
+                                {link.platform ? `[${link.platform}] ` : ""}
+                                {link.url}
+                              </a>
+                            ))}
+                          </div>
+                        ) : version.download_url ? (
                           <a
-                            key={`${version.id}-${index}`}
-                            className="block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
-                            href={link.url}
+                            className="inline-block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
+                            href={version.download_url}
                             target="_blank"
                             rel="noreferrer"
                           >
-                            {link.name ? `${link.name} · ` : ""}
-                            {link.platform ? `[${link.platform}] ` : ""}
-                            {link.url}
+                            {version.download_url}
                           </a>
-                        ))}
-                      </div>
-                    ) : version.download_url ? (
-                      <a
-                        className="mt-1 inline-block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
-                        href={version.download_url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {version.download_url}
-                      </a>
-                    ) : (
-                      <p className="mt-1 text-slate-500 dark:text-slate-400">未配置下载地址</p>
-                    )}
-                  </>
-                }
-                actions={
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-white/20 bg-white/5"
-                      onClick={() => copyFromVersion(version)}
-                    >
-                      <Copy className="size-4" />
-                      复制配置
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-white/20 bg-white/5"
-                      onClick={() => beginEdit(version)}
-                    >
-                      <PencilLine className="size-4" />
-                      编辑版本
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      onClick={() => void handleDelete(version.id)}
-                    >
-                      <Trash2 className="size-4" />
-                      删除版本
-                    </Button>
-                  </>
-                }
-              />
-            ))}
+                        ) : (
+                          <span className="text-slate-500 dark:text-slate-400">未配置下载地址</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="border-white/20 bg-white/5"
+                            onClick={() => copyFromVersion(version)}
+                          >
+                            <Copy className="size-4" />
+                            复制配置
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="border-white/20 bg-white/5"
+                            onClick={() => beginEdit(version)}
+                          >
+                            <PencilLine className="size-4" />
+                            编辑版本
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={() => void handleDelete(version.id)}
+                          >
+                            <Trash2 className="size-4" />
+                            删除版本
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             <AdminPagination
               hasPrev={offset > 0}
@@ -1196,6 +1191,203 @@ export function VersionsDashboard() {
           </div>
         ) : null}
       </AdminCard>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>编辑版本</DialogTitle>
+            <DialogDescription>在弹窗中更新版本字段并保存。</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3">
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">版本号</span>
+              <input
+                type="text"
+                value={editForm.version}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, version: event.target.value }))
+                }
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                maxLength={64}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">可比较版本号</span>
+              <input
+                type="text"
+                value={editForm.comparable_version}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, comparable_version: event.target.value }))
+                }
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                maxLength={64}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">版本标题</span>
+              <input
+                type="text"
+                value={editForm.title}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, title: event.target.value }))
+                }
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                maxLength={128}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">下载地址</span>
+              <input
+                type="url"
+                value={editForm.download_url}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, download_url: event.target.value }))
+                }
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                maxLength={2048}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">下载链接列表 JSON</span>
+              <textarea
+                value={editForm.download_links_json}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, download_links_json: event.target.value }))
+                }
+                rows={4}
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs dark:border-white/20 dark:bg-white/10"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">更新内容</span>
+              <textarea
+                value={editForm.content}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, content: event.target.value }))
+                }
+                rows={4}
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                maxLength={4096}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">发布时间</span>
+              <input
+                type="datetime-local"
+                value={editForm.published_at}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, published_at: event.target.value }))
+                }
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+              />
+            </label>
+            <div className="rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10">
+              <p className="mb-2 text-slate-700 dark:text-slate-300">
+                平台范围（多选，空表示全部）
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {platformOptions.map((item) => (
+                  <label
+                    key={item.value}
+                    className="inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={editForm.platforms.includes(item.value)}
+                      onChange={() =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          platforms: prev.platforms.includes(item.value)
+                            ? prev.platforms.filter((platform) => platform !== item.value)
+                            : [...prev.platforms, item.value],
+                        }))
+                      }
+                      className="size-4"
+                    />
+                    {item.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={editForm.is_latest}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({ ...prev, is_latest: event.target.checked }))
+                  }
+                  className="size-4 rounded border-white/30 bg-white/10"
+                />
+                设为 latest
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={editForm.is_preview}
+                  onChange={(event) =>
+                    setEditForm((prev) => ({ ...prev, is_preview: event.target.checked }))
+                  }
+                  className="size-4 rounded border-white/30 bg-white/10"
+                />
+                预发布版本
+              </label>
+            </div>
+            <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+              <input
+                type="checkbox"
+                checked={editForm.is_milestone}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, is_milestone: event.target.checked }))
+                }
+                className="size-4 rounded border-white/30 bg-white/10"
+              />
+              标记为里程碑版本
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+              <input
+                type="checkbox"
+                checked={editForm.is_deprecated}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, is_deprecated: event.target.checked }))
+                }
+                className="size-4 rounded border-white/30 bg-white/10"
+              />
+              标记为废弃版本
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
+              <textarea
+                value={editForm.custom_data}
+                onChange={(event) =>
+                  setEditForm((prev) => ({ ...prev, custom_data: event.target.value }))
+                }
+                rows={4}
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs dark:border-white/20 dark:bg-white/10"
+              />
+            </label>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              disabled={savingEdit || !editingVersionId}
+              onClick={() => void handleSaveEdit()}
+            >
+              {savingEdit ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Save className="size-4" />
+              )}
+              保存版本
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

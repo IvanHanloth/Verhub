@@ -1,4 +1,17 @@
-import { IsBoolean, IsInt, IsOptional, IsString, MaxLength } from "class-validator"
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from "class-validator"
+
+const clientPlatforms = ["ios", "android", "windows", "mac", "web"] as const
+
+type ClientPlatform = (typeof clientPlatforms)[number]
 
 export class CreateAnnouncementDto {
   @IsString()
@@ -12,6 +25,16 @@ export class CreateAnnouncementDto {
   @IsOptional()
   @IsBoolean()
   is_pinned?: boolean
+
+  @IsOptional()
+  @IsBoolean()
+  is_hidden?: boolean
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(8)
+  @IsIn(clientPlatforms, { each: true })
+  platforms?: ClientPlatform[]
 
   @IsOptional()
   @IsString()

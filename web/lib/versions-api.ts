@@ -19,8 +19,9 @@ export type VersionItem = {
   forced: boolean
   is_latest: boolean
   is_preview: boolean
-  milestone?: string | null
+  is_milestone?: boolean
   is_deprecated?: boolean
+  platforms?: ClientPlatform[]
   platform: ClientPlatform | null
   custom_data: Record<string, unknown> | null
   published_at: number
@@ -41,8 +42,9 @@ export type CreateVersionInput = {
   download_links?: VersionDownloadLink[]
   is_latest?: boolean
   is_preview?: boolean
-  milestone?: string
+  is_milestone?: boolean
   is_deprecated?: boolean
+  platforms?: ClientPlatform[]
   platform?: ClientPlatform
   custom_data?: Record<string, unknown>
   published_at?: number
@@ -58,8 +60,9 @@ export type GithubReleaseVersionPreview = {
   forced: boolean
   is_latest: boolean
   is_preview: boolean
-  milestone?: string
+  is_milestone?: boolean
   is_deprecated?: boolean
+  platforms?: ClientPlatform[]
   custom_data: Record<string, unknown>
   published_at: number
   platform?: ClientPlatform
@@ -81,8 +84,8 @@ export type CheckVersionUpdateResponse = {
   latest_preview_version: VersionItem | null
   target_version: VersionItem
   milestone: {
-    current: string | null
-    latest: string | null
+    current: boolean
+    latest: boolean
     latest_in_current: VersionItem | null
   }
 }

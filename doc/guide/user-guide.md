@@ -137,13 +137,13 @@
 
 - `version`：展示版本号
 - `comparable_version`：用于比较的版本号
-- `milestone`：里程碑标识
+- `is_milestone`：里程碑标记
 - `is_deprecated`：是否废弃（勾选后该版本必更）
 
 建议：
 
 - 版本发布时同时维护 `version` 与 `comparable_version`
-- milestone 使用稳定命名（如 M1/M2）
+- 仅在关键升级节点版本上勾选 `is_milestone`，勾选后用户必须先升级到该里程碑版本才能继续后续更新
 - 废弃版本需配合公告说明升级理由与目标版本
 
 ## 3. 发布公告

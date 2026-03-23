@@ -467,9 +467,9 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /admin/projects/{id}:
+  /admin/projects/{projectKey}:
     parameters:
-      - $ref: "#/components/parameters/ProjectKeyById"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
     get:
       tags: [Projects]
       summary: 获取单个项目
@@ -1283,6 +1283,12 @@ paths:
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
+        - name: platform
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ClientPlatform"
+          description: 平台过滤（仅返回该平台或全平台公告）
       responses:
         "200":
           content:
@@ -1298,6 +1304,13 @@ paths:
     get:
       tags: [Announcements]
       summary: 按 project_key 获取最新公告
+      parameters:
+        - name: platform
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ClientPlatform"
+          description: 平台过滤（仅返回该平台或全平台公告）
       responses:
         "200":
           content:
@@ -1656,13 +1669,6 @@ components:
         default: 0
     ProjectKeyByPath:
       name: projectKey
-      in: path
-      required: true
-      description: 项目主键 project_key（大小写不敏感）
-      schema:
-        type: string
-    ProjectKeyById:
-      name: id
       in: path
       required: true
       description: 项目主键 project_key（大小写不敏感）
@@ -2235,9 +2241,8 @@ components:
           type: boolean
         is_preview:
           type: boolean
-        milestone:
-          type: string
-          maxLength: 64
+        is_milestone:
+          type: boolean
         is_deprecated:
           type: boolean
         published_at:
@@ -2245,6 +2250,10 @@ components:
           format: int64
         platform:
           $ref: "#/components/schemas/ClientPlatform"
+        platforms:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientPlatform"
         custom_data:
           type: object
           additionalProperties: true
@@ -2285,9 +2294,8 @@ components:
           type: boolean
         is_preview:
           type: boolean
-        milestone:
-          type: string
-          maxLength: 64
+        is_milestone:
+          type: boolean
         is_deprecated:
           type: boolean
         published_at:
@@ -2295,6 +2303,10 @@ components:
           format: int64
         platform:
           $ref: "#/components/schemas/ClientPlatform"
+        platforms:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientPlatform"
         custom_data:
           type: object
           additionalProperties: true
@@ -2313,9 +2325,10 @@ components:
           forced,
           is_latest,
           is_preview,
-          milestone,
+          is_milestone,
           is_deprecated,
           platform,
+          platforms,
           custom_data,
           published_at,
           created_at,
@@ -2343,14 +2356,18 @@ components:
           type: boolean
         is_preview:
           type: boolean
-        milestone:
-          type: [string, "null"]
+        is_milestone:
+          type: boolean
         is_deprecated:
           type: boolean
         platform:
           oneOf:
             - $ref: "#/components/schemas/ClientPlatform"
             - type: "null"
+        platforms:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientPlatform"
         custom_data:
           oneOf:
             - type: object
@@ -2374,6 +2391,7 @@ components:
           is_preview,
           is_deprecated,
           published_at,
+          platforms,
           custom_data,
         ]
       properties:
@@ -2397,10 +2415,18 @@ components:
           type: boolean
         is_preview:
           type: boolean
-        milestone:
-          type: string
+        is_milestone:
+          type: boolean
         is_deprecated:
           type: boolean
+        platform:
+          oneOf:
+            - $ref: "#/components/schemas/ClientPlatform"
+            - type: "null"
+        platforms:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientPlatform"
         published_at:
           type: integer
           format: int64
@@ -2524,9 +2550,9 @@ components:
           required: [current, latest, latest_in_current]
           properties:
             current:
-              type: [string, "null"]
+              type: boolean
             latest:
-              type: [string, "null"]
+              type: boolean
             latest_in_current:
               oneOf:
                 - $ref: "#/components/schemas/VersionItem"
@@ -2544,6 +2570,13 @@ components:
           maxLength: 4096
         is_pinned:
           type: boolean
+        is_hidden:
+          type: boolean
+        platforms:
+          type: array
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/ClientPlatform"
         author:
           type: string
           maxLength: 64
@@ -2572,6 +2605,13 @@ components:
           maxLength: 4096
         is_pinned:
           type: boolean
+        is_hidden:
+          type: boolean
+        platforms:
+          type: array
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/ClientPlatform"
         author:
           type: string
           maxLength: 64
@@ -2581,7 +2621,8 @@ components:
 
     AnnouncementItem:
       type: object
-      required: [id, title, content, is_pinned, published_at, created_at, updated_at]
+      required:
+        [id, title, content, is_pinned, is_hidden, platforms, published_at, created_at, updated_at]
       properties:
         id:
           type: string
@@ -2591,6 +2632,12 @@ components:
           type: string
         is_pinned:
           type: boolean
+        is_hidden:
+          type: boolean
+        platforms:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientPlatform"
         author:
           type: [string, "null"]
         published_at:

@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  Matches,
   MaxLength,
   Min,
   ValidateNested,
@@ -15,6 +16,8 @@ import {
 import { Type } from "class-transformer"
 
 const clientPlatforms = ["ios", "android", "windows", "mac", "web"] as const
+const COMPARABLE_VERSION_PATTERN =
+  /^(?<core>\d+(?:\.\d+)*)(?:-(?<tag>alpha|beta|rc)(?:\.(?<tail>\d+(?:\.\d+)*))?)?$/
 
 type ClientPlatform = (typeof clientPlatforms)[number]
 
@@ -42,6 +45,9 @@ export class CreateVersionDto {
 
   @IsString()
   @MaxLength(64)
+  @Matches(COMPARABLE_VERSION_PATTERN, {
+    message: "comparable_version format is invalid",
+  })
   comparable_version!: string
 
   @IsOptional()
@@ -79,9 +85,14 @@ export class CreateVersionDto {
   platform?: ClientPlatform
 
   @IsOptional()
-  @IsString()
-  @MaxLength(64)
-  milestone?: string
+  @IsArray()
+  @ArrayMaxSize(8)
+  @IsIn(clientPlatforms, { each: true })
+  platforms?: ClientPlatform[]
+
+  @IsOptional()
+  @IsBoolean()
+  is_milestone?: boolean
 
   @IsOptional()
   @IsBoolean()

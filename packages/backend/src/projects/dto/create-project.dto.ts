@@ -1,4 +1,7 @@
-import { IsInt, IsOptional, IsString, IsUrl, MaxLength, Min } from "class-validator"
+import { IsInt, IsOptional, IsString, IsUrl, Matches, MaxLength, Min } from "class-validator"
+
+const COMPARABLE_VERSION_PATTERN =
+  /^(?<core>\d+(?:\.\d+)*)(?:-(?<tag>alpha|beta|rc)(?:\.(?<tail>\d+(?:\.\d+)*))?)?$/
 
 export class CreateProjectDto {
   @IsString()
@@ -47,10 +50,16 @@ export class CreateProjectDto {
   @IsOptional()
   @IsString()
   @MaxLength(64)
+  @Matches(COMPARABLE_VERSION_PATTERN, {
+    message: "optional_update_min_comparable_version format is invalid",
+  })
   optional_update_min_comparable_version?: string
 
   @IsOptional()
   @IsString()
   @MaxLength(64)
+  @Matches(COMPARABLE_VERSION_PATTERN, {
+    message: "optional_update_max_comparable_version format is invalid",
+  })
   optional_update_max_comparable_version?: string
 }

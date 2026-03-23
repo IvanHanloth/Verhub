@@ -5,6 +5,8 @@ export type AnnouncementItem = {
   title: string
   content: string
   is_pinned: boolean
+  is_hidden: boolean
+  platforms: Array<"ios" | "android" | "windows" | "mac" | "web">
   author: string | null
   published_at: number
   created_at: number
@@ -20,6 +22,8 @@ export type AnnouncementMutationInput = {
   title: string
   content: string
   is_pinned?: boolean
+  is_hidden?: boolean
+  platforms?: Array<"ios" | "android" | "windows" | "mac" | "web">
   author?: string
   published_at?: number
 }

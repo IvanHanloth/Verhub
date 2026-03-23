@@ -1,13 +1,21 @@
 "use client"
 
 import * as React from "react"
-import { Copy, PencilLine, Plus, Save, Trash2, History } from "lucide-react"
+import { Copy, History, PencilLine, Plus, Save, Trash2 } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@workspace/ui/components/dialog"
 
 import { ApiError } from "@/lib/api-client"
 import { AdminCard, AdminItemCard } from "@/components/admin/admin-card"
-import { ManagementListItem } from "@/components/admin/management-list-item"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { ProjectApiOverview } from "@/components/admin/project-api-overview"
 import { ProjectSelectorCard } from "@/components/admin/project-selector-card"
@@ -25,6 +33,13 @@ import { listProjects, type ProjectItem } from "@/lib/projects-api"
 import { getSessionToken } from "@/lib/auth-session"
 
 const PAGE_SIZE = 10
+
+type EditFormState = {
+  id: string
+  name: string
+  description: string
+  customData: string
+}
 
 function toMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -48,13 +63,15 @@ export function ActionsDashboard() {
   const [name, setName] = React.useState("")
   const [description, setDescription] = React.useState("")
   const [customData, setCustomData] = React.useState("")
-  const [editingActionId, setEditingActionId] = React.useState<string | null>(null)
+
+  const [editDialogOpen, setEditDialogOpen] = React.useState(false)
+  const [editForm, setEditForm] = React.useState<EditFormState | null>(null)
 
   const [loading, setLoading] = React.useState(false)
-  const [message, setMessage] = React.useState<string | null>(null)
+  const [savingEdit, setSavingEdit] = React.useState(false)
 
   const selectedProject = React.useMemo(
-    () => projects.find((project) => project.id === selectedProjectKey) ?? null,
+    () => projects.find((project) => project.project_key === selectedProjectKey) ?? null,
     [projects, selectedProjectKey],
   )
 
@@ -66,14 +83,15 @@ export function ActionsDashboard() {
 
     const response = await listProjects(token, { limit: 100, offset: 0 })
     setProjects(response.data)
-    const hasCurrent = response.data.some((project) => project.id === selectedProjectKey)
+
+    const hasCurrent = response.data.some((project) => project.project_key === selectedProjectKey)
     if (hasCurrent) {
       return
     }
 
     const firstProject = response.data[0]
     if (firstProject) {
-      setSelectedProjectKey(firstProject.id)
+      setSelectedProjectKey(firstProject.project_key)
     }
   }, [selectedProjectKey, setSelectedProjectKey])
 
@@ -98,15 +116,15 @@ export function ActionsDashboard() {
   }, [selectedActionId])
 
   React.useEffect(() => {
-    void loadProjects().catch((error) => setMessage(toMessage(error)))
+    void loadProjects().catch((error) => toast.error(toMessage(error)))
   }, [loadProjects])
 
   React.useEffect(() => {
-    void loadActions().catch((error) => setMessage(toMessage(error)))
+    void loadActions().catch((error) => toast.error(toMessage(error)))
   }, [loadActions])
 
   React.useEffect(() => {
-    void loadRecords().catch((error) => setMessage(toMessage(error)))
+    void loadRecords().catch((error) => toast.error(toMessage(error)))
   }, [loadRecords])
 
   React.useEffect(() => {
@@ -119,13 +137,12 @@ export function ActionsDashboard() {
     }
   }, [actions])
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleCreate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setMessage(null)
 
-    const project = projects.find((item) => item.id === selectedProjectKey)
+    const project = projects.find((item) => item.project_key === selectedProjectKey)
     if (!project) {
-      setMessage("请先选择项目")
+      toast.error("请先选择项目")
       return
     }
 
@@ -134,7 +151,7 @@ export function ActionsDashboard() {
     if (customDataText) {
       const parsed = JSON.parse(customDataText) as unknown
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-        setMessage("自定义数据必须是 JSON 对象")
+        toast.error("自定义数据必须是 JSON 对象")
         return
       }
       customDataObject = parsed as Record<string, unknown>
@@ -142,32 +159,66 @@ export function ActionsDashboard() {
 
     setLoading(true)
     try {
-      if (editingActionId) {
-        await updateAction(editingActionId, {
-          name: name.trim(),
-          description: description.trim(),
-          custom_data: customDataObject,
-        })
-        setMessage("行为已更新")
-      } else {
-        await createAction({
-          project_key: project.project_key,
-          name: name.trim(),
-          description: description.trim(),
-          custom_data: customDataObject,
-        })
-        setMessage("行为已创建")
-      }
+      await createAction({
+        project_key: project.project_key,
+        name: name.trim(),
+        description: description.trim(),
+        custom_data: customDataObject,
+      })
 
-      setEditingActionId(null)
+      toast.success("行为已创建")
       setName("")
       setDescription("")
       setCustomData("")
       await loadActions()
     } catch (error) {
-      setMessage(toMessage(error))
+      toast.error(toMessage(error))
     } finally {
       setLoading(false)
+    }
+  }
+
+  function startEdit(action: ActionItem) {
+    setEditForm({
+      id: action.action_id,
+      name: action.name,
+      description: action.description,
+      customData: action.custom_data ? JSON.stringify(action.custom_data, null, 2) : "",
+    })
+    setEditDialogOpen(true)
+  }
+
+  async function handleSaveEdit() {
+    if (!editForm) {
+      return
+    }
+
+    let customDataObject: Record<string, unknown> | undefined
+    const customDataText = editForm.customData.trim()
+    if (customDataText) {
+      const parsed = JSON.parse(customDataText) as unknown
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        toast.error("自定义数据必须是 JSON 对象")
+        return
+      }
+      customDataObject = parsed as Record<string, unknown>
+    }
+
+    setSavingEdit(true)
+    try {
+      await updateAction(editForm.id, {
+        name: editForm.name.trim(),
+        description: editForm.description.trim(),
+        custom_data: customDataObject,
+      })
+      toast.success("行为已更新")
+      setEditDialogOpen(false)
+      setEditForm(null)
+      await loadActions()
+    } catch (error) {
+      toast.error(toMessage(error))
+    } finally {
+      setSavingEdit(false)
     }
   }
 
@@ -179,26 +230,18 @@ export function ActionsDashboard() {
 
     try {
       await deleteAction(actionId)
-      setMessage("行为已删除")
+      toast.success("行为已删除")
       await loadActions()
     } catch (error) {
-      setMessage(toMessage(error))
+      toast.error(toMessage(error))
     }
   }
 
-  function startEdit(action: ActionItem) {
-    setEditingActionId(action.action_id)
-    setName(action.name)
-    setDescription(action.description)
-    setCustomData(action.custom_data ? JSON.stringify(action.custom_data, null, 2) : "")
-  }
-
   function copyFromAction(action: ActionItem) {
-    setEditingActionId(null)
     setName(action.name)
     setDescription(action.description)
     setCustomData(action.custom_data ? JSON.stringify(action.custom_data, null, 2) : "")
-    setMessage("已复制配置到表单，可直接创建新行为。")
+    toast.success("已复制配置到创建表单")
   }
 
   return (
@@ -267,6 +310,7 @@ export function ActionsDashboard() {
                     requestBody: {
                       name: "open_settings_v2",
                       description: "用户打开设置页（新版）",
+                      custom_data: { module: "settings-v2" },
                     },
                   },
                 ],
@@ -277,12 +321,12 @@ export function ActionsDashboard() {
 
         <AdminCard>
           <div className="mb-4 space-y-1">
-            <h2 className="text-lg font-semibold">{editingActionId ? "编辑行为" : "新增行为"}</h2>
+            <h2 className="text-lg font-semibold">新增行为</h2>
             <p className="text-sm text-slate-700 dark:text-slate-300">
               名称与描述为必填项，custom_data 需为 JSON 对象。
             </p>
           </div>
-          <form className="grid gap-3" onSubmit={handleSubmit}>
+          <form className="grid gap-3" onSubmit={handleCreate}>
             <label className="space-y-1 text-sm">
               <span className="text-slate-300">行为名称</span>
               <input
@@ -315,24 +359,9 @@ export function ActionsDashboard() {
             </label>
             <div className="flex gap-2">
               <Button type="submit" disabled={loading}>
-                {editingActionId ? <Save className="size-4" /> : <Plus className="size-4" />}
-                {editingActionId ? "保存编辑" : "新增行为"}
+                <Plus className="size-4" />
+                新增行为
               </Button>
-              {editingActionId ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-white/20 bg-white/5"
-                  onClick={() => {
-                    setEditingActionId(null)
-                    setName("")
-                    setDescription("")
-                    setCustomData("")
-                  }}
-                >
-                  取消编辑
-                </Button>
-              ) : null}
             </div>
           </form>
         </AdminCard>
@@ -340,56 +369,61 @@ export function ActionsDashboard() {
 
       <AdminCard>
         <h3 className="mb-3 font-medium">行为列表</h3>
-        <div className="space-y-3">
-          {actions.map((action) => (
-            <ManagementListItem
-              key={action.action_id}
-              className="border-white/10 bg-white/5 text-sm"
-              title={action.name}
-              subtitle={
-                <p className="font-mono text-xs text-slate-700 dark:text-cyan-100/90">
-                  ID: {action.action_id}
-                </p>
-              }
-              meta={
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  项目：{action.project_key}
-                </p>
-              }
-              content={
-                <p className="mt-1 text-slate-700 dark:text-slate-300">{action.description}</p>
-              }
-              actions={
-                <>
-                  <Button type="button" variant="outline" onClick={() => copyFromAction(action)}>
-                    <Copy className="size-4" />
-                    复制配置
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => startEdit(action)}>
-                    <PencilLine className="size-4" />
-                    编辑
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void handleDelete(action.action_id)}
-                  >
-                    <Trash2 className="size-4" />
-                    删除
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setSelectedActionId(action.action_id)}
-                  >
-                    <History className="size-4" />
-                    查看记录
-                  </Button>
-                </>
-              }
-            />
-          ))}
-          {!actions.length ? <p className="text-sm text-slate-400">暂无行为数据</p> : null}
+        <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/5">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-white/10 text-left text-slate-300">
+                <th className="px-3 py-2 font-medium">行为 ID</th>
+                <th className="px-3 py-2 font-medium">名称</th>
+                <th className="px-3 py-2 font-medium">描述</th>
+                <th className="px-3 py-2 font-medium">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {actions.map((action) => (
+                <tr key={action.action_id} className="border-b border-white/5 align-top">
+                  <td className="px-3 py-2 font-mono text-xs text-slate-200">
+                    ID: {action.action_id}
+                  </td>
+                  <td className="px-3 py-2 text-slate-200">{action.name}</td>
+                  <td className="px-3 py-2 text-slate-300">{action.description}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => copyFromAction(action)}
+                      >
+                        <Copy className="size-4" />
+                        复制配置
+                      </Button>
+                      <Button type="button" variant="outline" onClick={() => startEdit(action)}>
+                        <PencilLine className="size-4" />
+                        编辑
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void handleDelete(action.action_id)}
+                      >
+                        <Trash2 className="size-4" />
+                        删除
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setSelectedActionId(action.action_id)}
+                      >
+                        <History className="size-4" />
+                        查看记录
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!actions.length ? <p className="p-3 text-sm text-slate-400">暂无行为数据</p> : null}
         </div>
       </AdminCard>
 
@@ -415,7 +449,70 @@ export function ActionsDashboard() {
         </div>
       </AdminCard>
 
-      {message ? <p className="text-sm text-cyan-200">{message}</p> : null}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>编辑行为</DialogTitle>
+            <DialogDescription>修改行为名称、描述与扩展数据。</DialogDescription>
+          </DialogHeader>
+
+          {editForm ? (
+            <div className="grid gap-3">
+              <label className="space-y-1 text-sm">
+                <span className="text-slate-700 dark:text-slate-300">行为名称</span>
+                <input
+                  required
+                  value={editForm.name}
+                  onChange={(event) =>
+                    setEditForm((prev) => (prev ? { ...prev, name: event.target.value } : prev))
+                  }
+                  className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-slate-700 dark:text-slate-300">行为描述</span>
+                <input
+                  required
+                  value={editForm.description}
+                  onChange={(event) =>
+                    setEditForm((prev) =>
+                      prev ? { ...prev, description: event.target.value } : prev,
+                    )
+                  }
+                  className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
+                <textarea
+                  value={editForm.customData}
+                  onChange={(event) =>
+                    setEditForm((prev) =>
+                      prev ? { ...prev, customData: event.target.value } : prev,
+                    )
+                  }
+                  rows={4}
+                  className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-xs dark:border-white/20 dark:bg-white/10"
+                />
+              </label>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              disabled={savingEdit || !editForm}
+              onClick={() => void handleSaveEdit()}
+            >
+              <Save className="size-4" />
+              保存编辑
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

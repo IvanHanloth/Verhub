@@ -93,7 +93,7 @@ const endpointsSeed: EndpointSeed[] = [
       ],
       "is_latest": true,
       "is_preview": false,
-      "milestone": "M1",
+      "is_milestone": true,
       "is_deprecated": false,
       "published_at": 1760000000
     }
@@ -128,7 +128,7 @@ const endpointsSeed: EndpointSeed[] = [
   "comparable_version": "1.0.0",
   "title": "首发版本",
   "is_latest": true,
-  "milestone": "M1",
+  "is_milestone": true,
   "is_deprecated": false
 }`,
     },
@@ -153,7 +153,7 @@ const endpointsSeed: EndpointSeed[] = [
   "comparable_version": "1.2.0-beta.2",
   "is_latest": false,
   "is_preview": true,
-  "milestone": "M2",
+  "is_milestone": true,
   "is_deprecated": false
 }`,
     },
@@ -186,7 +186,7 @@ const endpointsSeed: EndpointSeed[] = [
   "comparable_version": "1.20.326",
   "is_latest": false,
   "is_preview": false,
-  "milestone": "M2",
+  "is_milestone": true,
   "is_deprecated": false
 }`,
     },
@@ -224,8 +224,8 @@ const endpointsSeed: EndpointSeed[] = [
   "latest_preview_version": null,
   "target_version": { "version": "1.99.0", "comparable_version": "1.99.0" },
   "milestone": {
-    "current": "M1",
-    "latest": "M2",
+    "current": false,
+    "latest": true,
     "latest_in_current": { "version": "1.99.0", "comparable_version": "1.99.0" }
   }
 }`,
@@ -260,6 +260,12 @@ const endpointsSeed: EndpointSeed[] = [
         required: false,
         description: "分页偏移",
       },
+      {
+        name: "platform",
+        type: "string",
+        required: false,
+        description: "平台过滤（ios/android/windows/mac/web）",
+      },
     ],
     headers: [],
     responseBody: {
@@ -273,6 +279,8 @@ const endpointsSeed: EndpointSeed[] = [
       "title": "服务升级",
       "content": "本周六进行系统维护",
       "is_pinned": true,
+      "is_hidden": false,
+      "platforms": ["ios", "android"],
       "published_at": 1760000000
     }
   ]
@@ -288,7 +296,14 @@ const endpointsSeed: EndpointSeed[] = [
     path: "/public/{projectKey}/announcements/latest",
     auth: { mode: "none", description: "无需鉴权" },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
-    queryParams: [],
+    queryParams: [
+      {
+        name: "platform",
+        type: "string",
+        required: false,
+        description: "平台过滤（ios/android/windows/mac/web）",
+      },
+    ],
     headers: [],
     responseBody: {
       label: "200 响应",
@@ -297,7 +312,9 @@ const endpointsSeed: EndpointSeed[] = [
   "id": "ann-001",
   "title": "服务升级",
   "content": "本周六进行系统维护",
-  "is_pinned": true
+  "is_pinned": true,
+  "is_hidden": false,
+  "platforms": ["web"]
 }`,
     },
   },
@@ -437,10 +454,15 @@ const endpointsSeed: EndpointSeed[] = [
     title: "删除项目",
     description: "删除项目及其关联管理数据。",
     method: "DELETE",
-    path: "/admin/projects/{id}",
+    path: "/admin/projects/{projectKey}",
     auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
     pathParams: [
-      { name: "id", type: "string", required: true, description: "项目主标识（project_key）" },
+      {
+        name: "projectKey",
+        type: "string",
+        required: true,
+        description: "项目主标识（project_key）",
+      },
     ],
     queryParams: [],
     headers: [
@@ -579,6 +601,8 @@ const endpointsSeed: EndpointSeed[] = [
   "title": "系统维护通知",
   "content": "周六凌晨维护",
   "is_pinned": true,
+  "is_hidden": false,
+  "platforms": ["ios", "android"],
   "author": "ops",
   "published_at": 1760000000
 }`,
@@ -589,7 +613,9 @@ const endpointsSeed: EndpointSeed[] = [
       content: `{
   "id": "ann-002",
   "title": "系统维护通知",
-  "is_pinned": true
+  "is_pinned": true,
+  "is_hidden": false,
+  "platforms": ["ios", "android"]
 }`,
     },
   },
@@ -616,6 +642,8 @@ const endpointsSeed: EndpointSeed[] = [
   "title": "系统维护通知（延期）",
   "content": "维护窗口改为 23:00-24:00",
   "is_pinned": false,
+  "is_hidden": true,
+  "platforms": ["web"],
   "author": "ops",
   "published_at": 1760000600
 }`,
@@ -626,7 +654,9 @@ const endpointsSeed: EndpointSeed[] = [
       content: `{
   "id": "ann-002",
   "title": "系统维护通知（延期）",
-  "is_pinned": false
+  "is_pinned": false,
+  "is_hidden": true,
+  "platforms": ["web"]
 }`,
     },
   },
@@ -862,7 +892,8 @@ const endpointsSeed: EndpointSeed[] = [
       language: "json",
       content: `{
   "name": "打开设置页",
-  "description": "用户点击设置入口并进入设置页"
+  "description": "用户点击设置入口并进入设置页",
+  "custom_data": {"module": "settings"}
 }`,
     },
     responseBody: {
@@ -870,8 +901,11 @@ const endpointsSeed: EndpointSeed[] = [
       language: "json",
       content: `{
   "action_id": "action-open-settings",
+  "project_key": "verhub",
   "name": "打开设置页",
-  "description": "用户点击设置入口并进入设置页"
+  "description": "用户点击设置入口并进入设置页",
+  "custom_data": {"module": "settings"},
+  "created_time": 1760000000
 }`,
     },
   },

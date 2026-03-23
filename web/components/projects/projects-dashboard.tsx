@@ -2,25 +2,35 @@
 
 import * as React from "react"
 import {
-  CheckCircle2,
   Copy,
   ExternalLink,
   Loader2,
   PencilLine,
   Plus,
   RefreshCcw,
+  Save,
   Trash2,
 } from "lucide-react"
 import Link from "next/link"
+import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@workspace/ui/components/dialog"
 
 import { ApiError, isAuthError } from "@/lib/api-client"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
-import { ManagementListItem } from "@/components/admin/management-list-item"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
+import { validateComparableVersion } from "@/lib/comparable-version"
+import { scrollToPageTop } from "@/lib/scroll"
 import {
   createProject,
   deleteProject,
@@ -105,6 +115,165 @@ function getErrorMessage(error: unknown): string {
   return "请求失败，请稍后再试。"
 }
 
+function ProjectFormFields({
+  form,
+  setForm,
+  minComparableError,
+  maxComparableError,
+  theme = "dark",
+}: {
+  form: FormState
+  setForm: React.Dispatch<React.SetStateAction<FormState>>
+  minComparableError: string | null
+  maxComparableError: string | null
+  theme?: "dark" | "light"
+}) {
+  const inputClassName =
+    theme === "light"
+      ? "w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+      : "w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
+
+  return (
+    <>
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">项目标识</span>
+        <input
+          type="text"
+          placeholder="例如：verhub-admin"
+          value={form.project_key}
+          onChange={(event) => setForm((prev) => ({ ...prev, project_key: event.target.value }))}
+          className={inputClassName}
+          required
+          maxLength={64}
+        />
+      </label>
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">项目名称</span>
+        <input
+          type="text"
+          placeholder="输入面向管理员展示的名称"
+          value={form.name}
+          onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+          className={inputClassName}
+          required
+          maxLength={128}
+        />
+      </label>
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">仓库地址</span>
+        <input
+          type="url"
+          placeholder="https://github.com/org/repo"
+          value={form.repo_url}
+          onChange={(event) => setForm((prev) => ({ ...prev, repo_url: event.target.value }))}
+          className={inputClassName}
+          maxLength={512}
+        />
+      </label>
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">项目描述</span>
+        <textarea
+          placeholder="简要说明项目用途和范围"
+          value={form.description}
+          onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
+          rows={4}
+          className={inputClassName}
+          maxLength={2048}
+        />
+      </label>
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">作者</span>
+        <input
+          type="text"
+          placeholder="例如：octocat"
+          value={form.author}
+          onChange={(event) => setForm((prev) => ({ ...prev, author: event.target.value }))}
+          className={inputClassName}
+          maxLength={128}
+        />
+      </label>
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">作者主页</span>
+        <input
+          type="url"
+          placeholder="https://github.com/author"
+          value={form.author_homepage_url}
+          onChange={(event) =>
+            setForm((prev) => ({ ...prev, author_homepage_url: event.target.value }))
+          }
+          className={inputClassName}
+          maxLength={512}
+        />
+      </label>
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">图标链接</span>
+        <input
+          type="url"
+          placeholder="https://example.com/icon.png"
+          value={form.icon_url}
+          onChange={(event) => setForm((prev) => ({ ...prev, icon_url: event.target.value }))}
+          className={inputClassName}
+          maxLength={1024}
+        />
+      </label>
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">官网</span>
+        <input
+          type="url"
+          placeholder="https://example.com"
+          value={form.website_url}
+          onChange={(event) => setForm((prev) => ({ ...prev, website_url: event.target.value }))}
+          className={inputClassName}
+          maxLength={512}
+        />
+      </label>
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">发布时间</span>
+        <input
+          type="datetime-local"
+          value={form.published_at}
+          onChange={(event) => setForm((prev) => ({ ...prev, published_at: event.target.value }))}
+          className={inputClassName}
+        />
+      </label>
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">可选更新范围下限</span>
+        <input
+          type="text"
+          placeholder="例如：1.0.0"
+          value={form.optional_update_min_comparable_version}
+          onChange={(event) =>
+            setForm((prev) => ({
+              ...prev,
+              optional_update_min_comparable_version: event.target.value,
+            }))
+          }
+          className={inputClassName}
+          maxLength={64}
+        />
+        {minComparableError ? <p className="text-xs text-rose-500">{minComparableError}</p> : null}
+      </label>
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">可选更新范围上限</span>
+        <input
+          type="text"
+          placeholder="例如：1.99.99"
+          value={form.optional_update_max_comparable_version}
+          onChange={(event) =>
+            setForm((prev) => ({
+              ...prev,
+              optional_update_max_comparable_version: event.target.value,
+            }))
+          }
+          className={inputClassName}
+          maxLength={64}
+        />
+        {maxComparableError ? <p className="text-xs text-rose-500">{maxComparableError}</p> : null}
+      </label>
+    </>
+  )
+}
+
 export function ProjectsDashboard() {
   const [projects, setProjects] = React.useState<ProjectItem[]>([])
   const [total, setTotal] = React.useState(0)
@@ -116,14 +285,28 @@ export function ProjectsDashboard() {
   const [authError, setAuthError] = React.useState<string | null>(null)
 
   const [form, setForm] = React.useState<FormState>(emptyForm)
-  const [editingId, setEditingId] = React.useState<string | null>(null)
   const [submitLoading, setSubmitLoading] = React.useState(false)
   const [githubLoading, setGithubLoading] = React.useState(false)
-  const [submitMessage, setSubmitMessage] = React.useState<string | null>(null)
+  const [editDialogOpen, setEditDialogOpen] = React.useState(false)
+  const [editingProjectKey, setEditingProjectKey] = React.useState<string | null>(null)
+  const [editForm, setEditForm] = React.useState<FormState>(emptyForm)
+  const [savingEdit, setSavingEdit] = React.useState(false)
 
   const hasToken = token.trim().length > 0
+  const minComparableError = form.optional_update_min_comparable_version.trim()
+    ? validateComparableVersion(form.optional_update_min_comparable_version)
+    : null
+  const maxComparableError = form.optional_update_max_comparable_version.trim()
+    ? validateComparableVersion(form.optional_update_max_comparable_version)
+    : null
   const page = Math.floor(offset / PAGE_SIZE) + 1
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const editMinComparableError = editForm.optional_update_min_comparable_version.trim()
+    ? validateComparableVersion(editForm.optional_update_min_comparable_version)
+    : null
+  const editMaxComparableError = editForm.optional_update_max_comparable_version.trim()
+    ? validateComparableVersion(editForm.optional_update_max_comparable_version)
+    : null
 
   const loadProjects = React.useCallback(
     async (nextOffset: number, signal?: AbortSignal) => {
@@ -179,8 +362,8 @@ export function ProjectsDashboard() {
   }, [loadProjects, offset])
 
   function beginEdit(project: ProjectItem) {
-    setEditingId(project.id)
-    setForm({
+    setEditingProjectKey(project.project_key)
+    setEditForm({
       project_key: project.project_key,
       name: project.name,
       repo_url: project.repo_url ?? "",
@@ -195,11 +378,10 @@ export function ProjectsDashboard() {
       optional_update_min_comparable_version: project.optional_update_min_comparable_version ?? "",
       optional_update_max_comparable_version: project.optional_update_max_comparable_version ?? "",
     })
-    setSubmitMessage(null)
+    setEditDialogOpen(true)
   }
 
   function copyFromProject(project: ProjectItem) {
-    setEditingId(null)
     setForm({
       project_key: project.project_key,
       name: project.name,
@@ -215,51 +397,80 @@ export function ProjectsDashboard() {
       optional_update_min_comparable_version: project.optional_update_min_comparable_version ?? "",
       optional_update_max_comparable_version: project.optional_update_max_comparable_version ?? "",
     })
-    setSubmitMessage("已复制配置到表单，可直接创建新项目。")
+    toast.success("已复制配置到表单，可直接创建新项目。")
+    scrollToPageTop()
   }
 
   function resetForm() {
-    setEditingId(null)
     setForm(emptyForm)
-    setSubmitMessage(null)
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!token) {
-      setSubmitMessage("请先登录后再操作。")
+      toast.error("请先登录后再操作。")
       return
     }
 
     const payload = toMutationInput(form)
     if (!payload.project_key || !payload.name) {
-      setSubmitMessage("project_key 与 name 为必填项。")
+      toast.error("project_key 与 name 为必填项。")
+      return
+    }
+    if (minComparableError) {
+      toast.error("可选更新范围下限格式不合法。")
+      return
+    }
+    if (maxComparableError) {
+      toast.error("可选更新范围上限格式不合法。")
       return
     }
 
     setSubmitLoading(true)
-    setSubmitMessage(null)
 
     try {
-      if (editingId) {
-        await updateProject(token, editingId, payload)
-        setSubmitMessage("项目已更新。")
-      } else {
-        await createProject(token, payload)
-        setSubmitMessage("项目已创建。")
-      }
+      await createProject(token, payload)
+      toast.success("项目已创建。")
 
       resetForm()
       setOffset(0)
       await loadProjects(0)
     } catch (submitError) {
-      setSubmitMessage(getErrorMessage(submitError))
+      toast.error(getErrorMessage(submitError))
     } finally {
       setSubmitLoading(false)
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleSaveEdit() {
+    if (!token || !editingProjectKey) {
+      return
+    }
+
+    if (editMinComparableError) {
+      toast.error("可选更新范围下限格式不合法。")
+      return
+    }
+    if (editMaxComparableError) {
+      toast.error("可选更新范围上限格式不合法。")
+      return
+    }
+
+    setSavingEdit(true)
+    try {
+      await updateProject(token, editingProjectKey, toMutationInput(editForm))
+      toast.success("项目已更新。")
+      setEditDialogOpen(false)
+      setEditingProjectKey(null)
+      await loadProjects(offset)
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  async function handleDelete(projectKey: string) {
     if (!token) {
       setError("请先登录后再删除项目。")
       return
@@ -271,7 +482,8 @@ export function ProjectsDashboard() {
     }
 
     try {
-      await deleteProject(token, id)
+      await deleteProject(token, projectKey)
+      toast.success("项目已删除。")
       const nextOffset =
         projects.length === 1 && offset > 0 ? Math.max(0, offset - PAGE_SIZE) : offset
       setOffset(nextOffset)
@@ -287,18 +499,17 @@ export function ProjectsDashboard() {
 
   async function handlePrefillFromGithubRepo() {
     if (!token) {
-      setSubmitMessage("请先登录后再操作。")
+      toast.error("请先登录后再操作。")
       return
     }
 
     const repoUrl = form.repo_url.trim()
     if (!repoUrl) {
-      setSubmitMessage("请先填写 GitHub 仓库地址。")
+      toast.error("请先填写 GitHub 仓库地址。")
       return
     }
 
     setGithubLoading(true)
-    setSubmitMessage(null)
     try {
       const preview = await previewProjectFromGithubRepo(token, repoUrl)
       setForm((prev) => ({
@@ -315,9 +526,9 @@ export function ProjectsDashboard() {
           ? new Date(preview.published_at * 1000).toISOString().slice(0, 16)
           : "",
       }))
-      setSubmitMessage("已从 GitHub 仓库自动填充项目信息。")
+      toast.success("已从 GitHub 仓库自动填充项目信息。")
     } catch (error) {
-      setSubmitMessage(getErrorMessage(error))
+      toast.error(getErrorMessage(error))
     } finally {
       setGithubLoading(false)
     }
@@ -350,52 +561,20 @@ export function ProjectsDashboard() {
       <section className="space-y-6">
         <AdminCard className="space-y-6">
           <div className="space-y-2">
-            <h2 className="text-lg font-semibold">创建或编辑项目</h2>
-            <p className="text-sm text-slate-200/90">
-              用于新增或修改项目信息。project_key 与 name 为必填项。
-            </p>
+            <h2 className="text-lg font-semibold">创建项目</h2>
+            <p className="text-sm text-slate-200/90">project_key 与 name 为必填项。</p>
           </div>
 
           {authError ? <p className="text-sm text-rose-300">{authError}</p> : null}
 
           <form className="grid gap-3" onSubmit={handleSubmit}>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">项目标识</span>
-              <input
-                type="text"
-                placeholder="例如：verhub-admin"
-                value={form.project_key}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, project_key: event.target.value }))
-                }
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
-                required
-                maxLength={64}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">项目名称</span>
-              <input
-                type="text"
-                placeholder="输入面向管理员展示的名称"
-                value={form.name}
-                onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
-                required
-                maxLength={128}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">仓库地址</span>
-              <input
-                type="url"
-                placeholder="https://github.com/org/repo"
-                value={form.repo_url}
-                onChange={(event) => setForm((prev) => ({ ...prev, repo_url: event.target.value }))}
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
-                maxLength={512}
-              />
-            </label>
+            <ProjectFormFields
+              form={form}
+              setForm={setForm}
+              minComparableError={minComparableError}
+              maxComparableError={maxComparableError}
+              theme="dark"
+            />
             <div>
               <Button
                 type="button"
@@ -412,110 +591,6 @@ export function ProjectsDashboard() {
                 从 GitHub 获取项目信息
               </Button>
             </div>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">项目描述</span>
-              <textarea
-                placeholder="简要说明项目用途和范围"
-                value={form.description}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, description: event.target.value }))
-                }
-                rows={4}
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
-                maxLength={2048}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">作者</span>
-              <input
-                type="text"
-                placeholder="例如：octocat"
-                value={form.author}
-                onChange={(event) => setForm((prev) => ({ ...prev, author: event.target.value }))}
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
-                maxLength={128}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">作者主页</span>
-              <input
-                type="url"
-                placeholder="https://github.com/author"
-                value={form.author_homepage_url}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, author_homepage_url: event.target.value }))
-                }
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
-                maxLength={512}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">图标链接</span>
-              <input
-                type="url"
-                placeholder="https://example.com/icon.png"
-                value={form.icon_url}
-                onChange={(event) => setForm((prev) => ({ ...prev, icon_url: event.target.value }))}
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
-                maxLength={1024}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">官网</span>
-              <input
-                type="url"
-                placeholder="https://example.com"
-                value={form.website_url}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, website_url: event.target.value }))
-                }
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
-                maxLength={512}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">发布时间</span>
-              <input
-                type="datetime-local"
-                value={form.published_at}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, published_at: event.target.value }))
-                }
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">可选更新范围下限</span>
-              <input
-                type="text"
-                placeholder="例如：1.0.0"
-                value={form.optional_update_min_comparable_version}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    optional_update_min_comparable_version: event.target.value,
-                  }))
-                }
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
-                maxLength={64}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">可选更新范围上限</span>
-              <input
-                type="text"
-                placeholder="例如：1.99.99"
-                value={form.optional_update_max_comparable_version}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    optional_update_max_comparable_version: event.target.value,
-                  }))
-                }
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
-                maxLength={64}
-              />
-            </label>
             <div className="flex flex-wrap gap-2">
               <Button
                 type="submit"
@@ -524,12 +599,10 @@ export function ProjectsDashboard() {
               >
                 {submitLoading ? (
                   <Loader2 className="size-4 animate-spin" />
-                ) : editingId ? (
-                  <PencilLine className="size-4" />
                 ) : (
                   <Plus className="size-4" />
                 )}
-                {editingId ? "保存修改" : "创建项目"}
+                创建项目
               </Button>
               <Button
                 type="button"
@@ -540,12 +613,6 @@ export function ProjectsDashboard() {
                 清空表单
               </Button>
             </div>
-            {submitMessage ? (
-              <p className="inline-flex items-center gap-2 text-sm text-slate-100">
-                <CheckCircle2 className="size-4 text-emerald-300" />
-                {submitMessage}
-              </p>
-            ) : null}
           </form>
         </AdminCard>
       </section>
@@ -580,103 +647,110 @@ export function ProjectsDashboard() {
 
         {hasToken && !loading && !error && projects.length > 0 ? (
           <div className="space-y-3">
-            {projects.map((project) => (
-              <ManagementListItem
-                key={project.id}
-                title={project.name}
-                subtitle={
-                  <p className="font-mono text-xs text-slate-700 dark:text-cyan-100/90">
-                    ID: {project.id}
-                  </p>
-                }
-                meta={
-                  <>
-                    <p className="font-mono">{project.project_key}</p>
-                    <p>创建于 {new Date(project.created_at * 1000).toLocaleString("zh-CN")}</p>
-                  </>
-                }
-                content={
-                  <>
-                    {project.repo_url ? (
-                      <a
-                        className="text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
-                        href={project.repo_url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {project.repo_url}
-                      </a>
-                    ) : null}
-                    {project.author ? <p className="mt-1">作者：{project.author}</p> : null}
-                    {project.website_url ? (
-                      <a
-                        className="mt-1 block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
-                        href={project.website_url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        官网：{project.website_url}
-                      </a>
-                    ) : null}
-                    {project.description ? <p className="mt-1">{project.description}</p> : null}
-                    {project.optional_update_min_comparable_version ||
-                    project.optional_update_max_comparable_version ? (
-                      <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-                        可选更新范围：
+            <div className="overflow-x-auto rounded-2xl border border-slate-900/15 bg-white/70 dark:border-white/10 dark:bg-white/5">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-100/80 text-left text-slate-700 dark:bg-white/10 dark:text-slate-200">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">项目</th>
+                    <th className="px-3 py-2 font-medium">仓库/官网</th>
+                    <th className="px-3 py-2 font-medium">可选更新范围</th>
+                    <th className="px-3 py-2 font-medium">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projects.map((project) => (
+                    <tr
+                      key={project.id}
+                      className="border-t border-slate-900/10 dark:border-white/10"
+                    >
+                      <td className="px-3 py-2 align-top">
+                        <p className="font-medium text-slate-900 dark:text-slate-100">
+                          {project.name}
+                        </p>
+                        <p className="font-mono text-xs text-slate-600 dark:text-slate-300">
+                          ID: {project.id}
+                        </p>
+                        <p className="font-mono text-xs text-slate-600 dark:text-slate-300">
+                          {project.project_key}
+                        </p>
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs">
+                        {project.repo_url ? (
+                          <a
+                            className="block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
+                            href={project.repo_url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {project.repo_url}
+                          </a>
+                        ) : null}
+                        {project.website_url ? (
+                          <a
+                            className="mt-1 block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
+                            href={project.website_url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            官网：{project.website_url}
+                          </a>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2 align-top text-xs text-slate-700 dark:text-slate-300">
                         {project.optional_update_min_comparable_version ?? "-∞"}
                         {" ~ "}
                         {project.optional_update_max_comparable_version ?? "+∞"}
-                      </p>
-                    ) : null}
-                  </>
-                }
-                actions={
-                  <>
-                    <Button
-                      asChild
-                      type="button"
-                      variant="outline"
-                      className="border-white/20 bg-white/5"
-                    >
-                      <Link
-                        href={`/projects/${project.project_key}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <ExternalLink className="size-4" />
-                        项目展示页
-                      </Link>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-white/20 bg-white/5"
-                      onClick={() => copyFromProject(project)}
-                    >
-                      <Copy className="size-4" />
-                      复制配置
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-white/20 bg-white/5"
-                      onClick={() => beginEdit(project)}
-                    >
-                      <PencilLine className="size-4" />
-                      编辑
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      onClick={() => void handleDelete(project.id)}
-                    >
-                      <Trash2 className="size-4" />
-                      删除
-                    </Button>
-                  </>
-                }
-              />
-            ))}
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            asChild
+                            type="button"
+                            variant="outline"
+                            className="border-white/20 bg-white/5"
+                          >
+                            <Link
+                              href={`/projects/${project.project_key}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <ExternalLink className="size-4" />
+                              项目展示页
+                            </Link>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="border-white/20 bg-white/5"
+                            onClick={() => copyFromProject(project)}
+                          >
+                            <Copy className="size-4" />
+                            复制配置
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="border-white/20 bg-white/5"
+                            onClick={() => beginEdit(project)}
+                          >
+                            <PencilLine className="size-4" />
+                            编辑
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={() => void handleDelete(project.project_key)}
+                          >
+                            <Trash2 className="size-4" />
+                            删除
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             <AdminPagination
               hasPrev={offset > 0}
@@ -687,6 +761,39 @@ export function ProjectsDashboard() {
           </div>
         ) : null}
       </AdminCard>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>编辑项目</DialogTitle>
+            <DialogDescription>在弹窗中修改项目信息并保存。</DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3">
+            <ProjectFormFields
+              form={editForm}
+              setForm={setEditForm}
+              minComparableError={editMinComparableError}
+              maxComparableError={editMaxComparableError}
+              theme="light"
+            />
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              disabled={savingEdit || !editingProjectKey}
+              onClick={() => void handleSaveEdit()}
+            >
+              <Save className="size-4" />
+              保存修改
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

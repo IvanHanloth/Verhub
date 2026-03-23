@@ -42,13 +42,10 @@ function formatUnixTimestamp(value?: number | null): string {
 
 function renderUpdateReason(code: string): string {
   const reasonMap: Record<string, string> = {
-    latest_is_preview: "命中预发布通道",
-    has_newer_release: "有更新版本",
-    force_update_by_milestone: "跨里程碑更新",
-    force_update_by_deprecated: "当前版本已废弃",
+    newer_version_available: "有更新版本",
     outside_optional_update_range: "超出可选更新范围",
-    current_not_found: "当前版本不在服务端记录中",
-    no_latest_version: "未找到可用最新版本",
+    current_version_deprecated: "当前版本已废弃",
+    milestone_guard: "跨里程碑更新",
   }
 
   return reasonMap[code] ?? code

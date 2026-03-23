@@ -93,6 +93,26 @@ pnpm --filter @workspace/backend prisma:migrate
 
 建议：修改 Prisma schema 后先生成客户端，再进行类型检查，避免出现误判错误。
 
+更新治理约束（必须执行）：
+
+- 数据库结构演进使用 Prisma migration：
+
+```bash
+pnpm --filter @workspace/backend prisma migrate dev
+pnpm --filter @workspace/backend prisma migrate deploy
+```
+
+- 禁止将 `prisma db push` 用于生产或共享环境结构演进。
+- 提交数据库变更时必须包含可审查 SQL（`packages/backend/prisma/migrations/*/migration.sql`），并在变更说明标注影响与回滚策略。
+
+版本更新策略约定：
+
+- 语义化版本号：`version`（展示用，可保持历史格式）。
+- 可比较版本号：`comparable_version`（规则计算用），格式为 `数字段(.数字段)*[-(alpha|beta|rc)(.数字段(.数字段)*)?]`。
+- 公开更新检查接口：`POST /api/v1/public/{projectKey}/versions/check-update`。
+- 最新 preview 接口：`GET /api/v1/public/{projectKey}/versions/latest-preview`。
+- 指定版本查询接口：`GET /api/v1/public/{projectKey}/versions/by-version/{version}`。
+
 ## 代码质量门禁
 
 仓库启用了 Husky + lint-staged。提交前会自动执行 lint 和格式化。
@@ -160,7 +180,7 @@ jobs:
           curl -sS -X POST "${VERHUB_BASE_URL}/admin/projects/verhub/versions" \
             -H "Authorization: Bearer ${VERHUB_ADMIN_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{\"version\":\"${RELEASE_VERSION}\",\"title\":\"Release ${RELEASE_VERSION}\",\"content\":\"Automated release by CI\",\"is_latest\":true,\"is_preview\":false}"
+            -d "{\"version\":\"${RELEASE_VERSION}\",\"comparable_version\":\"${RELEASE_VERSION#v}\",\"title\":\"Release ${RELEASE_VERSION}\",\"content\":\"Automated release by CI\",\"is_latest\":true,\"is_preview\":false}"
 
       - name: Create announcement in Verhub
         env:

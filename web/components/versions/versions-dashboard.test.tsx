@@ -307,7 +307,10 @@ describe("VersionsDashboard", () => {
       )
     })
 
-    expect(screen.getByDisplayValue("1.2.3")).toBeInTheDocument()
+    expect(screen.getByPlaceholderText("例如：2.3.0")).toHaveValue("1.2.3")
+    expect(screen.getByPlaceholderText("例如：2.3.0-rc.1（留空则尝试由版本号推导）")).toHaveValue(
+      "1.2.3",
+    )
     expect(screen.getByDisplayValue("Verhub v1.2.3")).toBeInTheDocument()
     expect(screen.getByLabelText("预发布版本")).toBeChecked()
   })

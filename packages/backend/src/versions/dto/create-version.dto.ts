@@ -40,6 +40,10 @@ export class CreateVersionDto {
   @MaxLength(64)
   version!: string
 
+  @IsString()
+  @MaxLength(64)
+  comparable_version!: string
+
   @IsOptional()
   @IsString()
   @MaxLength(128)
@@ -64,10 +68,6 @@ export class CreateVersionDto {
 
   @IsOptional()
   @IsBoolean()
-  forced?: boolean
-
-  @IsOptional()
-  @IsBoolean()
   is_latest?: boolean
 
   @IsOptional()
@@ -77,6 +77,15 @@ export class CreateVersionDto {
   @IsOptional()
   @IsIn(clientPlatforms)
   platform?: ClientPlatform
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  milestone?: string
+
+  @IsOptional()
+  @IsBoolean()
+  is_deprecated?: boolean
 
   @IsOptional()
   @IsObject()

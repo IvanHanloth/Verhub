@@ -1215,6 +1215,65 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /public/{projectKey}/versions/latest-preview:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    get:
+      tags: [Versions]
+      summary: 按 project_key 获取最新 preview 版本
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /public/{projectKey}/versions/by-version/{version}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+        description: 语义化版本号（可 URL 编码）
+    get:
+      tags: [Versions]
+      summary: 按版本号获取指定版本信息
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /public/{projectKey}/versions/check-update:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKey"
+    post:
+      tags: [Versions]
+      summary: 提交当前版本并自动检查是否需要更新
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckVersionUpdateDto"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckVersionUpdateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /public/{projectKey}/announcements:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
@@ -2017,6 +2076,14 @@ components:
         published_at:
           type: integer
           format: int64
+        optional_update_min_comparable_version:
+          type: string
+          maxLength: 64
+          description: 项目级可选更新范围下限（可比较版本号）
+        optional_update_max_comparable_version:
+          type: string
+          maxLength: 64
+          description: 项目级可选更新范围上限（可比较版本号）
 
     UpdateProjectDto:
       type: object
@@ -2051,6 +2118,12 @@ components:
         published_at:
           type: integer
           format: int64
+        optional_update_min_comparable_version:
+          type: string
+          maxLength: 64
+        optional_update_max_comparable_version:
+          type: string
+          maxLength: 64
 
     ProjectItem:
       type: object
@@ -2066,6 +2139,8 @@ components:
           icon_url,
           website_url,
           published_at,
+          optional_update_min_comparable_version,
+          optional_update_max_comparable_version,
           created_at,
           updated_at,
         ]
@@ -2091,6 +2166,10 @@ components:
         published_at:
           type: [integer, "null"]
           format: int64
+        optional_update_min_comparable_version:
+          type: [string, "null"]
+        optional_update_max_comparable_version:
+          type: [string, "null"]
         created_at:
           type: integer
           format: int64
@@ -2135,6 +2214,10 @@ components:
         version:
           type: string
           maxLength: 64
+        comparable_version:
+          type: string
+          maxLength: 64
+          description: 可比较版本号，格式如 1.2.3、1.2.3-alpha 或 1.2.3-rc.2
         title:
           type: string
           maxLength: 128
@@ -2148,11 +2231,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VersionDownloadLink"
-        forced:
-          type: boolean
         is_latest:
           type: boolean
         is_preview:
+          type: boolean
+        milestone:
+          type: string
+          maxLength: 64
+        is_deprecated:
           type: boolean
         published_at:
           type: integer
@@ -2179,6 +2265,9 @@ components:
         version:
           type: string
           maxLength: 64
+        comparable_version:
+          type: string
+          maxLength: 64
         title:
           type: string
           maxLength: 128
@@ -2192,11 +2281,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VersionDownloadLink"
-        forced:
-          type: boolean
         is_latest:
           type: boolean
         is_preview:
+          type: boolean
+        milestone:
+          type: string
+          maxLength: 64
+        is_deprecated:
           type: boolean
         published_at:
           type: integer
@@ -2213,6 +2305,7 @@ components:
         [
           id,
           version,
+          comparable_version,
           title,
           content,
           download_url,
@@ -2220,6 +2313,8 @@ components:
           forced,
           is_latest,
           is_preview,
+          milestone,
+          is_deprecated,
           platform,
           custom_data,
           published_at,
@@ -2229,6 +2324,8 @@ components:
         id:
           type: string
         version:
+          type: string
+        comparable_version:
           type: string
         title:
           type: [string, "null"]
@@ -2245,6 +2342,10 @@ components:
         is_latest:
           type: boolean
         is_preview:
+          type: boolean
+        milestone:
+          type: [string, "null"]
+        is_deprecated:
           type: boolean
         platform:
           oneOf:
@@ -2264,9 +2365,21 @@ components:
 
     GithubReleaseVersionPreview:
       type: object
-      required: [version, forced, is_latest, is_preview, published_at, custom_data]
+      required:
+        [
+          version,
+          comparable_version,
+          forced,
+          is_latest,
+          is_preview,
+          is_deprecated,
+          published_at,
+          custom_data,
+        ]
       properties:
         version:
+          type: string
+        comparable_version:
           type: string
         title:
           type: string
@@ -2283,6 +2396,10 @@ components:
         is_latest:
           type: boolean
         is_preview:
+          type: boolean
+        milestone:
+          type: string
+        is_deprecated:
           type: boolean
         published_at:
           type: integer
@@ -2351,6 +2468,69 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VersionItem"
+
+    CheckVersionUpdateDto:
+      type: object
+      properties:
+        current_version:
+          type: string
+          maxLength: 64
+          description: 当前语义化版本号（可选）
+        current_comparable_version:
+          type: string
+          maxLength: 64
+          description: 当前可比较版本号（当 current_version 无法映射时必填）
+        include_preview:
+          type: boolean
+          description: 是否将 preview 版本纳入更新目标候选
+
+    CheckVersionUpdateResponse:
+      type: object
+      required:
+        [
+          should_update,
+          required,
+          reason_codes,
+          current_version,
+          current_comparable_version,
+          latest_version,
+          latest_preview_version,
+          target_version,
+          milestone,
+        ]
+      properties:
+        should_update:
+          type: boolean
+        required:
+          type: boolean
+        reason_codes:
+          type: array
+          items:
+            type: string
+        current_version:
+          type: [string, "null"]
+        current_comparable_version:
+          type: string
+        latest_version:
+          $ref: "#/components/schemas/VersionItem"
+        latest_preview_version:
+          oneOf:
+            - $ref: "#/components/schemas/VersionItem"
+            - type: "null"
+        target_version:
+          $ref: "#/components/schemas/VersionItem"
+        milestone:
+          type: object
+          required: [current, latest, latest_in_current]
+          properties:
+            current:
+              type: [string, "null"]
+            latest:
+              type: [string, "null"]
+            latest_in_current:
+              oneOf:
+                - $ref: "#/components/schemas/VersionItem"
+                - type: "null"
 
     CreateAnnouncementDto:
       type: object

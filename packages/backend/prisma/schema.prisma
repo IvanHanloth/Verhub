@@ -68,6 +68,8 @@ model Project {
   iconUrl       String?
   websiteUrl    String?
   publishedAt   Int?
+  optionalUpdateMinComparableVersion String?
+  optionalUpdateMaxComparableVersion String?
   createdAt     Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   updatedAt     Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   versions      Version[]
@@ -108,6 +110,7 @@ model Version {
   id          String         @id @default(cuid())
   projectKey  String
   version     String
+  comparableVersion String?
   title       String?
   content     String?
   downloadUrl String?
@@ -115,6 +118,8 @@ model Version {
   forced      Boolean        @default(false)
   isLatest    Boolean        @default(false)
   isPreview   Boolean        @default(false)
+  milestone   String?
+  isDeprecated Boolean       @default(false)
   platform    ClientPlatform?
   customData  Json?
   publishedAt Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))

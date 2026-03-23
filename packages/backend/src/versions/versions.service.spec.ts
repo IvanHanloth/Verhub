@@ -11,6 +11,7 @@ function createPrismaMock() {
       count: jest.fn(),
       findMany: jest.fn(),
       findFirst: jest.fn(),
+      findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -38,6 +39,7 @@ describe("VersionsService", () => {
     prisma.version.create.mockResolvedValue({
       id: "version-1",
       version: "1.0.0",
+      comparableVersion: "1.0.0",
       title: "First Release",
       content: "stable release",
       downloadUrl: "https://example.com/app",
@@ -47,6 +49,8 @@ describe("VersionsService", () => {
       customData: { build: "100" },
       isLatest: true,
       isPreview: false,
+      milestone: null,
+      isDeprecated: false,
       publishedAt: 1767225600,
       createdAt: 1767225600,
     })
@@ -56,11 +60,11 @@ describe("VersionsService", () => {
     const service = new VersionsService(prisma as never)
     const result = await service.create("project-1", {
       version: "1.0.0",
+      comparable_version: "1.0.0",
       title: "First Release",
       content: "stable release",
       download_url: "https://example.com/app",
       download_links: [{ url: "https://example.com/app", name: "Installer", platform: "web" }],
-      forced: false,
       platform: "ios",
       custom_data: { build: "100" },
     })
@@ -69,11 +73,14 @@ describe("VersionsService", () => {
       data: {
         projectKey: "project-1",
         version: "1.0.0",
+        comparableVersion: "1.0.0",
         title: "First Release",
         content: "stable release",
         downloadUrl: "https://example.com/app",
         downloadLinks: [{ url: "https://example.com/app", name: "Installer", platform: "web" }],
         forced: false,
+        milestone: null,
+        isDeprecated: false,
         platform: "IOS",
         customData: { build: "100" },
         isLatest: true,
@@ -83,6 +90,7 @@ describe("VersionsService", () => {
     })
 
     expect(result.platform).toBe("ios")
+    expect(result.comparable_version).toBe("1.0.0")
     expect(result.download_links).toEqual([
       { url: "https://example.com/app", name: "Installer", platform: "web" },
     ])
@@ -112,10 +120,10 @@ describe("VersionsService", () => {
     await expect(
       service.create("project-1", {
         version: "1.0.0",
+        comparable_version: "1.0.0",
         title: undefined,
         content: undefined,
         download_url: undefined,
-        forced: false,
         platform: "web",
         custom_data: undefined,
       }),
@@ -128,6 +136,7 @@ describe("VersionsService", () => {
     prisma.version.create.mockResolvedValue({
       id: "version-2",
       version: "1.0.1",
+      comparableVersion: "1.0.1",
       title: null,
       content: null,
       downloadUrl: null,
@@ -137,6 +146,8 @@ describe("VersionsService", () => {
       customData: null,
       isLatest: true,
       isPreview: false,
+      milestone: null,
+      isDeprecated: false,
       publishedAt: 1767225600,
       createdAt: 1767225600,
     })
@@ -146,10 +157,10 @@ describe("VersionsService", () => {
     const service = new VersionsService(prisma as never)
     const result = await service.create("project-1", {
       version: "1.0.1",
+      comparable_version: "1.0.1",
       title: undefined,
       content: undefined,
       download_url: undefined,
-      forced: false,
       platform: undefined,
       custom_data: undefined,
     })
@@ -158,11 +169,14 @@ describe("VersionsService", () => {
       data: {
         projectKey: "project-1",
         version: "1.0.1",
+        comparableVersion: "1.0.1",
         title: undefined,
         content: undefined,
         downloadUrl: undefined,
         downloadLinks: undefined,
         forced: false,
+        milestone: null,
+        isDeprecated: false,
         platform: undefined,
         customData: undefined,
         isLatest: true,
@@ -180,6 +194,7 @@ describe("VersionsService", () => {
     prisma.version.create.mockResolvedValue({
       id: "version-preview",
       version: "2.0.0-beta.1",
+      comparableVersion: "2.0.0-beta.1",
       title: "Preview",
       content: null,
       downloadUrl: null,
@@ -189,6 +204,8 @@ describe("VersionsService", () => {
       customData: null,
       isLatest: false,
       isPreview: true,
+      milestone: null,
+      isDeprecated: false,
       publishedAt: 1767225600,
       createdAt: 1767225600,
     })
@@ -196,6 +213,7 @@ describe("VersionsService", () => {
     const service = new VersionsService(prisma as never)
     await service.create("project-1", {
       version: "2.0.0-beta.1",
+      comparable_version: "2.0.0-beta.1",
       is_preview: true,
     })
 
@@ -204,6 +222,8 @@ describe("VersionsService", () => {
         data: expect.objectContaining({
           isLatest: false,
           isPreview: true,
+          milestone: null,
+          isDeprecated: false,
         }),
       }),
     )
@@ -220,6 +240,7 @@ describe("VersionsService", () => {
     prisma.version.create.mockResolvedValue({
       id: "version-2",
       version: "1.1.0",
+      comparableVersion: "1.1.0",
       title: "v1.1.0",
       content: "release note",
       downloadUrl: "https://downloads.example.com/verhub-1.1.0.zip",
@@ -229,6 +250,8 @@ describe("VersionsService", () => {
       customData: { source: "github-release" },
       isLatest: false,
       isPreview: false,
+      milestone: null,
+      isDeprecated: false,
       publishedAt: 1774087200,
       createdAt: 1774087200,
     })
@@ -271,6 +294,7 @@ describe("VersionsService", () => {
         data: expect.objectContaining({
           projectKey: "project-1",
           version: "1.1.0",
+          comparableVersion: "1.1.0",
           downloadUrl: "https://downloads.example.com/verhub-1.1.0.zip",
           downloadLinks: [
             { url: "https://downloads.example.com/verhub-1.1.0.zip", name: "app.zip" },
@@ -313,6 +337,7 @@ describe("VersionsService", () => {
     expect(preview).toEqual(
       expect.objectContaining({
         version: "1.2.3",
+        comparable_version: "1.2.3",
         title: "Verhub v1.2.3",
         content: "release note",
         download_url: "https://downloads.example.com/verhub-1.2.3.zip",
@@ -322,5 +347,78 @@ describe("VersionsService", () => {
     )
 
     fetchMock.mockRestore()
+  })
+
+  it("checks update policy with required upgrade when current version is deprecated", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValueOnce({
+      projectKey: "project-1",
+      optionalUpdateMinComparableVersion: "1.0.0",
+      optionalUpdateMaxComparableVersion: "1.9.9",
+    })
+    prisma.version.findFirst
+      .mockResolvedValueOnce({
+        id: "latest-stable",
+        projectKey: "project-1",
+        version: "2.1.0",
+        comparableVersion: "2.1.0",
+        title: null,
+        content: null,
+        downloadUrl: null,
+        downloadLinks: null,
+        forced: false,
+        isLatest: true,
+        isPreview: false,
+        milestone: "M2",
+        isDeprecated: false,
+        platform: null,
+        customData: null,
+        publishedAt: 10,
+        createdAt: 10,
+      })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        version: "1.0.0",
+        comparableVersion: "1.0.0",
+        milestone: "M1",
+        isDeprecated: true,
+      })
+    prisma.version.findMany.mockResolvedValueOnce([
+      {
+        id: "m1-latest",
+        projectKey: "project-1",
+        version: "1.5.0",
+        comparableVersion: "1.5.0",
+        title: null,
+        content: null,
+        downloadUrl: null,
+        downloadLinks: null,
+        forced: false,
+        isLatest: false,
+        isPreview: false,
+        milestone: "M1",
+        isDeprecated: false,
+        platform: null,
+        customData: null,
+        publishedAt: 9,
+        createdAt: 9,
+      },
+    ])
+
+    const service = new VersionsService(prisma as never)
+    const result = await service.checkUpdateByProjectKey("project-1", {
+      current_version: "1.0.0",
+    })
+
+    expect(result.should_update).toBe(true)
+    expect(result.required).toBe(true)
+    expect(result.reason_codes).toEqual(
+      expect.arrayContaining([
+        "newer_version_available",
+        "current_version_deprecated",
+        "milestone_guard",
+      ]),
+    )
+    expect(result.target_version.version).toBe("1.5.0")
   })
 })

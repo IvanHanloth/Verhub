@@ -14,7 +14,7 @@ hero:
       text: 开始使用
       link: /guide/getting-started
     - theme: alt
-      text: 查看部署指南
+      text: 部署指南
       link: /guide/deployment
 
 features:

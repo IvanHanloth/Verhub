@@ -19,6 +19,11 @@ RUN pnpm --filter @workspace/backend build
 
 FROM node:24-alpine AS backend-runtime
 
+ARG VERHUB_BUILD_VERSION=dev
+ARG VERHUB_BUILD_PUBLISHED_AT=unknown
+LABEL org.opencontainers.image.version=$VERHUB_BUILD_VERSION
+LABEL org.opencontainers.image.created=$VERHUB_BUILD_PUBLISHED_AT
+
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.20.0 --activate
 
@@ -34,6 +39,7 @@ COPY --from=backend-builder /app/packages/backend/prisma ./packages/backend/pris
 
 COPY docker/backend-entrypoint.sh /usr/local/bin/backend-entrypoint.sh
 RUN chmod +x /usr/local/bin/backend-entrypoint.sh && mkdir -p /bootstrap
+RUN printf '{"version":"%s","published_at":"%s"}\n' "$VERHUB_BUILD_VERSION" "$VERHUB_BUILD_PUBLISHED_AT" > /app/build-info.json
 
 ENV NODE_ENV=production
 ENV PORT=4000

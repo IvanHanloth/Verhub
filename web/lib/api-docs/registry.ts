@@ -82,6 +82,7 @@ const endpointsSeed: EndpointSeed[] = [
     {
       "id": "ver-001",
       "version": "1.0.0",
+      "comparable_version": "1.0.0",
       "title": "首发版本",
       "download_links": [
         {
@@ -90,9 +91,10 @@ const endpointsSeed: EndpointSeed[] = [
           "platform": "windows"
         }
       ],
-      "forced": false,
       "is_latest": true,
       "is_preview": false,
+      "milestone": "M1",
+      "is_deprecated": false,
       "published_at": 1760000000
     }
   ]
@@ -123,8 +125,109 @@ const endpointsSeed: EndpointSeed[] = [
       content: `{
   "id": "ver-001",
   "version": "1.0.0",
+  "comparable_version": "1.0.0",
   "title": "首发版本",
-  "is_latest": true
+  "is_latest": true,
+  "milestone": "M1",
+  "is_deprecated": false
+}`,
+    },
+  },
+  {
+    module: "Public",
+    visibility: "public",
+    title: "获取最新 preview 版本",
+    description: "用于客户端测试通道获取最新预发布版本。",
+    method: "GET",
+    path: "/public/{projectKey}/versions/latest-preview",
+    auth: { mode: "none", description: "无需鉴权" },
+    pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
+    queryParams: [],
+    headers: [],
+    responseBody: {
+      label: "200 响应",
+      language: "json",
+      content: `{
+  "id": "ver-preview-001",
+  "version": "1.2.0-beta.2",
+  "comparable_version": "1.2.0-beta.2",
+  "is_latest": false,
+  "is_preview": true,
+  "milestone": "M2",
+  "is_deprecated": false
+}`,
+    },
+  },
+  {
+    module: "Public",
+    visibility: "public",
+    title: "按版本号获取指定版本信息",
+    description: "支持根据语义化版本号读取单个版本详情。",
+    method: "GET",
+    path: "/public/{projectKey}/versions/by-version/{version}",
+    auth: { mode: "none", description: "无需鉴权" },
+    pathParams: [
+      { name: "projectKey", type: "string", required: true, description: "项目标识" },
+      {
+        name: "version",
+        type: "string",
+        required: true,
+        description: "语义化版本号（可 URL 编码）",
+      },
+    ],
+    queryParams: [],
+    headers: [],
+    responseBody: {
+      label: "200 响应",
+      language: "json",
+      content: `{
+  "id": "ver-001",
+  "version": "v1.20.326-buildA",
+  "comparable_version": "1.20.326",
+  "is_latest": false,
+  "is_preview": false,
+  "milestone": "M2",
+  "is_deprecated": false
+}`,
+    },
+  },
+  {
+    module: "Public",
+    visibility: "public",
+    title: "提交当前版本并检查更新",
+    description: "返回是否有更新、是否必须更新、里程碑约束与目标版本。",
+    method: "POST",
+    path: "/public/{projectKey}/versions/check-update",
+    auth: { mode: "none", description: "无需鉴权" },
+    pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
+    queryParams: [],
+    headers: [],
+    requestBody: {
+      label: "请求体",
+      language: "json",
+      content: `{
+  "current_version": "v1.20.326-buildA",
+  "current_comparable_version": "1.20.326",
+  "include_preview": false
+}`,
+    },
+    responseBody: {
+      label: "200 响应",
+      language: "json",
+      content: `{
+  "should_update": true,
+  "required": true,
+  "reason_codes": ["outside_optional_update_range", "milestone_guard"],
+  "current_version": "v1.20.326-buildA",
+  "current_comparable_version": "1.20.326",
+  "latest_version": { "version": "2.0.0", "comparable_version": "2.0.0" },
+  "latest_preview_version": null,
+  "target_version": { "version": "1.99.0", "comparable_version": "1.99.0" },
+  "milestone": {
+    "current": "M1",
+    "latest": "M2",
+    "latest_in_current": { "version": "1.99.0", "comparable_version": "1.99.0" }
+  }
 }`,
     },
   },
@@ -369,6 +472,7 @@ const endpointsSeed: EndpointSeed[] = [
       language: "json",
       content: `{
   "version": "1.2.0",
+  "comparable_version": "1.2.0",
   "title": "性能优化",
   "content": "优化启动速度",
   "download_links": [
@@ -378,9 +482,10 @@ const endpointsSeed: EndpointSeed[] = [
       "platform": "web"
     }
   ],
-  "forced": false,
   "is_latest": true,
   "is_preview": false,
+  "milestone": "M2",
+  "is_deprecated": false,
   "published_at": 1760000000
 }`,
     },

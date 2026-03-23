@@ -27,12 +27,14 @@ import { ProjectSelectorCard } from "@/components/admin/project-selector-card"
 import { useSharedProjectSelection } from "@/hooks/use-shared-project-selection"
 import { listProjects, type ProjectItem } from "@/lib/projects-api"
 import {
+  checkVersionUpdate,
   createVersion,
   deleteVersion,
   importVersionsFromGithubReleases,
   listVersions,
   previewVersionFromGithubRelease,
   updateVersion,
+  type CheckVersionUpdateResponse,
   type ClientPlatform,
   type CreateVersionInput,
   type VersionDownloadLink,
@@ -50,15 +52,20 @@ const platformOptions: Array<{ label: string; value: ClientPlatform }> = [
   { label: "Web", value: "web" },
 ]
 
+const COMPARABLE_VERSION_PATTERN =
+  /^(?<core>\d+(?:\.\d+)*)(?:-(?<tag>alpha|beta|rc)(?:\.(?<tail>\d+(?:\.\d+)*))?)?$/
+
 type VersionFormState = {
   version: string
+  comparable_version: string
   title: string
   content: string
   download_url: string
   download_links_json: string
-  forced: boolean
   is_latest: boolean
   is_preview: boolean
+  milestone: string
+  is_deprecated: boolean
   published_at: string
   platform: "" | ClientPlatform
   custom_data: string
@@ -66,13 +73,15 @@ type VersionFormState = {
 
 const emptyVersionForm: VersionFormState = {
   version: "",
+  comparable_version: "",
   title: "",
   content: "",
   download_url: "",
   download_links_json: "",
-  forced: false,
   is_latest: true,
   is_preview: false,
+  milestone: "",
+  is_deprecated: false,
   published_at: "",
   platform: "",
   custom_data: "",
@@ -152,17 +161,62 @@ function toCreateInput(form: VersionFormState): CreateVersionInput {
 
   return {
     version: form.version.trim(),
+    comparable_version: form.comparable_version.trim(),
     title: form.title.trim() || undefined,
     content: form.content.trim() || undefined,
     download_url: trimmedDownloadUrl || undefined,
     download_links: parseDownloadLinks(form.download_links_json),
-    forced: form.forced,
     is_latest: form.is_latest,
     is_preview: form.is_preview,
+    milestone: form.milestone.trim() || undefined,
+    is_deprecated: form.is_deprecated,
     platform: form.platform || undefined,
     custom_data: parseJsonInput(form.custom_data),
     published_at: toTimestampSeconds(form.published_at),
   }
+}
+
+function validateComparableVersion(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return "可比较版本号为必填项。"
+  }
+
+  if (!COMPARABLE_VERSION_PATTERN.test(trimmed)) {
+    return "格式不合法：应为 1.2.3 / 1.2.3-alpha / 1.2.3-rc.2"
+  }
+
+  return null
+}
+
+function extractComparableVersionFromVersion(version: string): string | null {
+  const trimmed = version.trim().replace(/^v/i, "")
+  if (!trimmed) {
+    return null
+  }
+
+  if (COMPARABLE_VERSION_PATTERN.test(trimmed)) {
+    return trimmed
+  }
+
+  const coreMatch = trimmed.match(/\d+(?:\.\d+)*/)
+  if (!coreMatch) {
+    return null
+  }
+
+  const suffix = trimmed.slice((coreMatch.index ?? 0) + coreMatch[0].length)
+  const prereleaseMatch = suffix.match(/[-_.]?(alpha|beta|rc)(?:[-_.]?(\d+(?:[._]\d+)*))?/i)
+  if (!prereleaseMatch) {
+    return coreMatch[0]
+  }
+
+  const tag = prereleaseMatch[1]?.toLowerCase()
+  if (!tag) {
+    return coreMatch[0]
+  }
+  const tail = prereleaseMatch[2]?.replace(/_/g, ".")
+  const candidate = tail ? `${coreMatch[0]}-${tag}.${tail}` : `${coreMatch[0]}-${tag}`
+  return COMPARABLE_VERSION_PATTERN.test(candidate) ? candidate : coreMatch[0]
 }
 
 export function VersionsDashboard() {
@@ -184,6 +238,15 @@ export function VersionsDashboard() {
   const [submitLoading, setSubmitLoading] = React.useState(false)
   const [submitMessage, setSubmitMessage] = React.useState<string | null>(null)
   const [githubLoading, setGithubLoading] = React.useState(false)
+  const [simulationCurrentVersion, setSimulationCurrentVersion] = React.useState("")
+  const [simulationCurrentComparableVersion, setSimulationCurrentComparableVersion] =
+    React.useState("")
+  const [simulationIncludePreview, setSimulationIncludePreview] = React.useState(false)
+  const [simulationLoading, setSimulationLoading] = React.useState(false)
+  const [simulationResult, setSimulationResult] = React.useState<CheckVersionUpdateResponse | null>(
+    null,
+  )
+  const [simulationError, setSimulationError] = React.useState<string | null>(null)
 
   const selectedProject = React.useMemo(
     () => projects.find((project) => project.id === selectedProjectKey) ?? null,
@@ -191,6 +254,7 @@ export function VersionsDashboard() {
   )
 
   const hasToken = token.trim().length > 0
+  const comparableVersionError = validateComparableVersion(form.comparable_version)
   const page = Math.floor(offset / VERSION_PAGE_SIZE) + 1
   const totalPages = Math.max(1, Math.ceil(totalVersions / VERSION_PAGE_SIZE))
 
@@ -309,6 +373,11 @@ export function VersionsDashboard() {
         return
       }
 
+      if (comparableVersionError) {
+        setSubmitMessage(comparableVersionError)
+        return
+      }
+
       if (editingVersionId) {
         await updateVersion(token, selectedProjectKey, editingVersionId, payload)
         setSubmitMessage("版本已更新。")
@@ -335,14 +404,16 @@ export function VersionsDashboard() {
     setEditingVersionId(version.id)
     setForm({
       version: version.version,
+      comparable_version: version.comparable_version ?? "",
       title: version.title ?? "",
       content: version.content ?? "",
       download_url: version.download_url ?? "",
       download_links_json:
         version.download_links.length > 0 ? JSON.stringify(version.download_links, null, 2) : "",
-      forced: version.forced,
       is_latest: version.is_latest,
       is_preview: version.is_preview,
+      milestone: version.milestone ?? "",
+      is_deprecated: version.is_deprecated ?? false,
       published_at: toDateTimeLocal(version.published_at),
       platform: version.platform ?? "",
       custom_data: version.custom_data ? JSON.stringify(version.custom_data, null, 2) : "",
@@ -354,14 +425,16 @@ export function VersionsDashboard() {
     setEditingVersionId(null)
     setForm({
       version: version.version,
+      comparable_version: version.comparable_version ?? "",
       title: version.title ?? "",
       content: version.content ?? "",
       download_url: version.download_url ?? "",
       download_links_json:
         version.download_links.length > 0 ? JSON.stringify(version.download_links, null, 2) : "",
-      forced: version.forced,
       is_latest: version.is_latest,
       is_preview: version.is_preview,
+      milestone: version.milestone ?? "",
+      is_deprecated: version.is_deprecated ?? false,
       published_at: toDateTimeLocal(version.published_at),
       platform: version.platform ?? "",
       custom_data: version.custom_data ? JSON.stringify(version.custom_data, null, 2) : "",
@@ -389,14 +462,16 @@ export function VersionsDashboard() {
       setForm((prev) => ({
         ...prev,
         version: release.version,
+        comparable_version: release.comparable_version ?? release.version,
         title: release.title ?? "",
         content: release.content ?? "",
         download_url: release.download_url ?? "",
         download_links_json:
           release.download_links.length > 0 ? JSON.stringify(release.download_links, null, 2) : "",
-        forced: release.forced,
         is_latest: release.is_latest,
         is_preview: release.is_preview,
+        milestone: release.milestone ?? "",
+        is_deprecated: release.is_deprecated ?? false,
         published_at: toDateTimeLocal(release.published_at),
         custom_data: release.custom_data ? JSON.stringify(release.custom_data, null, 2) : "",
       }))
@@ -466,6 +541,47 @@ export function VersionsDashboard() {
     setSubmitMessage(null)
   }
 
+  function handleExtractComparableVersion() {
+    const extracted = extractComparableVersionFromVersion(form.version)
+    if (!extracted) {
+      setSubmitMessage("无法从版本号提取可比较版本号，请手动填写。")
+      return
+    }
+
+    setForm((prev) => ({ ...prev, comparable_version: extracted }))
+    setSubmitMessage("已从版本号提取可比较版本号。")
+  }
+
+  async function handleSimulateCheckUpdate() {
+    if (!selectedProject?.project_key) {
+      setSimulationError("请先选择项目。")
+      return
+    }
+
+    const currentComparable = simulationCurrentComparableVersion.trim()
+    if (currentComparable && validateComparableVersion(currentComparable)) {
+      setSimulationError("模拟输入的可比较版本号格式不合法。")
+      return
+    }
+
+    setSimulationLoading(true)
+    setSimulationError(null)
+    setSimulationResult(null)
+
+    try {
+      const result = await checkVersionUpdate(selectedProject.project_key, {
+        current_version: simulationCurrentVersion.trim() || undefined,
+        current_comparable_version: currentComparable || undefined,
+        include_preview: simulationIncludePreview,
+      })
+      setSimulationResult(result)
+    } catch (error) {
+      setSimulationError(getErrorMessage(error))
+    } finally {
+      setSimulationLoading(false)
+    }
+  }
+
   return (
     <section className="space-y-6">
       <AdminPageHeader
@@ -512,6 +628,29 @@ export function VersionsDashboard() {
                     description: "查询项目最新版本",
                     auth: { tokenRequired: false },
                   },
+                  {
+                    method: "GET",
+                    path: "/api/v1/public/{projectKey}/versions/latest-preview",
+                    description: "查询项目最新预发布版本",
+                    auth: { tokenRequired: false },
+                  },
+                  {
+                    method: "GET",
+                    path: "/api/v1/public/{projectKey}/versions/by-version/{version}",
+                    description: "按语义化版本号查询指定版本",
+                    auth: { tokenRequired: false },
+                  },
+                  {
+                    method: "POST",
+                    path: "/api/v1/public/{projectKey}/versions/check-update",
+                    description: "提交当前版本并返回更新判定（可选/必更）",
+                    auth: { tokenRequired: false },
+                    requestBody: {
+                      current_version: "v1.20.326",
+                      current_comparable_version: "1.20.326",
+                      include_preview: false,
+                    },
+                  },
                 ],
               },
               {
@@ -524,6 +663,7 @@ export function VersionsDashboard() {
                     auth: { tokenRequired: true },
                     requestBody: {
                       version: "2.1.0",
+                      comparable_version: "2.1.0",
                       title: "稳定版",
                       content: "修复已知问题",
                       download_url: "https://example.com/download/2.1.0",
@@ -534,9 +674,10 @@ export function VersionsDashboard() {
                           platform: "web",
                         },
                       ],
-                      forced: false,
                       is_latest: true,
                       is_preview: false,
+                      milestone: "M2",
+                      is_deprecated: false,
                       published_at: 1774050000,
                       platform: "web",
                       custom_data: { channel: "stable", project_key: "{projectKey}" },
@@ -549,7 +690,8 @@ export function VersionsDashboard() {
                     auth: { tokenRequired: true },
                     requestBody: {
                       title: "稳定版-修订",
-                      forced: true,
+                      milestone: "M2",
+                      is_deprecated: true,
                       custom_data: { release_note: "hotfix" },
                     },
                   },
@@ -625,6 +767,30 @@ export function VersionsDashboard() {
               />
             </label>
             <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">可比较版本号</span>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="例如：2.3.0-rc.1"
+                  value={form.comparable_version}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, comparable_version: event.target.value }))
+                  }
+                  className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
+                  required
+                  maxLength={64}
+                />
+                <Button type="button" variant="outline" onClick={handleExtractComparableVersion}>
+                  提取
+                </Button>
+              </div>
+              {comparableVersionError ? (
+                <p className="text-xs text-rose-500">{comparableVersionError}</p>
+              ) : (
+                <p className="text-xs text-emerald-600 dark:text-emerald-300">格式校验通过</p>
+              )}
+            </label>
+            <label className="space-y-1 text-sm">
               <span className="text-slate-700 dark:text-slate-300">下载地址</span>
               <input
                 type="url"
@@ -635,6 +801,19 @@ export function VersionsDashboard() {
                 }
                 className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
                 maxLength={2048}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">里程碑</span>
+              <input
+                type="text"
+                placeholder="例如：M1 / 2026-Q2"
+                value={form.milestone}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, milestone: event.target.value }))
+                }
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
+                maxLength={64}
               />
             </label>
             <label className="space-y-1 text-sm">
@@ -685,7 +864,7 @@ export function VersionsDashboard() {
               />
             </label>
 
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div className="grid gap-3 sm:grid-cols-2 sm:items-center">
               <label className="space-y-1 text-sm">
                 <span className="text-slate-700 dark:text-slate-300">平台范围</span>
                 <select
@@ -710,13 +889,13 @@ export function VersionsDashboard() {
               <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
                 <input
                   type="checkbox"
-                  checked={form.forced}
+                  checked={form.is_deprecated}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, forced: event.target.checked }))
+                    setForm((prev) => ({ ...prev, is_deprecated: event.target.checked }))
                   }
                   className="size-4 rounded border-white/30 bg-white/10"
                 />
-                强制更新
+                标记为废弃版本（客户端必更）
               </label>
             </div>
 
@@ -794,6 +973,77 @@ export function VersionsDashboard() {
         </AdminCard>
       </section>
 
+      <AdminCard className="space-y-4">
+        <div className="space-y-1">
+          <h2 className="text-lg font-semibold">版本模拟检查更新</h2>
+          <p className="text-sm text-slate-700 dark:text-slate-300">
+            用当前版本号模拟调用 check-update，验证里程碑拦截、废弃版本与可选更新范围策略。
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">当前版本号（可选）</span>
+            <input
+              type="text"
+              value={simulationCurrentVersion}
+              onChange={(event) => setSimulationCurrentVersion(event.target.value)}
+              placeholder="例如：v1.20.326"
+              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">当前可比较版本号（可选）</span>
+            <input
+              type="text"
+              value={simulationCurrentComparableVersion}
+              onChange={(event) => setSimulationCurrentComparableVersion(event.target.value)}
+              placeholder="例如：1.20.326"
+              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
+            />
+          </label>
+        </div>
+
+        <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+          <input
+            type="checkbox"
+            checked={simulationIncludePreview}
+            onChange={(event) => setSimulationIncludePreview(event.target.checked)}
+            className="size-4 rounded border-white/30 bg-white/10"
+          />
+          包含 preview 版本参与比较
+        </label>
+
+        <div>
+          <Button
+            type="button"
+            onClick={() => void handleSimulateCheckUpdate()}
+            disabled={simulationLoading || !selectedProject?.project_key}
+          >
+            {simulationLoading ? <Loader2 className="size-4 animate-spin" /> : null}
+            开始模拟
+          </Button>
+        </div>
+
+        {simulationError ? <p className="text-sm text-rose-500">{simulationError}</p> : null}
+
+        {simulationResult ? (
+          <div className="space-y-2 rounded-xl border border-slate-900/10 bg-white/60 p-3 text-sm dark:border-white/10 dark:bg-white/5">
+            <p>
+              结果：
+              {simulationResult.should_update ? "需要更新" : "无需更新"} /
+              {simulationResult.required ? " 必须更新" : " 可选更新"}
+            </p>
+            <p>目标版本：{simulationResult.target_version.version}</p>
+            <p>判定原因：{simulationResult.reason_codes.join("、") || "无"}</p>
+            <p>
+              里程碑：当前 {simulationResult.milestone.current ?? "无"}，最新
+              {simulationResult.milestone.latest ?? "无"}
+            </p>
+          </div>
+        ) : null}
+      </AdminCard>
+
       <AdminCard as="section">
         <AdminListHeader
           title="版本列表"
@@ -857,8 +1107,10 @@ export function VersionsDashboard() {
                     <p>发布时间 {new Date(version.published_at * 1000).toLocaleString("zh-CN")}</p>
                     <p>创建于 {new Date(version.created_at * 1000).toLocaleString("zh-CN")}</p>
                     <p>
-                      平台：{version.platform ?? "全部"} | 强更：{version.forced ? "是" : "否"} |
-                      latest：
+                      平台：{version.platform ?? "全部"} | comparable：
+                      {version.comparable_version ?? "未设置"} | milestone：
+                      {version.milestone ?? "无"} | 废弃：
+                      {version.is_deprecated ? "是" : "否"} | latest：
                       {version.is_latest ? "是" : "否"} | preview：
                       {version.is_preview ? "是" : "否"}
                     </p>

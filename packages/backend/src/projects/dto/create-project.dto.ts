@@ -43,4 +43,14 @@ export class CreateProjectDto {
   @IsInt()
   @Min(0)
   published_at?: number
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  optional_update_min_comparable_version?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  optional_update_max_comparable_version?: string
 }

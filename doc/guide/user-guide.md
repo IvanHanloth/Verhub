@@ -25,8 +25,8 @@
 3. 版本管理
 
 - 选择项目后发布版本、编辑版本、删除版本
-- 维护版本号、标题、更新内容、下载地址、平台、发布时间
-- 支持 latest/preview/forced 等发布策略
+- 维护语义化版本号、可比较版本号、里程碑、更新内容、下载地址、平台、发布时间
+- 支持 latest/preview、废弃标记等发布策略
 
 4. 公告管理
 
@@ -88,12 +88,63 @@
 1. 选择指定项目，如果项目已绑定 GitHub 仓库，则会显示“从 GitHub Release 获取”按钮
 2. 如直接点击“从 GitHub Release 获取”，会自动拉取最新的 Release 作为版本草稿
 3. 如输入版本号后点击“从 GitHub Release 获取”，会尝试拉取指定版本号的 Release 作为版本草稿，若该版本不存在则会提示错误
-4. 获取到的版本草稿会自动填充版本信息与发布说明、设置latest和preview状态，用户可根据需要进行编辑后发布
+4. 获取到的版本草稿会自动填充版本信息与发布说明、设置 latest/preview 状态，用户可根据需要进行编辑后发布
 
 ### 从 Github 导入历史版本
 
 1. 选择指定项目，如果项目已绑定 GitHub 仓库，则会显示“从 GitHub 导入历史版本”按钮
 2. 点击按钮后，将会自动拉取并入库该项目在 GitHub 上的所有 Release 版本，用户可在版本列表中查看并编辑这些版本信息。注意，如果获取到的版本号已存在则会被跳过以避免覆盖现有版本。
+
+## 更新策略与判定逻辑
+
+公开更新接口：
+
+- `GET /api/v1/public/{projectKey}/versions/by-version/{version}`
+- `GET /api/v1/public/{projectKey}/versions/latest-preview`
+- `POST /api/v1/public/{projectKey}/versions/check-update`
+
+判定核心：
+
+1. 比较当前版本与目标版本（按 `comparable_version`）
+2. 检查是否超出项目级可选更新范围
+3. 检查当前版本是否被废弃
+4. 检查是否触发里程碑拦截（必须先升到当前里程碑最新）
+
+判定结果通过以下字段返回：
+
+- `should_update`
+- `required`
+- `reason_codes`
+- `target_version`
+
+## 后台配置方法（重点）
+
+## 1. 项目管理页配置“可选更新范围”
+
+在项目表单中配置：
+
+- 可选更新范围下限（`optional_update_min_comparable_version`）
+- 可选更新范围上限（`optional_update_max_comparable_version`）
+
+说明：
+
+- 当前版本在范围内：可以提示更新但不强制
+- 当前版本不在范围内：遇到新版本将触发必更
+
+## 2. 版本管理页配置“版本策略”
+
+在版本表单中配置：
+
+- `version`：展示版本号
+- `comparable_version`：用于比较的版本号
+- `milestone`：里程碑标识
+- `is_deprecated`：是否废弃（勾选后该版本必更）
+
+建议：
+
+- 版本发布时同时维护 `version` 与 `comparable_version`
+- milestone 使用稳定命名（如 M1/M2）
+- 废弃版本需配合公告说明升级理由与目标版本
 
 ## 3. 发布公告
 

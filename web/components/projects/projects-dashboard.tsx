@@ -43,6 +43,8 @@ type FormState = {
   icon_url: string
   website_url: string
   published_at: string
+  optional_update_min_comparable_version: string
+  optional_update_max_comparable_version: string
 }
 
 const emptyForm: FormState = {
@@ -55,6 +57,8 @@ const emptyForm: FormState = {
   icon_url: "",
   website_url: "",
   published_at: "",
+  optional_update_min_comparable_version: "",
+  optional_update_max_comparable_version: "",
 }
 
 function toTimestampSeconds(value: string): number | undefined {
@@ -82,6 +86,10 @@ function toMutationInput(form: FormState): ProjectMutationInput {
     icon_url: form.icon_url.trim() || undefined,
     website_url: form.website_url.trim() || undefined,
     published_at: toTimestampSeconds(form.published_at),
+    optional_update_min_comparable_version:
+      form.optional_update_min_comparable_version.trim() || undefined,
+    optional_update_max_comparable_version:
+      form.optional_update_max_comparable_version.trim() || undefined,
   }
 }
 
@@ -184,6 +192,8 @@ export function ProjectsDashboard() {
       published_at: project.published_at
         ? new Date(project.published_at * 1000).toISOString().slice(0, 16)
         : "",
+      optional_update_min_comparable_version: project.optional_update_min_comparable_version ?? "",
+      optional_update_max_comparable_version: project.optional_update_max_comparable_version ?? "",
     })
     setSubmitMessage(null)
   }
@@ -202,6 +212,8 @@ export function ProjectsDashboard() {
       published_at: project.published_at
         ? new Date(project.published_at * 1000).toISOString().slice(0, 16)
         : "",
+      optional_update_min_comparable_version: project.optional_update_min_comparable_version ?? "",
+      optional_update_max_comparable_version: project.optional_update_max_comparable_version ?? "",
     })
     setSubmitMessage("已复制配置到表单，可直接创建新项目。")
   }
@@ -472,6 +484,38 @@ export function ProjectsDashboard() {
                 className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
               />
             </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">可选更新范围下限</span>
+              <input
+                type="text"
+                placeholder="例如：1.0.0"
+                value={form.optional_update_min_comparable_version}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    optional_update_min_comparable_version: event.target.value,
+                  }))
+                }
+                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
+                maxLength={64}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">可选更新范围上限</span>
+              <input
+                type="text"
+                placeholder="例如：1.99.99"
+                value={form.optional_update_max_comparable_version}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    optional_update_max_comparable_version: event.target.value,
+                  }))
+                }
+                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2"
+                maxLength={64}
+              />
+            </label>
             <div className="flex flex-wrap gap-2">
               <Button
                 type="submit"
@@ -575,6 +619,15 @@ export function ProjectsDashboard() {
                       </a>
                     ) : null}
                     {project.description ? <p className="mt-1">{project.description}</p> : null}
+                    {project.optional_update_min_comparable_version ||
+                    project.optional_update_max_comparable_version ? (
+                      <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                        可选更新范围：
+                        {project.optional_update_min_comparable_version ?? "-∞"}
+                        {" ~ "}
+                        {project.optional_update_max_comparable_version ?? "+∞"}
+                      </p>
+                    ) : null}
                   </>
                 }
                 actions={

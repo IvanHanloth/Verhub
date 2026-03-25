@@ -121,7 +121,7 @@ export function LogsDashboard() {
   const [appliedFilters, setAppliedFilters] = React.useState<FilterState>(emptyFilters)
 
   const selectedProject = React.useMemo(
-    () => projects.find((project) => project.id === selectedProjectKey) ?? null,
+    () => projects.find((project) => project.project_key === selectedProjectKey) ?? null,
     [projects, selectedProjectKey],
   )
 
@@ -140,14 +140,14 @@ export function LogsDashboard() {
     try {
       const response = await listProjects(token, { limit: PROJECT_PAGE_SIZE, offset: 0 })
       setProjects(response.data)
-      const hasCurrent = response.data.some((project) => project.id === selectedProjectKey)
+      const hasCurrent = response.data.some((project) => project.project_key === selectedProjectKey)
       if (hasCurrent) {
         return
       }
 
       const firstProject = response.data[0]
       if (firstProject) {
-        setSelectedProjectKey(firstProject.id)
+        setSelectedProjectKey(firstProject.project_key)
       } else {
         setSelectedProjectKey("")
       }

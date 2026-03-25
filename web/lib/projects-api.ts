@@ -91,18 +91,18 @@ export async function createProject(
 
 export async function updateProject(
   token: string,
-  id: string,
+  projectKey: string,
   input: ProjectMutationInput,
 ): Promise<ProjectItem> {
-  return requestJson<ProjectItem>(`/admin/projects/${id}`, {
+  return requestJson<ProjectItem>(`/admin/projects/${projectKey}`, {
     method: "PATCH",
     token,
     body: input,
   })
 }
 
-export async function deleteProject(token: string, id: string): Promise<{ success: true }> {
-  return requestJson<{ success: true }>(`/admin/projects/${id}`, {
+export async function deleteProject(token: string, projectKey: string): Promise<{ success: true }> {
+  return requestJson<{ success: true }>(`/admin/projects/${projectKey}`, {
     method: "DELETE",
     token,
   })

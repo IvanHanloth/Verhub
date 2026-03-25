@@ -284,10 +284,10 @@ export default async function AdminAboutPage() {
             <div className="rounded-xl border border-slate-900/10 bg-white/60 p-3 dark:border-white/10 dark:bg-white/5">
               <p className="text-xs text-slate-500 dark:text-slate-400">当前里程碑</p>
               <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
-                {updateResult?.milestone.current ?? "未设置"}
+                {updateResult?.milestone.current ? "是" : "否"}
               </p>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                最新里程碑：{updateResult?.milestone.latest ?? "未设置"}
+                最新里程碑：{updateResult?.milestone.latest ? "是" : "否"}
               </p>
             </div>
           </div>

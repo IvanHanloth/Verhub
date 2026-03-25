@@ -118,8 +118,9 @@ model Version {
   forced      Boolean        @default(false)
   isLatest    Boolean        @default(false)
   isPreview   Boolean        @default(false)
-  milestone   String?
+  isMilestone Boolean        @default(false)
   isDeprecated Boolean       @default(false)
+  platforms   ClientPlatform[] @default([])
   platform    ClientPlatform?
   customData  Json?
   publishedAt Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
@@ -137,6 +138,8 @@ model Announcement {
   title     String
   content   String
   isPinned  Boolean  @default(false)
+  isHidden  Boolean  @default(false)
+  platforms ClientPlatform[] @default([])
   author    String?
   publishedAt Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   createdAt   Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))

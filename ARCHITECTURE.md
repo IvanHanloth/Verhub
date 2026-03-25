@@ -67,7 +67,7 @@ Token 范围模型（ApiKey）：
 - `isPreview`：标记预发布版本（如 beta/rc）。
 - `version`：语义化版本号（展示用，可保留历史命名习惯）。
 - `comparableVersion`：可比较版本号（规则计算用），格式支持 `1.2.3`、`1.2.3-alpha`、`1.2.3-rc.2`。
-- `milestone`：里程碑标识；跨里程碑更新时需先升级到当前里程碑最新版本。
+- `isMilestone`：里程碑标记；用于标记关键升级节点版本。
 - `isDeprecated`：版本废弃标记；命中后更新检查接口会返回必更。
 - `publishedAt`：版本发布时间（Unix 秒级时间戳）。
 - `downloadLinks`：结构化下载链接数组，支持多资源与可选元数据（name/platform）。

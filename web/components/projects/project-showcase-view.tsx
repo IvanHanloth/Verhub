@@ -329,9 +329,9 @@ export function ProjectShowcaseView({
                           deprecated
                         </span>
                       ) : null}
-                      {item.milestone ? (
+                      {item.is_milestone ? (
                         <span className="rounded-full bg-violet-300/25 px-2 py-0.5 text-xs text-violet-900 dark:text-violet-100">
-                          {item.milestone}
+                          milestone
                         </span>
                       ) : null}
                     </div>

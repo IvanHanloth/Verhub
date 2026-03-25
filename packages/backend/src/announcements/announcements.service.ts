@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common"
+import { ClientPlatform, Prisma } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
 import { CreateAnnouncementDto } from "./dto/create-announcement.dto"
@@ -10,6 +11,8 @@ type AnnouncementItem = {
   title: string
   content: string
   is_pinned: boolean
+  is_hidden: boolean
+  platforms: Array<"ios" | "android" | "windows" | "mac" | "web">
   author: string | null
   published_at: number
   created_at: number
@@ -22,6 +25,24 @@ function nowSeconds(): number {
 
 function normalizeProjectKey(projectKey: string): string {
   return projectKey.trim().toLowerCase()
+}
+
+function normalizePlatforms(
+  platforms?: Array<"ios" | "android" | "windows" | "mac" | "web">,
+): ClientPlatform[] {
+  if (!platforms) {
+    return []
+  }
+
+  return Array.from(new Set(platforms.map((item) => item.trim().toUpperCase()))) as ClientPlatform[]
+}
+
+function fromClientPlatforms(
+  platforms: ClientPlatform[],
+): Array<"ios" | "android" | "windows" | "mac" | "web"> {
+  return platforms.map((item) => item.toLowerCase()) as Array<
+    "ios" | "android" | "windows" | "mac" | "web"
+  >
 }
 
 type AnnouncementListResponse = {
@@ -52,10 +73,14 @@ export class AnnouncementsService {
     const normalizedProjectKey = normalizeProjectKey(projectKey)
     await this.ensureProjectExists(normalizedProjectKey)
 
+    const where: Prisma.AnnouncementWhereInput = {
+      projectKey: normalizedProjectKey,
+    }
+
     const [total, data] = await this.prisma.$transaction([
-      this.prisma.announcement.count({ where: { projectKey: normalizedProjectKey } }),
+      this.prisma.announcement.count({ where }),
       this.prisma.announcement.findMany({
-        where: { projectKey: normalizedProjectKey },
+        where,
         take: query.limit,
         skip: query.offset,
         orderBy: [{ isPinned: "desc" }, { createdAt: "desc" }],
@@ -87,10 +112,42 @@ export class AnnouncementsService {
     projectKey: string,
     query: QueryAnnouncementsDto,
   ): Promise<AnnouncementListResponse> {
-    return this.findAll(projectKey, query)
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    await this.ensureProjectExists(normalizedProjectKey)
+
+    const where: Prisma.AnnouncementWhereInput = {
+      projectKey: normalizedProjectKey,
+      isHidden: false,
+      ...(query.platform
+        ? {
+            OR: [
+              { platforms: { isEmpty: true } },
+              { platforms: { has: query.platform.toUpperCase() as ClientPlatform } },
+            ],
+          }
+        : {}),
+    }
+
+    const [total, data] = await this.prisma.$transaction([
+      this.prisma.announcement.count({ where }),
+      this.prisma.announcement.findMany({
+        where,
+        take: query.limit,
+        skip: query.offset,
+        orderBy: [{ isPinned: "desc" }, { createdAt: "desc" }],
+      }),
+    ])
+
+    return {
+      total,
+      data: data.map((item) => this.toAnnouncementItem(item)),
+    }
   }
 
-  async findLatestByProjectKey(projectKey: string): Promise<AnnouncementItem> {
+  async findLatestByProjectKey(
+    projectKey: string,
+    query?: Pick<QueryAnnouncementsDto, "platform">,
+  ): Promise<AnnouncementItem> {
     const normalizedProjectKey = normalizeProjectKey(projectKey)
     const project = await this.prisma.project.findUnique({
       where: { projectKey: normalizedProjectKey },
@@ -100,8 +157,21 @@ export class AnnouncementsService {
       throw new NotFoundException("Project not found")
     }
 
+    const where: Prisma.AnnouncementWhereInput = {
+      projectKey: project.projectKey,
+      isHidden: false,
+      ...(query?.platform
+        ? {
+            OR: [
+              { platforms: { isEmpty: true } },
+              { platforms: { has: query.platform.toUpperCase() as ClientPlatform } },
+            ],
+          }
+        : {}),
+    }
+
     const latest = await this.prisma.announcement.findFirst({
-      where: { projectKey: project.projectKey },
+      where,
       orderBy: { createdAt: "desc" },
     })
     if (!latest) {
@@ -121,6 +191,8 @@ export class AnnouncementsService {
         title: dto.title,
         content: dto.content,
         isPinned: dto.is_pinned ?? false,
+        isHidden: dto.is_hidden ?? false,
+        platforms: normalizePlatforms(dto.platforms),
         author: dto.author,
         publishedAt: dto.published_at,
       },
@@ -158,6 +230,8 @@ export class AnnouncementsService {
         title: dto.title,
         content: dto.content,
         isPinned: dto.is_pinned,
+        isHidden: dto.is_hidden,
+        platforms: dto.platforms ? normalizePlatforms(dto.platforms) : undefined,
         author: dto.author,
         publishedAt: dto.published_at,
         updatedAt: nowSeconds(),
@@ -225,6 +299,8 @@ export class AnnouncementsService {
     title: string
     content: string
     isPinned: boolean
+    isHidden: boolean
+    platforms: ClientPlatform[]
     author: string | null
     publishedAt: number
     createdAt: number
@@ -235,6 +311,8 @@ export class AnnouncementsService {
       title: announcement.title,
       content: announcement.content,
       is_pinned: announcement.isPinned,
+      is_hidden: announcement.isHidden,
+      platforms: fromClientPlatforms(announcement.platforms),
       author: announcement.author,
       published_at: announcement.publishedAt,
       created_at: announcement.createdAt,

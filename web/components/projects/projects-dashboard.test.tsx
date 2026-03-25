@@ -2,9 +2,10 @@ import * as React from "react"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { toast } from "sonner"
 
 import { ApiError } from "@/lib/api-client"
-import { listProjects, previewProjectFromGithubRepo } from "@/lib/projects-api"
+import { createProject, listProjects, previewProjectFromGithubRepo } from "@/lib/projects-api"
 
 import { ProjectsDashboard } from "./projects-dashboard"
 
@@ -16,14 +17,25 @@ vi.mock("@/lib/projects-api", () => ({
   previewProjectFromGithubRepo: vi.fn(),
 }))
 
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}))
+
 const mockedListProjects = vi.mocked(listProjects)
 const mockedPreviewProjectFromGithubRepo = vi.mocked(previewProjectFromGithubRepo)
+const mockedCreateProject = vi.mocked(createProject)
+const mockedToastError = vi.mocked(toast.error)
 
 describe("ProjectsDashboard", () => {
   beforeEach(() => {
     window.localStorage.clear()
     mockedListProjects.mockReset()
     mockedPreviewProjectFromGithubRepo.mockReset()
+    mockedCreateProject.mockReset()
+    mockedToastError.mockReset()
   })
 
   it("shows empty state after loading projects", async () => {
@@ -123,5 +135,56 @@ describe("ProjectsDashboard", () => {
 
     expect(screen.getByDisplayValue("octocat-hello-world")).toBeInTheDocument()
     expect(screen.getByDisplayValue("octocat/Hello-World")).toBeInTheDocument()
+  })
+
+  it("scrolls to top when copying project config", async () => {
+    const user = userEvent.setup()
+    const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined)
+
+    window.localStorage.setItem("verhub-admin-token", "valid-token")
+    mockedListProjects.mockResolvedValue({
+      total: 1,
+      data: [
+        {
+          id: "project-1",
+          project_key: "verhub",
+          name: "Verhub",
+          repo_url: "https://github.com/verhub/verhub",
+          description: "desc",
+          author: null,
+          author_homepage_url: null,
+          icon_url: null,
+          website_url: null,
+          published_at: null,
+          created_at: Math.floor(Date.parse("2026-03-20T00:00:00.000Z") / 1000),
+          updated_at: Math.floor(Date.parse("2026-03-20T00:00:00.000Z") / 1000),
+        },
+      ],
+    })
+
+    render(React.createElement(ProjectsDashboard))
+
+    await screen.findByText("ID: project-1")
+    await user.click(screen.getByRole("button", { name: "复制配置" }))
+
+    expect(scrollSpy).toHaveBeenCalled()
+    scrollSpy.mockRestore()
+  })
+
+  it("rejects invalid comparable range format before submit", async () => {
+    const user = userEvent.setup()
+    window.localStorage.setItem("verhub-admin-token", "valid-token")
+    mockedListProjects.mockResolvedValue({ total: 0, data: [] })
+
+    render(React.createElement(ProjectsDashboard))
+
+    const keyInput = await screen.findByPlaceholderText("例如：verhub-admin")
+    await user.type(keyInput, "demo")
+    await user.type(screen.getByPlaceholderText("输入面向管理员展示的名称"), "Demo")
+    await user.type(screen.getByPlaceholderText("例如：1.0.0"), "abc")
+    await user.click(screen.getByRole("button", { name: "创建项目" }))
+
+    expect(mockedToastError).toHaveBeenCalledWith("可选更新范围下限格式不合法。")
+    expect(mockedCreateProject).not.toHaveBeenCalled()
   })
 })

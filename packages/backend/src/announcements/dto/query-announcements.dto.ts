@@ -1,5 +1,7 @@
 import { Transform } from "class-transformer"
-import { IsInt, IsOptional, Max, Min } from "class-validator"
+import { IsIn, IsInt, IsOptional, Max, Min } from "class-validator"
+
+const clientPlatforms = ["ios", "android", "windows", "mac", "web"] as const
 
 export class QueryAnnouncementsDto {
   @IsOptional()
@@ -14,4 +16,9 @@ export class QueryAnnouncementsDto {
   @IsInt()
   @Min(0)
   offset = 0
+
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === "string" ? value.trim().toLowerCase() : value))
+  @IsIn(clientPlatforms)
+  platform?: (typeof clientPlatforms)[number]
 }

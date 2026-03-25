@@ -16,7 +16,10 @@ export class AnnouncementsPublicController {
   }
 
   @Get("latest")
-  async findLatestByProjectKey(@Param("projectKey") projectKey: string) {
-    return this.announcementsService.findLatestByProjectKey(projectKey)
+  async findLatestByProjectKey(
+    @Param("projectKey") projectKey: string,
+    @Query() query: QueryAnnouncementsDto,
+  ) {
+    return this.announcementsService.findLatestByProjectKey(projectKey, query)
   }
 }

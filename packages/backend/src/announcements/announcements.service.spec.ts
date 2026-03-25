@@ -21,7 +21,7 @@ function createPrismaMock() {
 }
 
 describe("AnnouncementsService", () => {
-  it("maps author and published_at when creating announcement", async () => {
+  it("maps author, hidden flag and platforms when creating announcement", async () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue({ projectKey: "project-1" })
     prisma.announcement.create.mockResolvedValue({
@@ -29,6 +29,8 @@ describe("AnnouncementsService", () => {
       title: "发布说明",
       content: "更新内容",
       isPinned: true,
+      isHidden: true,
+      platforms: ["IOS", "WEB"],
       author: "运营团队",
       publishedAt: 1774080000000,
       createdAt: 1774076400000,
@@ -41,6 +43,8 @@ describe("AnnouncementsService", () => {
       title: "发布说明",
       content: "更新内容",
       is_pinned: true,
+      is_hidden: true,
+      platforms: ["ios", "web"],
       author: "运营团队",
       published_at: publishedAt,
     })
@@ -51,6 +55,8 @@ describe("AnnouncementsService", () => {
         title: "发布说明",
         content: "更新内容",
         isPinned: true,
+        isHidden: true,
+        platforms: ["IOS", "WEB"],
         author: "运营团队",
         publishedAt,
       },
@@ -58,6 +64,79 @@ describe("AnnouncementsService", () => {
 
     expect(result.author).toBe("运营团队")
     expect(result.published_at).toBe(publishedAt)
+    expect(result.is_hidden).toBe(true)
+    expect(result.platforms).toEqual(["ios", "web"])
+  })
+
+  it("excludes hidden announcements in public list and filters by platform", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "project-1" })
+    prisma.$transaction.mockResolvedValue([
+      1,
+      [
+        {
+          id: "announcement-1",
+          title: "发布说明",
+          content: "更新内容",
+          isPinned: false,
+          isHidden: false,
+          platforms: ["WEB"],
+          author: null,
+          publishedAt: 1774080000,
+          createdAt: 1774076400,
+          updatedAt: 1774078200,
+        },
+      ],
+    ])
+
+    const service = new AnnouncementsService(prisma as never)
+    await service.findAllByProjectKey("project-1", {
+      limit: 20,
+      offset: 0,
+      platform: "web",
+    })
+
+    expect(prisma.announcement.count).toHaveBeenCalledWith({
+      where: {
+        projectKey: "project-1",
+        isHidden: false,
+        OR: [{ platforms: { isEmpty: true } }, { platforms: { has: "WEB" } }],
+      },
+    })
+    expect(prisma.announcement.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          projectKey: "project-1",
+          isHidden: false,
+          OR: [{ platforms: { isEmpty: true } }, { platforms: { has: "WEB" } }],
+        },
+      }),
+    )
+  })
+
+  it("latest public announcement should ignore hidden records", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "project-1" })
+    prisma.announcement.findFirst.mockResolvedValue({
+      id: "announcement-1",
+      title: "latest",
+      content: "latest content",
+      isPinned: false,
+      isHidden: false,
+      platforms: [],
+      author: null,
+      publishedAt: 1774080000,
+      createdAt: 1774076400,
+      updatedAt: 1774078200,
+    })
+
+    const service = new AnnouncementsService(prisma as never)
+    await service.findLatestByProjectKey("project-1")
+
+    expect(prisma.announcement.findFirst).toHaveBeenCalledWith({
+      where: { projectKey: "project-1", isHidden: false },
+      orderBy: { createdAt: "desc" },
+    })
   })
 
   it("throws when announcement is missing", async () => {

@@ -1,15 +1,23 @@
 "use client"
 
 import * as React from "react"
-import { AlertTriangle, CheckCircle2, Copy, Loader2, PencilLine, Save, Trash2 } from "lucide-react"
+import { AlertTriangle, Copy, Loader2, PencilLine, Save, Trash2 } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@workspace/ui/components/dialog"
 
 import { ApiError, isAuthError } from "@/lib/api-client"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
-import { ManagementListItem } from "@/components/admin/management-list-item"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { ProjectApiOverview } from "@/components/admin/project-api-overview"
 import { ProjectSelectorCard } from "@/components/admin/project-selector-card"
@@ -23,6 +31,7 @@ import {
   type FeedbackMutationInput,
 } from "@/lib/feedbacks-api"
 import { listProjects, type ProjectItem } from "@/lib/projects-api"
+import { scrollToPageTop } from "@/lib/scroll"
 
 const PROJECT_PAGE_SIZE = 100
 const PAGE_SIZE = 10
@@ -117,11 +126,11 @@ export function FeedbacksDashboard() {
 
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [form, setForm] = React.useState<FeedbackFormState>(emptyForm)
+  const [editDialogOpen, setEditDialogOpen] = React.useState(false)
   const [submitLoading, setSubmitLoading] = React.useState(false)
-  const [submitMessage, setSubmitMessage] = React.useState<string | null>(null)
 
   const selectedProject = React.useMemo(
-    () => projects.find((project) => project.id === selectedProjectKey) ?? null,
+    () => projects.find((project) => project.project_key === selectedProjectKey) ?? null,
     [projects, selectedProjectKey],
   )
 
@@ -140,14 +149,14 @@ export function FeedbacksDashboard() {
     try {
       const response = await listProjects(token, { limit: PROJECT_PAGE_SIZE, offset: 0 })
       setProjects(response.data)
-      const hasCurrent = response.data.some((project) => project.id === selectedProjectKey)
+      const hasCurrent = response.data.some((project) => project.project_key === selectedProjectKey)
       if (hasCurrent) {
         return
       }
 
       const firstProject = response.data[0]
       if (firstProject) {
-        setSelectedProjectKey(firstProject.id)
+        setSelectedProjectKey(firstProject.project_key)
       } else {
         setSelectedProjectKey("")
       }
@@ -221,9 +230,9 @@ export function FeedbacksDashboard() {
 
   React.useEffect(() => {
     setOffset(0)
-    setEditingId(null)
     setForm(emptyForm)
-    setSubmitMessage(null)
+    setEditingId(null)
+    setEditDialogOpen(false)
   }, [selectedProjectKey])
 
   function beginEdit(item: FeedbackItem) {
@@ -235,11 +244,10 @@ export function FeedbacksDashboard() {
       platform: item.platform ?? "",
       custom_data: toPrettyJson(item.custom_data),
     })
-    setSubmitMessage(null)
+    setEditDialogOpen(true)
   }
 
   function copyFromFeedback(item: FeedbackItem) {
-    setEditingId(null)
     setForm({
       user_id: item.user_id ?? "",
       rating: item.rating ? String(item.rating) : "",
@@ -247,35 +255,33 @@ export function FeedbacksDashboard() {
       platform: item.platform ?? "",
       custom_data: toPrettyJson(item.custom_data),
     })
-    setSubmitMessage("已复制配置到表单，可直接编辑后保存。")
+    toast.success("已复制配置到表单，可用于编辑保存。")
+    scrollToPageTop()
   }
 
   function resetForm() {
-    setEditingId(null)
     setForm(emptyForm)
-    setSubmitMessage(null)
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     if (!token) {
-      setSubmitMessage("请先登录后再操作。")
+      toast.error("请先登录后再操作。")
       return
     }
 
     if (!selectedProjectKey) {
-      setSubmitMessage("请先选择项目。")
+      toast.error("请先选择项目。")
       return
     }
 
     if (!editingId) {
-      setSubmitMessage("请先从列表中选择要编辑的反馈。")
+      toast.error("请先从列表中选择要编辑的反馈。")
       return
     }
 
     setSubmitLoading(true)
-    setSubmitMessage(null)
 
     try {
       const payload = toMutationInput(form)
@@ -284,24 +290,25 @@ export function FeedbacksDashboard() {
         ratingValue !== undefined &&
         (!Number.isInteger(ratingValue) || ratingValue < 1 || ratingValue > 5)
       ) {
-        setSubmitMessage("rating 需为 1-5 的整数。")
+        toast.error("rating 需为 1-5 的整数。")
         return
       }
 
       if (!payload.content) {
-        setSubmitMessage("content 不能为空。")
+        toast.error("content 不能为空。")
         return
       }
 
       await updateFeedback(token, selectedProjectKey, editingId, payload)
-      setSubmitMessage("反馈已更新。")
+      toast.success("反馈已更新。")
+      setEditDialogOpen(false)
       await loadFeedbacks(offset)
     } catch (submitError) {
       if (isAuthError(submitError)) {
         setToken("")
         setAuthError("登录状态已过期，请重新登录。")
       }
-      setSubmitMessage(getErrorMessage(submitError))
+      toast.error(getErrorMessage(submitError))
     } finally {
       setSubmitLoading(false)
     }
@@ -320,6 +327,7 @@ export function FeedbacksDashboard() {
 
     try {
       await deleteFeedback(token, selectedProjectKey, id)
+      toast.success("反馈已删除。")
       const nextOffset =
         feedbacks.length === 1 && offset > 0 ? Math.max(0, offset - PAGE_SIZE) : offset
       setOffset(nextOffset)
@@ -333,6 +341,7 @@ export function FeedbacksDashboard() {
         setAuthError("登录状态已过期，请重新登录。")
       }
       setError(getErrorMessage(deleteError))
+      toast.error(getErrorMessage(deleteError))
     }
   }
 
@@ -418,8 +427,8 @@ export function FeedbacksDashboard() {
 
         <AdminCard className="space-y-6">
           <div className="space-y-2">
-            <h2 className="text-lg font-semibold">编辑反馈</h2>
-            <p className="text-sm text-slate-200/90">先从列表选择一条反馈，再在此修改并保存。</p>
+            <h2 className="text-lg font-semibold">反馈编辑</h2>
+            <p className="text-sm text-slate-200/90">从列表点击编辑后，在弹窗中保存修改。</p>
           </div>
 
           <form className="grid gap-3" onSubmit={handleSubmit}>
@@ -432,7 +441,7 @@ export function FeedbacksDashboard() {
                 onChange={(event) => setForm((prev) => ({ ...prev, user_id: event.target.value }))}
                 className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-rose-300 transition outline-none focus:ring-2"
                 maxLength={64}
-                disabled={!editingId}
+                disabled
               />
             </label>
             <label className="space-y-1 text-sm">
@@ -445,7 +454,7 @@ export function FeedbacksDashboard() {
                 value={form.rating}
                 onChange={(event) => setForm((prev) => ({ ...prev, rating: event.target.value }))}
                 className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-rose-300 transition outline-none focus:ring-2"
-                disabled={!editingId}
+                disabled
               />
             </label>
             <label className="space-y-1 text-sm">
@@ -460,7 +469,7 @@ export function FeedbacksDashboard() {
                   }))
                 }
                 className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-rose-300 transition outline-none focus:ring-2"
-                disabled={!editingId}
+                disabled
               >
                 <option value="">未指定平台</option>
                 {platformOptions.map((item) => (
@@ -479,7 +488,7 @@ export function FeedbacksDashboard() {
                 rows={5}
                 className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-rose-300 transition outline-none focus:ring-2"
                 maxLength={4096}
-                disabled={!editingId}
+                disabled
               />
             </label>
             <label className="space-y-1 text-sm">
@@ -492,7 +501,7 @@ export function FeedbacksDashboard() {
                 }
                 rows={4}
                 className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 font-mono text-xs ring-rose-300 transition outline-none focus:ring-2"
-                disabled={!editingId}
+                disabled
               />
             </label>
 
@@ -500,31 +509,12 @@ export function FeedbacksDashboard() {
               <Button
                 type="submit"
                 className="bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
-                disabled={submitLoading || !editingId}
+                disabled
               >
-                {submitLoading ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Save className="size-4" />
-                )}
-                保存反馈
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="border-white/25 bg-white/5"
-                onClick={resetForm}
-              >
-                取消编辑
+                <Save className="size-4" />
+                请在列表点击“编辑”打开弹窗
               </Button>
             </div>
-
-            {submitMessage ? (
-              <p className="inline-flex items-center gap-2 text-sm text-slate-100">
-                <CheckCircle2 className="size-4 text-emerald-300" />
-                {submitMessage}
-              </p>
-            ) : null}
           </form>
         </AdminCard>
       </section>
@@ -565,51 +555,62 @@ export function FeedbacksDashboard() {
 
         {hasToken && selectedProjectKey && !loading && !error && feedbacks.length > 0 ? (
           <div className="space-y-3">
-            {feedbacks.map((item) => (
-              <ManagementListItem
-                key={item.id}
-                className="border-white/15 bg-white/8"
-                title={item.content}
-                meta={
-                  <>
-                    <p>创建于 {new Date(item.created_at * 1000).toLocaleString("zh-CN")}</p>
-                    <p>用户：{item.user_id ?? "匿名"}</p>
-                    <p>评分：{item.rating ?? "未评分"}</p>
-                    <p>平台：{item.platform ?? "未指定"}</p>
-                  </>
-                }
-                actions={
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-white/20 bg-white/5"
-                      onClick={() => copyFromFeedback(item)}
-                    >
-                      <Copy className="size-4" />
-                      复制配置
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="border-white/20 bg-white/5"
-                      onClick={() => beginEdit(item)}
-                    >
-                      <PencilLine className="size-4" />
-                      编辑
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      onClick={() => void handleDelete(item.id)}
-                    >
-                      <Trash2 className="size-4" />
-                      删除
-                    </Button>
-                  </>
-                }
-              />
-            ))}
+            <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/5">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 text-left text-slate-300">
+                    <th className="px-3 py-2 font-medium">内容</th>
+                    <th className="px-3 py-2 font-medium">用户/评分</th>
+                    <th className="px-3 py-2 font-medium">平台</th>
+                    <th className="px-3 py-2 font-medium">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {feedbacks.map((item) => (
+                    <tr key={item.id} className="border-b border-white/5 align-top">
+                      <td className="px-3 py-2 text-slate-200">{item.content}</td>
+                      <td className="px-3 py-2 text-xs text-slate-300">
+                        <p>{item.user_id ?? "匿名"}</p>
+                        <p>评分：{item.rating ?? "未评分"}</p>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-300">
+                        {item.platform ?? "未指定"}
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="border-white/20 bg-white/5"
+                            onClick={() => copyFromFeedback(item)}
+                          >
+                            <Copy className="size-4" />
+                            复制配置
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="border-white/20 bg-white/5"
+                            onClick={() => beginEdit(item)}
+                          >
+                            <PencilLine className="size-4" />
+                            编辑
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={() => void handleDelete(item.id)}
+                          >
+                            <Trash2 className="size-4" />
+                            删除
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
             <AdminPagination
               hasPrev={offset > 0}
@@ -620,6 +621,94 @@ export function FeedbacksDashboard() {
           </div>
         ) : null}
       </AdminCard>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>编辑反馈</DialogTitle>
+            <DialogDescription>修改反馈内容、评分、平台与扩展数据。</DialogDescription>
+          </DialogHeader>
+
+          <form className="grid gap-3" onSubmit={handleSubmit}>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">用户 ID</span>
+              <input
+                type="text"
+                value={form.user_id}
+                onChange={(event) => setForm((prev) => ({ ...prev, user_id: event.target.value }))}
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                maxLength={64}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">评分（1-5）</span>
+              <input
+                type="number"
+                min={1}
+                max={5}
+                value={form.rating}
+                onChange={(event) => setForm((prev) => ({ ...prev, rating: event.target.value }))}
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">平台</span>
+              <select
+                value={form.platform}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    platform: event.target.value as "" | ClientPlatform,
+                  }))
+                }
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+              >
+                <option value="">未指定平台</option>
+                {platformOptions.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">反馈内容</span>
+              <textarea
+                value={form.content}
+                onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))}
+                rows={5}
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                maxLength={4096}
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
+              <textarea
+                value={form.custom_data}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, custom_data: event.target.value }))
+                }
+                rows={4}
+                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs dark:border-white/20 dark:bg-white/10"
+              />
+            </label>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
+                取消
+              </Button>
+              <Button type="submit" disabled={submitLoading || !editingId}>
+                {submitLoading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Save className="size-4" />
+                )}
+                保存反馈
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

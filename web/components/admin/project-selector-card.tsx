@@ -3,7 +3,6 @@ import * as React from "react"
 import { AdminCard } from "@/components/admin/admin-card"
 
 type ProjectOption = {
-  id: string
   name: string
   project_key: string
 }
@@ -46,7 +45,7 @@ export function ProjectSelectorCard({
         >
           {projects.length === 0 ? <option value="">暂无可选项目</option> : null}
           {projects.map((project) => (
-            <option key={project.id} value={project.id}>
+            <option key={project.project_key} value={project.project_key}>
               {project.name} ({project.project_key})
             </option>
           ))}

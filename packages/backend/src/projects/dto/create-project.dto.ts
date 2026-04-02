@@ -53,7 +53,7 @@ export class CreateProjectDto {
   @Matches(COMPARABLE_VERSION_PATTERN, {
     message: "optional_update_min_comparable_version format is invalid",
   })
-  optional_update_min_comparable_version?: string
+  optional_update_min_comparable_version?: string | null
 
   @IsOptional()
   @IsString()
@@ -61,5 +61,5 @@ export class CreateProjectDto {
   @Matches(COMPARABLE_VERSION_PATTERN, {
     message: "optional_update_max_comparable_version format is invalid",
   })
-  optional_update_max_comparable_version?: string
+  optional_update_max_comparable_version?: string | null
 }

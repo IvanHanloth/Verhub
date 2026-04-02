@@ -23,14 +23,16 @@ Verhub 采用 Monorepo + 模块化单体架构：
 
 后端以业务能力划分模块，边界如下：
 
-- `auth`：管理员登录、JWT 鉴权、API Key 校验
+- `auth`：管理员登录（`AuthService`）、API Key 全生命周期管理（`ApiKeyManagementService`）、首次启动引导（`AdminBootstrapService`）
 - `projects`：项目元数据与项目 CRUD
-- `versions`：版本发布与版本列表
+- `versions`：版本 CRUD（`VersionsService`）、GitHub Release 集成（`GithubReleaseService`）、更新检查（`VersionUpdateCheckService`）
 - `announcements`：公告发布与管理
 - `feedbacks`：用户反馈上报/管理
 - `logs`：日志上报与日志查询
+- `actions`：行为定义管理与行为记录上报
 - `database`：PrismaService 与数据库连接能力
 - `health`：服务健康检查
+- `common`：跨模块共享工具函数（`nowSeconds`、`normalizeProjectKey`、`isUniqueViolation`）
 
 边界约束：
 
@@ -95,6 +97,15 @@ Token 范围模型（ApiKey）：
 - 业务看板组件在 `web/components/*`
 - API 客户端在 `web/lib/*-api.ts`
 - 通用请求封装在 `web/lib/api-client.ts`
+- 共享错误处理在 `web/lib/error-utils.ts`（`getErrorMessage`）
+- 共享分页逻辑在 `web/hooks/use-pagination.ts`（`usePagination` hook）
+- 跨页面项目选择同步在 `web/hooks/use-shared-project-selection.ts`
+- 统一弹窗模式基于 `@workspace/ui/components/dialog`：`DialogContent` 负责最大高度与自适应布局，`DialogBody` 负责内容滚动，`DialogFooter` 固定底部操作区
+
+版本管理组件拆分：
+
+- `web/components/versions/version-form-utils.ts`：表单类型、常量、纯函数（平台选项、日期转换、JSON 解析、输入构建）
+- `web/components/versions/version-edit-dialog.tsx`：独立编辑弹窗组件
 
 当前核心页面：
 

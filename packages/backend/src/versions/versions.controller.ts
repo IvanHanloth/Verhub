@@ -8,11 +8,15 @@ import { CreateVersionDto } from "./dto/create-version.dto"
 import { PreviewGithubReleaseDto } from "./dto/preview-github-release.dto"
 import { QueryVersionsDto } from "./dto/query-versions.dto"
 import { UpdateVersionDto } from "./dto/update-version.dto"
+import { GithubReleaseService } from "./github-release.service"
 import { VersionsService } from "./versions.service"
 
 @Controller("admin/projects/:projectKey/versions")
 export class VersionsController {
-  constructor(private readonly versionsService: VersionsService) {}
+  constructor(
+    private readonly versionsService: VersionsService,
+    private readonly githubReleaseService: GithubReleaseService,
+  ) {}
 
   @Get()
   @UseGuards(JwtAdminGuard)
@@ -32,13 +36,13 @@ export class VersionsController {
     @Param("projectKey") projectKey: string,
     @Query() query: PreviewGithubReleaseDto,
   ) {
-    return this.versionsService.previewFromGithubRelease(projectKey, query)
+    return this.githubReleaseService.previewFromGithubRelease(projectKey, query)
   }
 
   @Post("github-release-import")
   @UseGuards(JwtAdminGuard)
   async importFromGithubRelease(@Param("projectKey") projectKey: string) {
-    return this.versionsService.importFromGithubReleases(projectKey)
+    return this.githubReleaseService.importFromGithubReleases(projectKey)
   }
 
   @Get(":id")

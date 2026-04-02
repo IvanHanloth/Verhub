@@ -2,11 +2,15 @@ import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common"
 
 import { CheckVersionUpdateDto } from "./dto/check-version-update.dto"
 import { QueryVersionsDto } from "./dto/query-versions.dto"
+import { VersionUpdateCheckService } from "./version-update-check.service"
 import { VersionsService } from "./versions.service"
 
 @Controller("public/:projectKey/versions")
 export class VersionsPublicController {
-  constructor(private readonly versionsService: VersionsService) {}
+  constructor(
+    private readonly versionsService: VersionsService,
+    private readonly versionUpdateCheckService: VersionUpdateCheckService,
+  ) {}
 
   @Get()
   async findAllByProjectKey(
@@ -36,6 +40,6 @@ export class VersionsPublicController {
 
   @Post("check-update")
   async checkUpdate(@Param("projectKey") projectKey: string, @Body() dto: CheckVersionUpdateDto) {
-    return this.versionsService.checkUpdateByProjectKey(projectKey, dto)
+    return this.versionUpdateCheckService.checkUpdateByProjectKey(projectKey, dto)
   }
 }

@@ -22,6 +22,7 @@ describe("version-comparator", () => {
   it("compares stable and prerelease versions correctly", () => {
     expect(compareComparableVersions("1.2.3", "1.2.3-rc.1")).toBeGreaterThan(0)
     expect(compareComparableVersions("1.2.3-beta.1", "1.2.3-alpha.99")).toBeGreaterThan(0)
+    expect(compareComparableVersions("1.70.4", "2.00.0")).toBeLessThan(0)
     expect(compareComparableVersions("1.2.3-rc.1", "1.2.3-rc.2")).toBeLessThan(0)
     expect(compareComparableVersions("1.2.3", "1.2.3.0")).toBe(0)
     expect(compareComparableVersions("1.2.4", "1.2.3.999")).toBeGreaterThan(0)

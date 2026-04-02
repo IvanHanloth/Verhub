@@ -1,6 +1,8 @@
 import { Module } from "@nestjs/common"
 
 import { AuthModule } from "../auth/auth.module"
+import { GithubReleaseService } from "./github-release.service"
+import { VersionUpdateCheckService } from "./version-update-check.service"
 import { VersionsCompatController } from "./versions-compat.controller"
 import { VersionsController } from "./versions.controller"
 import { VersionsPublicController } from "./versions-public.controller"
@@ -15,7 +17,7 @@ import { VersionsService } from "./versions.service"
     VersionsCompatController,
     VersionsPublicController,
   ],
-  providers: [VersionsService],
-  exports: [VersionsService],
+  providers: [VersionsService, GithubReleaseService, VersionUpdateCheckService],
+  exports: [VersionsService, GithubReleaseService, VersionUpdateCheckService],
 })
 export class VersionsModule {}

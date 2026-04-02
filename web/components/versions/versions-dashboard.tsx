@@ -8,7 +8,6 @@ import {
   Loader2,
   PencilLine,
   Plus,
-  Save,
   Sparkles,
   Star,
   Trash2,
@@ -16,29 +15,22 @@ import {
 import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@workspace/ui/components/dialog"
 
-import { ApiError, isAuthError } from "@/lib/api-client"
+import { isAuthError } from "@/lib/api-client"
 import { getSessionToken } from "@/lib/auth-session"
+import { getErrorMessage } from "@/lib/error-utils"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { ProjectApiOverview } from "@/components/admin/project-api-overview"
 import { ProjectSelectorCard } from "@/components/admin/project-selector-card"
 import { useSharedProjectSelection } from "@/hooks/use-shared-project-selection"
+import { usePagination } from "@/hooks/use-pagination"
 import {
   extractComparableVersionFromVersion,
   validateComparableVersion,
 } from "@/lib/comparable-version"
 import { listProjects, type ProjectItem } from "@/lib/projects-api"
-import { scrollToPageTop } from "@/lib/scroll"
 import {
   checkVersionUpdate,
   createVersion,
@@ -48,144 +40,20 @@ import {
   previewVersionFromGithubRelease,
   updateVersion,
   type CheckVersionUpdateResponse,
-  type ClientPlatform,
-  type CreateVersionInput,
-  type VersionDownloadLink,
   type VersionItem,
 } from "@/lib/versions-api"
+import {
+  emptyVersionForm,
+  platformOptions,
+  toCreateInput,
+  toDateTimeLocal,
+  validateVersionRules,
+  type VersionFormState,
+} from "./version-form-utils"
+import { VersionEditDialog } from "./version-edit-dialog"
 
 const PROJECT_PAGE_SIZE = 100
 const VERSION_PAGE_SIZE = 10
-
-const platformOptions: Array<{ label: string; value: ClientPlatform }> = [
-  { label: "iOS", value: "ios" },
-  { label: "Android", value: "android" },
-  { label: "Windows", value: "windows" },
-  { label: "macOS", value: "mac" },
-  { label: "Web", value: "web" },
-]
-
-type VersionFormState = {
-  version: string
-  comparable_version: string
-  title: string
-  content: string
-  download_url: string
-  download_links_json: string
-  is_latest: boolean
-  is_preview: boolean
-  is_milestone: boolean
-  is_deprecated: boolean
-  published_at: string
-  platforms: ClientPlatform[]
-  custom_data: string
-}
-
-const emptyVersionForm: VersionFormState = {
-  version: "",
-  comparable_version: "",
-  title: "",
-  content: "",
-  download_url: "",
-  download_links_json: "",
-  is_latest: true,
-  is_preview: false,
-  is_milestone: false,
-  is_deprecated: false,
-  published_at: "",
-  platforms: [],
-  custom_data: "",
-}
-
-function toDateTimeLocal(timestampSeconds: number): string {
-  const date = new Date(timestampSeconds * 1000)
-  const offsetMs = date.getTimezoneOffset() * 60 * 1000
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
-}
-
-function toTimestampSeconds(value: string): number | undefined {
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return undefined
-  }
-
-  const millis = Date.parse(trimmed)
-  if (Number.isNaN(millis)) {
-    throw new Error("发布时间格式不正确")
-  }
-
-  return Math.floor(millis / 1000)
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    return `${error.message} (HTTP ${error.status})`
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return "请求失败，请稍后再试。"
-}
-
-function parseJsonInput(value: string): Record<string, unknown> | undefined {
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return undefined
-  }
-
-  const parsed = JSON.parse(trimmed) as unknown
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error("custom_data 必须是 JSON 对象。")
-  }
-
-  return parsed as Record<string, unknown>
-}
-
-function parseDownloadLinks(value: string): VersionDownloadLink[] | undefined {
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return undefined
-  }
-
-  const parsed = JSON.parse(trimmed) as unknown
-  if (!Array.isArray(parsed)) {
-    throw new Error("download_links 必须是数组。")
-  }
-
-  const links = parsed
-    .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
-    .map((item) => ({
-      url: typeof item.url === "string" ? item.url.trim() : "",
-      name: typeof item.name === "string" ? item.name.trim() : undefined,
-      platform: typeof item.platform === "string" ? item.platform.trim() : undefined,
-    }))
-    .filter((item) => item.url.length > 0)
-
-  return links
-}
-
-function toCreateInput(form: VersionFormState): CreateVersionInput {
-  const trimmedDownloadUrl = form.download_url.trim()
-
-  return {
-    version: form.version.trim(),
-    comparable_version: form.comparable_version.trim(),
-    title: form.title.trim() || undefined,
-    content: form.content.trim() || undefined,
-    download_url: trimmedDownloadUrl || undefined,
-    download_links: parseDownloadLinks(form.download_links_json),
-    is_latest: form.is_latest,
-    is_preview: form.is_preview,
-    is_milestone: form.is_milestone,
-    is_deprecated: form.is_deprecated,
-    platforms: form.platforms,
-    platform: form.platforms[0],
-    custom_data: parseJsonInput(form.custom_data),
-    published_at: toTimestampSeconds(form.published_at),
-  }
-}
 
 export function VersionsDashboard() {
   const [token, setToken] = React.useState(() => getSessionToken().trim())
@@ -196,8 +64,19 @@ export function VersionsDashboard() {
   const { selectedProjectKey, setSelectedProjectKey } = useSharedProjectSelection()
 
   const [versions, setVersions] = React.useState<VersionItem[]>([])
-  const [totalVersions, setTotalVersions] = React.useState(0)
-  const [offset, setOffset] = React.useState(0)
+  const {
+    offset,
+    total: totalVersions,
+    setTotal: setTotalVersions,
+    page,
+    totalPages,
+    hasPrev: versionsPaginationHasPrev,
+    hasNext: versionsPaginationHasNext,
+    onPrev: onVersionsPrev,
+    onNext: onVersionsNext,
+    adjustAfterDelete: adjustVersionsAfterDelete,
+    resetOffset: resetVersionsOffset,
+  } = usePagination({ pageSize: VERSION_PAGE_SIZE })
   const [versionsLoading, setVersionsLoading] = React.useState(false)
   const [versionsError, setVersionsError] = React.useState<string | null>(null)
 
@@ -225,8 +104,6 @@ export function VersionsDashboard() {
 
   const hasToken = token.trim().length > 0
   const comparableVersionError = validateComparableVersion(form.comparable_version)
-  const page = Math.floor(offset / VERSION_PAGE_SIZE) + 1
-  const totalPages = Math.max(1, Math.ceil(totalVersions / VERSION_PAGE_SIZE))
 
   const loadProjects = React.useCallback(async () => {
     if (!token) {
@@ -300,7 +177,7 @@ export function VersionsDashboard() {
         }
       }
     },
-    [selectedProjectKey, token],
+    [selectedProjectKey, token, setTotalVersions],
   )
 
   React.useEffect(() => {
@@ -317,8 +194,8 @@ export function VersionsDashboard() {
   }, [loadVersions, offset])
 
   React.useEffect(() => {
-    setOffset(0)
-  }, [selectedProjectKey])
+    resetVersionsOffset()
+  }, [selectedProjectKey, resetVersionsOffset])
 
   async function handleCreateVersion(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -347,10 +224,16 @@ export function VersionsDashboard() {
         return
       }
 
+      const rulesError = validateVersionRules(form)
+      if (rulesError) {
+        toast.error(rulesError)
+        return
+      }
+
       await createVersion(token, selectedProjectKey, payload)
       toast.success("版本已发布。")
       setForm(emptyVersionForm)
-      setOffset(0)
+      resetVersionsOffset()
       await loadVersions(0)
     } catch (error) {
       if (isAuthError(error)) {
@@ -387,7 +270,6 @@ export function VersionsDashboard() {
       custom_data: version.custom_data ? JSON.stringify(version.custom_data, null, 2) : "",
     })
     setEditDialogOpen(true)
-    scrollToPageTop()
   }
 
   async function handleSaveEdit() {
@@ -398,6 +280,12 @@ export function VersionsDashboard() {
     const editComparableError = validateComparableVersion(editForm.comparable_version)
     if (editComparableError) {
       toast.error(editComparableError)
+      return
+    }
+
+    const rulesError = validateVersionRules(editForm)
+    if (rulesError) {
+      toast.error(rulesError)
       return
     }
 
@@ -439,7 +327,6 @@ export function VersionsDashboard() {
       custom_data: version.custom_data ? JSON.stringify(version.custom_data, null, 2) : "",
     })
     toast.success("已复制配置到表单，可直接发布新版本。")
-    scrollToPageTop()
   }
 
   async function handlePrefillFromGithubRelease() {
@@ -505,10 +392,8 @@ export function VersionsDashboard() {
 
     try {
       await deleteVersion(token, selectedProjectKey, versionId)
-      const nextOffset =
-        versions.length === 1 && offset > 0 ? Math.max(0, offset - VERSION_PAGE_SIZE) : offset
-      setOffset(nextOffset)
-      await loadVersions(nextOffset)
+      adjustVersionsAfterDelete(versions.length - 1)
+      await loadVersions(offset)
     } catch (error) {
       setVersionsError(getErrorMessage(error))
     }
@@ -531,7 +416,7 @@ export function VersionsDashboard() {
         `历史版本导入完成：新增 ${result.imported} 条，跳过 ${result.skipped} 条，共扫描 ${result.scanned} 条。`,
       )
       await loadVersions(0)
-      setOffset(0)
+      resetVersionsOffset()
     } catch (error) {
       toast.error(`GitHub 历史版本导入失败：${getErrorMessage(error)}`)
     } finally {
@@ -1183,211 +1068,24 @@ export function VersionsDashboard() {
             </div>
 
             <AdminPagination
-              hasPrev={offset > 0}
-              hasNext={offset + VERSION_PAGE_SIZE < totalVersions}
-              onPrev={() => setOffset((prev) => Math.max(0, prev - VERSION_PAGE_SIZE))}
-              onNext={() => setOffset((prev) => prev + VERSION_PAGE_SIZE)}
+              hasPrev={versionsPaginationHasPrev}
+              hasNext={versionsPaginationHasNext}
+              onPrev={onVersionsPrev}
+              onNext={onVersionsNext}
             />
           </div>
         ) : null}
       </AdminCard>
 
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>编辑版本</DialogTitle>
-            <DialogDescription>在弹窗中更新版本字段并保存。</DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-3">
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">版本号</span>
-              <input
-                type="text"
-                value={editForm.version}
-                onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, version: event.target.value }))
-                }
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
-                maxLength={64}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">可比较版本号</span>
-              <input
-                type="text"
-                value={editForm.comparable_version}
-                onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, comparable_version: event.target.value }))
-                }
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
-                maxLength={64}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">版本标题</span>
-              <input
-                type="text"
-                value={editForm.title}
-                onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, title: event.target.value }))
-                }
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
-                maxLength={128}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">下载地址</span>
-              <input
-                type="url"
-                value={editForm.download_url}
-                onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, download_url: event.target.value }))
-                }
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
-                maxLength={2048}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">下载链接列表 JSON</span>
-              <textarea
-                value={editForm.download_links_json}
-                onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, download_links_json: event.target.value }))
-                }
-                rows={4}
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs dark:border-white/20 dark:bg-white/10"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">更新内容</span>
-              <textarea
-                value={editForm.content}
-                onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, content: event.target.value }))
-                }
-                rows={4}
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
-                maxLength={4096}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">发布时间</span>
-              <input
-                type="datetime-local"
-                value={editForm.published_at}
-                onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, published_at: event.target.value }))
-                }
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
-              />
-            </label>
-            <div className="rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10">
-              <p className="mb-2 text-slate-700 dark:text-slate-300">
-                平台范围（多选，空表示全部）
-              </p>
-              <div className="flex flex-wrap gap-3">
-                {platformOptions.map((item) => (
-                  <label
-                    key={item.value}
-                    className="inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={editForm.platforms.includes(item.value)}
-                      onChange={() =>
-                        setEditForm((prev) => ({
-                          ...prev,
-                          platforms: prev.platforms.includes(item.value)
-                            ? prev.platforms.filter((platform) => platform !== item.value)
-                            : [...prev.platforms, item.value],
-                        }))
-                      }
-                      className="size-4"
-                    />
-                    {item.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={editForm.is_latest}
-                  onChange={(event) =>
-                    setEditForm((prev) => ({ ...prev, is_latest: event.target.checked }))
-                  }
-                  className="size-4 rounded border-white/30 bg-white/10"
-                />
-                设为 latest
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={editForm.is_preview}
-                  onChange={(event) =>
-                    setEditForm((prev) => ({ ...prev, is_preview: event.target.checked }))
-                  }
-                  className="size-4 rounded border-white/30 bg-white/10"
-                />
-                预发布版本
-              </label>
-            </div>
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-              <input
-                type="checkbox"
-                checked={editForm.is_milestone}
-                onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, is_milestone: event.target.checked }))
-                }
-                className="size-4 rounded border-white/30 bg-white/10"
-              />
-              标记为里程碑版本
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-              <input
-                type="checkbox"
-                checked={editForm.is_deprecated}
-                onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, is_deprecated: event.target.checked }))
-                }
-                className="size-4 rounded border-white/30 bg-white/10"
-              />
-              标记为废弃版本
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
-              <textarea
-                value={editForm.custom_data}
-                onChange={(event) =>
-                  setEditForm((prev) => ({ ...prev, custom_data: event.target.value }))
-                }
-                rows={4}
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs dark:border-white/20 dark:bg-white/10"
-              />
-            </label>
-          </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
-              取消
-            </Button>
-            <Button
-              type="button"
-              disabled={savingEdit || !editingVersionId}
-              onClick={() => void handleSaveEdit()}
-            >
-              {savingEdit ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Save className="size-4" />
-              )}
-              保存版本
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <VersionEditDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        form={editForm}
+        setForm={setEditForm}
+        saving={savingEdit}
+        editingVersionId={editingVersionId}
+        onSave={() => void handleSaveEdit()}
+      />
     </section>
   )
 }

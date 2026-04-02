@@ -1,7 +1,7 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common"
 import { Reflector } from "@nestjs/core"
 
-import { AuthService } from "../auth.service"
+import { ApiKeyManagementService } from "../api-key-management.service"
 import { API_SCOPE_KEY } from "./api-scope.decorator"
 
 type RequestLike = {
@@ -23,7 +23,7 @@ function pickString(value: unknown): string | undefined {
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
   constructor(
-    private readonly authService: AuthService,
+    private readonly apiKeyManagementService: ApiKeyManagementService,
     private readonly reflector: Reflector,
   ) {}
 
@@ -55,7 +55,7 @@ export class ApiKeyGuard implements CanActivate {
       pickString(request.body?.projectKey) ??
       pickString(request.body?.project_key)
 
-    const valid = await this.authService.validateApiKey(apiKey, requiredScope, {
+    const valid = await this.apiKeyManagementService.validateApiKey(apiKey, requiredScope, {
       projectId,
       projectKey,
     })

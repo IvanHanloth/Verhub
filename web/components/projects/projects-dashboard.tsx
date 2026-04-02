@@ -17,6 +17,7 @@ import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -24,7 +25,9 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog"
 
-import { ApiError, isAuthError } from "@/lib/api-client"
+import { isAuthError } from "@/lib/api-client"
+import { getErrorMessage } from "@/lib/error-utils"
+import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
@@ -101,18 +104,6 @@ function toMutationInput(form: FormState): ProjectMutationInput {
     optional_update_max_comparable_version:
       form.optional_update_max_comparable_version.trim() || undefined,
   }
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    return `${error.message} (HTTP ${error.status})`
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return "请求失败，请稍后再试。"
 }
 
 function ProjectFormFields({
@@ -276,8 +267,19 @@ function ProjectFormFields({
 
 export function ProjectsDashboard() {
   const [projects, setProjects] = React.useState<ProjectItem[]>([])
-  const [total, setTotal] = React.useState(0)
-  const [offset, setOffset] = React.useState(0)
+  const {
+    offset,
+    total,
+    setTotal,
+    page,
+    totalPages,
+    hasPrev,
+    hasNext,
+    onPrev,
+    onNext,
+    adjustAfterDelete,
+    resetOffset,
+  } = usePagination({ pageSize: PAGE_SIZE })
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -299,8 +301,6 @@ export function ProjectsDashboard() {
   const maxComparableError = form.optional_update_max_comparable_version.trim()
     ? validateComparableVersion(form.optional_update_max_comparable_version)
     : null
-  const page = Math.floor(offset / PAGE_SIZE) + 1
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const editMinComparableError = editForm.optional_update_min_comparable_version.trim()
     ? validateComparableVersion(editForm.optional_update_min_comparable_version)
     : null
@@ -342,7 +342,7 @@ export function ProjectsDashboard() {
         }
       }
     },
-    [token],
+    [token, setTotal],
   )
 
   React.useEffect(() => {
@@ -433,7 +433,7 @@ export function ProjectsDashboard() {
       toast.success("项目已创建。")
 
       resetForm()
-      setOffset(0)
+      resetOffset()
       await loadProjects(0)
     } catch (submitError) {
       toast.error(getErrorMessage(submitError))
@@ -484,9 +484,9 @@ export function ProjectsDashboard() {
     try {
       await deleteProject(token, projectKey)
       toast.success("项目已删除。")
+      adjustAfterDelete(projects.length - 1)
       const nextOffset =
         projects.length === 1 && offset > 0 ? Math.max(0, offset - PAGE_SIZE) : offset
-      setOffset(nextOffset)
       await loadProjects(nextOffset)
     } catch (deleteError) {
       if (isAuthError(deleteError)) {
@@ -752,12 +752,7 @@ export function ProjectsDashboard() {
               </table>
             </div>
 
-            <AdminPagination
-              hasPrev={offset > 0}
-              hasNext={offset + PAGE_SIZE < total}
-              onPrev={() => setOffset((prev) => Math.max(0, prev - PAGE_SIZE))}
-              onNext={() => setOffset((prev) => prev + PAGE_SIZE)}
-            />
+            <AdminPagination hasPrev={hasPrev} hasNext={hasNext} onPrev={onPrev} onNext={onNext} />
           </div>
         ) : null}
       </AdminCard>
@@ -769,15 +764,17 @@ export function ProjectsDashboard() {
             <DialogDescription>在弹窗中修改项目信息并保存。</DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-3">
-            <ProjectFormFields
-              form={editForm}
-              setForm={setEditForm}
-              minComparableError={editMinComparableError}
-              maxComparableError={editMaxComparableError}
-              theme="light"
-            />
-          </div>
+          <DialogBody>
+            <div className="grid gap-3">
+              <ProjectFormFields
+                form={editForm}
+                setForm={setEditForm}
+                minComparableError={editMinComparableError}
+                maxComparableError={editMaxComparableError}
+                theme="light"
+              />
+            </div>
+          </DialogBody>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>

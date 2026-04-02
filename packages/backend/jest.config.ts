@@ -10,6 +10,14 @@ const config: Config = {
   collectCoverageFrom: ["src/**/*.(t|j)s"],
   coverageDirectory: "./coverage",
   testEnvironment: "node",
+  coverageThreshold: {
+    global: {
+      statements: 80,
+      lines: 80,
+      functions: 80,
+      branches: 60,
+    },
+  },
 }
 
 export default config

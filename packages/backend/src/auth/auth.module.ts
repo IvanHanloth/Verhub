@@ -2,6 +2,8 @@ import { Module } from "@nestjs/common"
 import { ConfigModule, ConfigService } from "@nestjs/config"
 import { JwtModule } from "@nestjs/jwt"
 
+import { AdminBootstrapService } from "./admin-bootstrap.service"
+import { ApiKeyManagementService } from "./api-key-management.service"
 import { AuthController } from "./auth.controller"
 import { AuthService } from "./auth.service"
 import { AdminOrApiKeyGuard } from "./guards/admin-or-api-key.guard"
@@ -24,7 +26,22 @@ import { parseExpiresInToSeconds } from "./utils/jwt-expiration"
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAdminGuard, ApiKeyGuard, AdminOrApiKeyGuard],
-  exports: [JwtModule, AuthService, JwtAdminGuard, ApiKeyGuard, AdminOrApiKeyGuard],
+  providers: [
+    AuthService,
+    ApiKeyManagementService,
+    AdminBootstrapService,
+    JwtAdminGuard,
+    ApiKeyGuard,
+    AdminOrApiKeyGuard,
+  ],
+  exports: [
+    JwtModule,
+    AuthService,
+    ApiKeyManagementService,
+    AdminBootstrapService,
+    JwtAdminGuard,
+    ApiKeyGuard,
+    AdminOrApiKeyGuard,
+  ],
 })
 export class AuthModule {}

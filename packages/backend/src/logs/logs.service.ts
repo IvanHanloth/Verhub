@@ -3,6 +3,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { Prisma, LogLevel } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
+import { normalizeProjectKey } from "../common/utils"
 import { QueryLogsDto } from "./dto/query-logs.dto"
 import { UploadLogDto } from "./dto/upload-log.dto"
 
@@ -18,10 +19,6 @@ type LogItem = {
 type LogListResponse = {
   total: number
   data: LogItem[]
-}
-
-function normalizeProjectKey(projectKey: string): string {
-  return projectKey.trim().toLowerCase()
 }
 
 @Injectable()

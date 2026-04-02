@@ -12,6 +12,7 @@ import {
 } from "@nestjs/common"
 
 import { AuthService } from "./auth.service"
+import { ApiKeyManagementService } from "./api-key-management.service"
 import { ChangePasswordDto } from "./dto/change-password.dto"
 import { CreateApiKeyDto } from "./dto/create-api-key.dto"
 import { LoginDto } from "./dto/login.dto"
@@ -29,7 +30,10 @@ type AdminRequest = {
 
 @Controller("auth")
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly apiKeyManagementService: ApiKeyManagementService,
+  ) {}
 
   @Post("login")
   async login(@Body() dto: LoginDto) {
@@ -77,19 +81,19 @@ export class AuthController {
   @Get("api-keys")
   @UseGuards(JwtAdminGuard)
   async listApiKeys() {
-    return this.authService.listApiKeys()
+    return this.apiKeyManagementService.listApiKeys()
   }
 
   @Get("api-scopes")
   @UseGuards(JwtAdminGuard)
   async listApiScopes() {
-    return this.authService.getApiScopes()
+    return this.apiKeyManagementService.getApiScopes()
   }
 
   @Get("tokens")
   @UseGuards(JwtAdminGuard)
   async listTokens() {
-    const result = await this.authService.listApiKeys()
+    const result = await this.apiKeyManagementService.listApiKeys()
     return result.data
   }
 
@@ -101,7 +105,7 @@ export class AuthController {
       throw new BadRequestException("Missing actor identity")
     }
 
-    return this.authService.createApiKey(dto, actorId)
+    return this.apiKeyManagementService.createApiKey(dto, actorId)
   }
 
   @Post("tokens")
@@ -112,45 +116,45 @@ export class AuthController {
       throw new BadRequestException("Missing actor identity")
     }
 
-    return this.authService.createApiKey(dto, actorId)
+    return this.apiKeyManagementService.createApiKey(dto, actorId)
   }
 
   @Delete("api-keys/:id")
   @UseGuards(JwtAdminGuard)
   async revokeApiKey(@Param("id") id: string) {
-    await this.authService.revokeApiKey(id)
+    await this.apiKeyManagementService.revokeApiKey(id)
     return { success: true }
   }
 
   @Delete("tokens/:id")
   @UseGuards(JwtAdminGuard)
   async revokeToken(@Param("id") id: string) {
-    await this.authService.revokeApiKey(id)
+    await this.apiKeyManagementService.revokeApiKey(id)
     return { success: true }
   }
 
   @Patch("api-keys/:id")
   @UseGuards(JwtAdminGuard)
   async updateApiKey(@Param("id") id: string, @Body() dto: UpdateApiKeyDto) {
-    return this.authService.updateApiKey(id, dto)
+    return this.apiKeyManagementService.updateApiKey(id, dto)
   }
 
   @Patch("tokens/:id")
   @UseGuards(JwtAdminGuard)
   async updateToken(@Param("id") id: string, @Body() dto: UpdateApiKeyDto) {
-    return this.authService.updateApiKey(id, dto)
+    return this.apiKeyManagementService.updateApiKey(id, dto)
   }
 
   @Post("api-keys/:id/rotate")
   @UseGuards(JwtAdminGuard)
   async rotateApiKey(@Param("id") id: string, @Body() dto: RotateApiKeyDto) {
-    return this.authService.rotateApiKey(id, dto)
+    return this.apiKeyManagementService.rotateApiKey(id, dto)
   }
 
   @Post("tokens/:id/rotate")
   @UseGuards(JwtAdminGuard)
   async rotateToken(@Param("id") id: string, @Body() dto: RotateApiKeyDto) {
-    return this.authService.rotateApiKey(id, dto)
+    return this.apiKeyManagementService.rotateApiKey(id, dto)
   }
 
   @Get("status")

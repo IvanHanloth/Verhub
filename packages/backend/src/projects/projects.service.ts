@@ -7,6 +7,8 @@ import {
 } from "@nestjs/common"
 
 import { PrismaService } from "../database/prisma.service"
+import { isUniqueViolation, normalizeProjectKey, nowSeconds } from "../common/utils"
+import { parseGithubRepository } from "../versions/github-release.service"
 import { CreateProjectDto } from "./dto/create-project.dto"
 import { QueryProjectsDto } from "./dto/query-projects.dto"
 import { UpdateProjectDto } from "./dto/update-project.dto"
@@ -46,14 +48,6 @@ type GithubRepoPreview = {
   published_at: number | null
   optional_update_min_comparable_version: string | null
   optional_update_max_comparable_version: string | null
-}
-
-function nowSeconds(): number {
-  return Math.floor(Date.now() / 1000)
-}
-
-function normalizeProjectKey(projectKey: string): string {
-  return projectKey.trim().toLowerCase()
 }
 
 @Injectable()
@@ -130,7 +124,7 @@ export class ProjectsService {
 
       return this.toProjectItem(project)
     } catch (error: unknown) {
-      if (this.isUniqueViolation(error)) {
+      if (isUniqueViolation(error)) {
         throw new ConflictException("project_key already exists")
       }
 
@@ -146,14 +140,15 @@ export class ProjectsService {
       throw new NotFoundException("Project not found")
     }
 
+    // Determine effective values: if DTO has explicit value (including null), use it; otherwise use existing
     const effectiveMin =
-      dto.optional_update_min_comparable_version ??
-      project.optionalUpdateMinComparableVersion ??
-      undefined
+      "optional_update_min_comparable_version" in dto
+        ? dto.optional_update_min_comparable_version
+        : project.optionalUpdateMinComparableVersion
     const effectiveMax =
-      dto.optional_update_max_comparable_version ??
-      project.optionalUpdateMaxComparableVersion ??
-      undefined
+      "optional_update_max_comparable_version" in dto
+        ? dto.optional_update_max_comparable_version
+        : project.optionalUpdateMaxComparableVersion
 
     this.validateComparableRange(effectiveMin, effectiveMax)
 
@@ -171,15 +166,21 @@ export class ProjectsService {
           iconUrl: dto.icon_url,
           websiteUrl: dto.website_url,
           publishedAt: dto.published_at,
-          optionalUpdateMinComparableVersion: dto.optional_update_min_comparable_version,
-          optionalUpdateMaxComparableVersion: dto.optional_update_max_comparable_version,
+          optionalUpdateMinComparableVersion:
+            "optional_update_min_comparable_version" in dto
+              ? dto.optional_update_min_comparable_version
+              : undefined,
+          optionalUpdateMaxComparableVersion:
+            "optional_update_max_comparable_version" in dto
+              ? dto.optional_update_max_comparable_version
+              : undefined,
           updatedAt: nowSeconds(),
         },
       })
 
       return this.toProjectItem(updated)
     } catch (error: unknown) {
-      if (this.isUniqueViolation(error)) {
+      if (isUniqueViolation(error)) {
         throw new ConflictException("project_key already exists")
       }
 
@@ -199,7 +200,7 @@ export class ProjectsService {
   }
 
   async previewFromGithubRepo(repoUrl: string): Promise<GithubRepoPreview> {
-    const { owner, repo } = this.parseGithubRepository(repoUrl)
+    const { owner, repo } = parseGithubRepository(repoUrl)
     const endpoint = `https://api.github.com/repos/${owner}/${repo}`
 
     const response = await fetch(endpoint, {
@@ -294,7 +295,7 @@ export class ProjectsService {
     }
   }
 
-  private validateComparableRange(min?: string, max?: string): void {
+  private validateComparableRange(min?: string | null, max?: string | null): void {
     if (min) {
       parseComparableVersion(min)
     }
@@ -303,52 +304,10 @@ export class ProjectsService {
       parseComparableVersion(max)
     }
 
-    if (min !== undefined && max !== undefined && compareComparableVersions(min, max) > 0) {
+    if (min != null && max != null && compareComparableVersions(min, max) > 0) {
       throw new BadRequestException(
         "optional_update_min_comparable_version must be less than or equal to optional_update_max_comparable_version",
       )
     }
-  }
-
-  private isUniqueViolation(error: unknown): boolean {
-    if (typeof error !== "object" || error === null) {
-      return false
-    }
-
-    return "code" in error && error.code === "P2002"
-  }
-
-  private parseGithubRepository(repoUrl: string): { owner: string; repo: string } {
-    let parsed: URL
-    try {
-      parsed = new URL(repoUrl)
-    } catch {
-      throw new BadRequestException("repo_url is not a valid URL")
-    }
-
-    if (parsed.hostname !== "github.com") {
-      throw new BadRequestException("Only github.com repository URL is supported")
-    }
-
-    const segments = parsed.pathname
-      .split("/")
-      .map((segment) => segment.trim())
-      .filter(Boolean)
-    if (segments.length < 2) {
-      throw new BadRequestException("repo_url must contain owner and repository")
-    }
-
-    const owner = segments[0]
-    const rawRepo = segments[1]
-    if (!owner || !rawRepo) {
-      throw new BadRequestException("repo_url must contain owner and repository")
-    }
-
-    const repo = rawRepo.replace(/\.git$/i, "")
-    if (!repo) {
-      throw new BadRequestException("repo_url must contain owner and repository")
-    }
-
-    return { owner, repo }
   }
 }

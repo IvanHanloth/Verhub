@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common"
 import { Prisma } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
+import { normalizeProjectKey, nowSeconds } from "../common/utils"
 import { CreateActionDto } from "./dto/create-action.dto"
 import { CreateActionRecordDto } from "./dto/create-action-record.dto"
 import { QueryActionsDto } from "./dto/query-actions.dto"
@@ -32,14 +33,6 @@ type ActionListResponse = {
 type ActionRecordListResponse = {
   total: number
   data: ActionRecordItem[]
-}
-
-function nowSeconds(): number {
-  return Math.floor(Date.now() / 1000)
-}
-
-function normalizeProjectKey(projectKey: string): string {
-  return projectKey.trim().toLowerCase()
 }
 
 @Injectable()

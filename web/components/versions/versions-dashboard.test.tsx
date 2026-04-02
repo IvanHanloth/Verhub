@@ -237,7 +237,14 @@ describe("VersionsDashboard", () => {
 
     await screen.findByText("1.0.0")
     await user.click(screen.getByRole("button", { name: "编辑版本" }))
-    expect(scrollSpy).toHaveBeenCalled()
+    expect(scrollSpy).not.toHaveBeenCalled()
+
+    const dialog = screen.getByRole("dialog")
+    expect(dialog.className).toContain("max-h-[calc(100vh-2rem)]")
+
+    const dialogBody = dialog.querySelector('[data-slot="dialog-body"]')
+    expect(dialogBody).not.toBeNull()
+    expect(dialogBody?.className).toContain("overflow-y-auto")
 
     const titleInput = screen.getByLabelText("版本标题")
     await user.clear(titleInput)
@@ -314,7 +321,7 @@ describe("VersionsDashboard", () => {
 
     await screen.findByText("1.0.0")
     await user.click(screen.getByRole("button", { name: "复制配置" }))
-    expect(scrollSpy).toHaveBeenCalled()
+    expect(scrollSpy).not.toHaveBeenCalled()
 
     expect(screen.getByPlaceholderText("例如：2.3.0")).toHaveValue("1.0.0")
     expect(screen.getByDisplayValue("稳定版")).toBeInTheDocument()

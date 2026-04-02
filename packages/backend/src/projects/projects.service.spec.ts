@@ -167,4 +167,128 @@ describe("ProjectsService", () => {
 
     expect(prisma.project.update).not.toHaveBeenCalled()
   })
+
+  it("getStatistics returns project count", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.count.mockResolvedValue(5)
+
+    const service = new ProjectsService(prisma as never)
+    const stats = await service.getStatistics()
+
+    expect(stats).toEqual({ count: 5 })
+  })
+
+  it("findOneByProjectKey returns project", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({
+      projectKey: "proj",
+      name: "Proj",
+      repoUrl: null,
+      description: null,
+      author: null,
+      authorHomepageUrl: null,
+      iconUrl: null,
+      websiteUrl: null,
+      publishedAt: null,
+      optionalUpdateMinComparableVersion: null,
+      optionalUpdateMaxComparableVersion: null,
+      createdAt: 1000,
+      updatedAt: 1000,
+    })
+
+    const service = new ProjectsService(prisma as never)
+    const result = await service.findOneByProjectKey("proj")
+
+    expect(result.project_key).toBe("proj")
+  })
+
+  it("findOneByProjectKey throws when not found", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue(null)
+
+    const service = new ProjectsService(prisma as never)
+    await expect(service.findOneByProjectKey("missing")).rejects.toBeInstanceOf(NotFoundException)
+  })
+
+  it("update modifies a project", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({
+      projectKey: "proj",
+      optionalUpdateMinComparableVersion: null,
+      optionalUpdateMaxComparableVersion: null,
+    })
+    prisma.project.update.mockResolvedValue({
+      projectKey: "proj",
+      name: "Updated",
+      repoUrl: null,
+      description: "new desc",
+      author: null,
+      authorHomepageUrl: null,
+      iconUrl: null,
+      websiteUrl: null,
+      publishedAt: null,
+      optionalUpdateMinComparableVersion: null,
+      optionalUpdateMaxComparableVersion: null,
+      createdAt: 1000,
+      updatedAt: 2000,
+    })
+
+    const service = new ProjectsService(prisma as never)
+    const result = await service.update("proj", { name: "Updated", description: "new desc" })
+
+    expect(result.name).toBe("Updated")
+  })
+
+  it("update throws when project not found", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue(null)
+
+    const service = new ProjectsService(prisma as never)
+    await expect(service.update("missing", { name: "x" })).rejects.toBeInstanceOf(NotFoundException)
+  })
+
+  it("update throws conflict on duplicate project_key", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({
+      projectKey: "proj",
+      optionalUpdateMinComparableVersion: null,
+      optionalUpdateMaxComparableVersion: null,
+    })
+    prisma.project.update.mockRejectedValue({ code: "P2002" })
+
+    const service = new ProjectsService(prisma as never)
+    await expect(service.update("proj", { project_key: "dup" })).rejects.toBeInstanceOf(
+      ConflictException,
+    )
+  })
+
+  it("remove throws when project not found", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue(null)
+
+    const service = new ProjectsService(prisma as never)
+    await expect(service.remove("missing")).rejects.toBeInstanceOf(NotFoundException)
+  })
+
+  it("previewFromGithubRepo throws NotFoundException for 404", async () => {
+    const prisma = createPrismaMock()
+    const service = new ProjectsService(prisma as never)
+
+    const fetchMock = jest.spyOn(global, "fetch" as never).mockResolvedValue({
+      ok: false,
+      status: 404,
+    } as never)
+
+    await expect(
+      service.previewFromGithubRepo("https://github.com/owner/nonexistent"),
+    ).rejects.toBeInstanceOf(NotFoundException)
+
+    fetchMock.mockRestore()
+  })
+
+  it("getStatus returns module info", () => {
+    const prisma = createPrismaMock()
+    const service = new ProjectsService(prisma as never)
+    expect(service.getStatus()).toEqual({ module: "projects", implemented: true })
+  })
 })

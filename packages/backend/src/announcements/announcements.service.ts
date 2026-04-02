@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from "@nestjs/common"
 import { ClientPlatform, Prisma } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
+import { normalizeProjectKey, nowSeconds } from "../common/utils"
+import { fromClientPlatforms } from "../versions/version-mapping"
 import { CreateAnnouncementDto } from "./dto/create-announcement.dto"
 import { QueryAnnouncementsDto } from "./dto/query-announcements.dto"
 import { UpdateAnnouncementDto } from "./dto/update-announcement.dto"
@@ -19,14 +21,6 @@ type AnnouncementItem = {
   updated_at: number
 }
 
-function nowSeconds(): number {
-  return Math.floor(Date.now() / 1000)
-}
-
-function normalizeProjectKey(projectKey: string): string {
-  return projectKey.trim().toLowerCase()
-}
-
 function normalizePlatforms(
   platforms?: Array<"ios" | "android" | "windows" | "mac" | "web">,
 ): ClientPlatform[] {
@@ -35,14 +29,6 @@ function normalizePlatforms(
   }
 
   return Array.from(new Set(platforms.map((item) => item.trim().toUpperCase()))) as ClientPlatform[]
-}
-
-function fromClientPlatforms(
-  platforms: ClientPlatform[],
-): Array<"ios" | "android" | "windows" | "mac" | "web"> {
-  return platforms.map((item) => item.toLowerCase()) as Array<
-    "ios" | "android" | "windows" | "mac" | "web"
-  >
 }
 
 type AnnouncementListResponse = {

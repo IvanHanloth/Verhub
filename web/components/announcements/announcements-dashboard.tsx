@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -26,7 +27,9 @@ import {
   type AnnouncementItem,
   type AnnouncementMutationInput,
 } from "@/lib/announcements-api"
-import { ApiError, isAuthError } from "@/lib/api-client"
+import { isAuthError } from "@/lib/api-client"
+import { getErrorMessage } from "@/lib/error-utils"
+import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { useSharedProjectSelection } from "@/hooks/use-shared-project-selection"
@@ -64,18 +67,6 @@ const emptyForm: AnnouncementFormState = {
   platforms: [],
   author: "",
   published_at: "",
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    return `${error.message} (HTTP ${error.status})`
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return "请求失败，请稍后再试。"
 }
 
 function toMutationInput(form: AnnouncementFormState): AnnouncementMutationInput {
@@ -240,8 +231,19 @@ export function AnnouncementsDashboard() {
   const { selectedProjectKey, setSelectedProjectKey } = useSharedProjectSelection()
 
   const [announcements, setAnnouncements] = React.useState<AnnouncementItem[]>([])
-  const [total, setTotal] = React.useState(0)
-  const [offset, setOffset] = React.useState(0)
+  const {
+    offset,
+    total,
+    setTotal,
+    page,
+    totalPages,
+    hasPrev,
+    hasNext,
+    onPrev,
+    onNext,
+    adjustAfterDelete,
+    resetOffset,
+  } = usePagination({ pageSize: PAGE_SIZE })
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -259,8 +261,6 @@ export function AnnouncementsDashboard() {
   )
 
   const hasToken = token.trim().length > 0
-  const page = Math.floor(offset / PAGE_SIZE) + 1
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const loadProjects = React.useCallback(async () => {
     if (!token) {
@@ -336,7 +336,7 @@ export function AnnouncementsDashboard() {
         }
       }
     },
-    [selectedProjectKey, token],
+    [selectedProjectKey, token, setTotal],
   )
 
   React.useEffect(() => {
@@ -353,11 +353,11 @@ export function AnnouncementsDashboard() {
   }, [loadAnnouncements, offset])
 
   React.useEffect(() => {
-    setOffset(0)
+    resetOffset()
     setForm(emptyForm)
     setEditDialogOpen(false)
     setEditingId(null)
-  }, [selectedProjectKey])
+  }, [selectedProjectKey, resetOffset])
 
   function beginEdit(item: AnnouncementItem) {
     setEditingId(item.id)
@@ -410,7 +410,7 @@ export function AnnouncementsDashboard() {
       await createAnnouncement(token, selectedProjectKey, payload)
       toast.success("公告已发布。")
       setForm(emptyForm)
-      setOffset(0)
+      resetOffset()
       await loadAnnouncements(0)
     } catch (submitError) {
       if (isAuthError(submitError)) {
@@ -466,9 +466,9 @@ export function AnnouncementsDashboard() {
     try {
       await deleteAnnouncement(token, selectedProjectKey, id)
       toast.success("公告已删除。")
+      adjustAfterDelete(announcements.length - 1)
       const nextOffset =
         announcements.length === 1 && offset > 0 ? Math.max(0, offset - PAGE_SIZE) : offset
-      setOffset(nextOffset)
       await loadAnnouncements(nextOffset)
     } catch (deleteError) {
       if (isAuthError(deleteError)) {
@@ -660,12 +660,7 @@ export function AnnouncementsDashboard() {
               </table>
             </div>
 
-            <AdminPagination
-              hasPrev={offset > 0}
-              hasNext={offset + PAGE_SIZE < total}
-              onPrev={() => setOffset((prev) => Math.max(0, prev - PAGE_SIZE))}
-              onNext={() => setOffset((prev) => prev + PAGE_SIZE)}
-            />
+            <AdminPagination hasPrev={hasPrev} hasNext={hasNext} onPrev={onPrev} onNext={onNext} />
           </div>
         ) : null}
       </AdminCard>
@@ -677,9 +672,11 @@ export function AnnouncementsDashboard() {
             <DialogDescription>通过弹窗编辑公告，不再占用主表单。</DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-3">
-            <AnnouncementFormFields form={editForm} setForm={setEditForm} theme="light" />
-          </div>
+          <DialogBody>
+            <div className="grid gap-3">
+              <AnnouncementFormFields form={editForm} setForm={setEditForm} theme="light" />
+            </div>
+          </DialogBody>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>

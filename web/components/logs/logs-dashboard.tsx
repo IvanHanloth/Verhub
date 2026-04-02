@@ -5,7 +5,9 @@ import { AlertTriangle, Clock3, Loader2 } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
-import { ApiError, isAuthError } from "@/lib/api-client"
+import { isAuthError } from "@/lib/api-client"
+import { getErrorMessage } from "@/lib/error-utils"
+import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard, AdminItemCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
@@ -36,18 +38,6 @@ const emptyFilters: FilterState = {
   level: "",
   startTime: "",
   endTime: "",
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    return `${error.message} (HTTP ${error.status})`
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return "请求失败，请稍后重试。"
 }
 
 function toEpochSeconds(value: string): number | undefined {
@@ -112,8 +102,18 @@ export function LogsDashboard() {
   const { selectedProjectKey, setSelectedProjectKey } = useSharedProjectSelection()
 
   const [logs, setLogs] = React.useState<LogItem[]>([])
-  const [total, setTotal] = React.useState(0)
-  const [offset, setOffset] = React.useState(0)
+  const {
+    offset,
+    total,
+    setTotal,
+    page,
+    totalPages,
+    hasPrev,
+    hasNext,
+    onPrev,
+    onNext,
+    resetOffset,
+  } = usePagination({ pageSize: PAGE_SIZE })
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -126,8 +126,6 @@ export function LogsDashboard() {
   )
 
   const hasToken = token.trim().length > 0
-  const page = Math.floor(offset / PAGE_SIZE) + 1
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const loadProjects = React.useCallback(async () => {
     if (!token) {
@@ -220,7 +218,7 @@ export function LogsDashboard() {
         }
       }
     },
-    [appliedFilters, selectedProjectKey, token],
+    [appliedFilters, selectedProjectKey, token, setTotal],
   )
 
   React.useEffect(() => {
@@ -237,19 +235,19 @@ export function LogsDashboard() {
   }, [loadLogs, offset])
 
   React.useEffect(() => {
-    setOffset(0)
-  }, [selectedProjectKey])
+    resetOffset()
+  }, [selectedProjectKey, resetOffset])
 
   function applyFilters(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setAppliedFilters(draftFilters)
-    setOffset(0)
+    resetOffset()
   }
 
   function resetFilters() {
     setDraftFilters(emptyFilters)
     setAppliedFilters(emptyFilters)
-    setOffset(0)
+    resetOffset()
   }
 
   return (
@@ -472,10 +470,10 @@ export function LogsDashboard() {
               当前偏移量 {offset}，每页 {PAGE_SIZE} 条
             </p>
             <AdminPagination
-              hasPrev={offset > 0 && !loading}
-              hasNext={!loading && offset + PAGE_SIZE < total}
-              onPrev={() => setOffset((current) => Math.max(0, current - PAGE_SIZE))}
-              onNext={() => setOffset((current) => current + PAGE_SIZE)}
+              hasPrev={hasPrev && !loading}
+              hasNext={hasNext && !loading}
+              onPrev={onPrev}
+              onNext={onNext}
             />
           </div>
         </AdminCard>

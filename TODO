@@ -1,177 +1,26 @@
 # TODO
 
-- [x] 项目任务规范：使用 [ ] [x] [~] 标识任务状态
-- [x] 初始化 Monorepo 根配置（pnpm-workspace、root package scripts）
-- [x] 接入并验证 Prettier（根配置、忽略文件、全仓格式化脚本）
-- [x] 接入并验证 ESLint（根执行入口、各包脚本统一）
-- [x] 接入并验证 Husky + lint-staged（pre-commit 自动检查）
-- [x] 修正并统一 workspace 路径与命名（消除模板遗留 apps/web 语义）
-- [x] 设计并创建后端 NestJS 基础工程结构（app/module/main/config）
-- [x] 引入 PostgreSQL 与 ORM（Prisma）并完成本地连接配置
-- [x] 设计并实现 Project 实体与 CRUD API（含分页）
-- [x] 设计并实现 Version 实体与 CRUD API（含发布能力）
-- [x] 设计并实现 Announcement 实体与 CRUD API
-- [x] 设计并实现 Feedback 实体与 CRUD API
-- [x] 设计并实现 Log 上报与查询 API（先用 PostgreSQL，后续可扩展 Mongo）
-- [x] 实现 Auth 模块（管理员 JWT 登录 + API Key 校验）
-- [x] 对齐并完善 OpenAPI 文档与后端 DTO/响应结构
-- [x] 前端初始化页面框架（Next.js App Router + shadcn + Tailwind）
-- [x] 前端实现项目管理页面（列表/创建/编辑）
-- [x] 前端实现版本管理页面（列表/发布）
-- [x] 前端实现公告管理页面
-- [x] 前端实现反馈管理页面
-- [x] 前端实现日志查询页面（筛选 + 分页）
-- [x] 前后端联调（接口错误态、空态、加载态）
-- [x] 增加后端单元测试（核心 service + auth）
-- [x] 增加后端 e2e 测试（关键 API 流程）
-- [x] 增加前端基础测试（关键组件与页面交互）
-- [x] 编写开发文档（本地运行、环境变量、提交规范）
-- [x] 编写架构文档补充（模块边界、扩展策略、部署说明）
-- [x] CI 基线：lint + typecheck + test
+任务状态标识：[ ] 待办 · [x] 完成 · [~] 进行中
 
-## 2026-03-19 后台现代化与权限治理（已完成）
+## 后端测试与 CI/CD
 
-- [x] TDD: 为认证与管理员初始化补齐后端单测（含首次登录删除临时文件）
-- [x] TDD: 为 token scope 与过期校验补齐后端单测/集成测
-- [x] TDD: 为前端登录守卫与登录回跳补齐测试
-- [x] 扩展 Prisma：ApiKey 增加 scope、expiresAt、createdBy 等字段
-- [x] 后端实现管理员首启初始化（admin + 随机密码）并写入临时文件
-- [x] 后端实现首次登录成功自动删除临时文件
-- [x] Docker 场景下将临时文件写入挂载卷路径
-- [x] 后端新增管理员信息查询/修改接口（含改账号、改密码）
-- [x] 后端新增长期 Token 生成/列表/撤销接口（scope + 30 天默认过期）
-- [x] 前端新增登录页（仅账密登录）与登录状态管理
-- [x] 前端实现后台路由保护与未登录跳首页+登录回跳
-- [x] 前端构建后台壳层：侧边栏、顶部栏、页面过渡动画、响应式布局
-- [x] 前端新增后台首页（统计卡片 + 图表）
-- [x] 前端新增权限与 Token 管理页面（生成、显示一次明文、撤销）
-- [x] 前端新增管理员设置页（修改管理员账号密码）
-- [x] 新增 docker compose 模板与一键启动说明
-- [x] 更新主 API 文档 verhub.openapi.yaml，参考默认模块覆盖能力
-- [x] 更新 README/docs 开发与部署文档
-- [x] 执行并记录 lint/typecheck/test/e2e 验证结果
+- [x] 修复原有 3 个失败测试（version-update-check DTO 实例化）
+- [x] 新建 22 个测试文件（controllers / guards / utilities）
+- [x] 扩展 8 个已有 service spec（feedbacks / announcements / versions / actions / projects / api-key-management / admin-bootstrap / logs）
+- [x] 修复实现 bug：versions.service.ts 缺少 BadRequestException 导入
+- [x] 修复实现 bug：projects.service.ts validateComparableRange 未正确处理 null
+- [x] 全部 325 个测试通过，覆盖率 Statements 83.24% / Lines 84.33% / Functions 86.98% / Branches 72.95%
+- [x] 新增 CI/CD 工作流 .github/workflows/test.yml（push/PR 触发，PostgreSQL 服务，单元测试+覆盖率）
+- [x] jest.config.ts 添加 coverageThreshold（statements/lines/functions ≥ 80%，branches ≥ 60%）
 
-## 2026-03-19 默认模块能力补齐（第二阶段）
+（所有历史任务已完成，详见 git 历史。）
 
-- [x] 盘点默认模块与主 OpenAPI 的真实路径差异（按参数占位归一）
-- [x] 补齐统计接口：/admin/projects/statistics
-- [x] 补齐统计接口：/admin/versions/statistics
-- [x] 补齐统计接口：/admin/announcements/statistics
-- [x] 补齐统计接口：/admin/feedbacks/statistics
-- [x] 补齐统计接口：/admin/logs/statistics
-- [x] 同步更新 verhub.openapi.yaml 统计接口文档
-- [x] 补齐默认模块兼容路由：/admin/versions/{version_id}（GET/PUT/DELETE）
-- [x] 补齐默认模块兼容路由：/admin/announcements/{announcement_id}（PUT/DELETE）
-- [x] 补齐默认模块兼容路由：/admin/feedbacks/{feedback_id}（PUT/DELETE）
-- [x] 补齐默认模块公开接口：project 基础信息/versions 列表与 latest/announcements 列表与 latest
-- [x] 补齐默认模块公开接口：actions 上报与管理端 actions 系列接口
+## 弹窗统一模式组件（2026-04）
 
-## 2026-03-21 管理页一致性与数据对接修复（进行中）
-
-- [x] TDD：补充版本模块“download_url 可空 + 删除 + 复制配置”测试
-- [x] TDD：补充公告模块“author/published_at 可编辑”后端测试
-- [x] Prisma：版本下载地址改可空，公告新增 author/publishedAt，并新增 migration
-- [x] 后端 DTO/Service：同步版本与公告字段变更
-- [x] 前端 API 客户端：优化默认 API 基址，降低首页请求失败概率
-- [x] 前端管理页：统一列表项组件与按钮位置，支持复制配置
-- [x] 前端页面：行为页改左右布局；版本支持删除；去除“（可选）”文案
-- [x] 前端页面：项目卡片下新增 API 速览（版本/公告/行为/反馈/日志）
-- [x] 接口文档：更新 verhub.openapi.yaml（版本与公告契约）
-- [x] 验证：执行受影响测试并记录结果
-
-## 2026-03-21 登录页重构 + 行为页统一 + 版本发布增强（进行中）
-
-- [x] TDD：补充版本模块 latest/preview/发布时间 与 GitHub Release 拉取能力测试（后端单测 + 前端组件测试）
-- [x] 数据建模：扩展 Version 字段（isLatest/isPreview/publishedAt）并新增 Prisma migration
-- [x] 接口设计：扩展版本 DTO/响应结构，新增“从 GitHub Release 拉取版本草稿”接口
-- [x] 后端实现：版本管理支持 latest/preview 设置、自动维护 latest、发布时间修改
-- [x] 后端实现：根据项目 repo_url 调用 GitHub API 拉取 release 数据
-- [x] 前端实现：重构登录页为居中双栏卡片（复用组件，宽屏双栏/窄屏堆叠）
-- [x] 前端实现：统一行为管理页表单标题、按钮图标与色彩风格
-- [x] 前端实现：版本管理页新增“从 GitHub Release 获取”与 latest/preview/发布时间编辑能力
-- [x] 文档同步：更新 README.md、docs/DEVELOPMENT.md、ARCHITECTURE.md
-- [x] 接口同步：更新 verhub.openapi.yaml 与后端 DTO/返回结构
-- [~] 验证：执行受影响 lint/typecheck/test/e2e 并记录结果
-
-## 2026-03-21 项目键统一与 GitHub 同步增强（进行中）
-
-- [x] TDD：补充“按版本号拉取指定 release/不存在报错/latest 与 preview 同步”测试
-- [x] TDD：补充“项目管理从 GitHub 获取项目信息”测试
-- [x] 数据建模：去除 Project 额外 id，统一使用 project_key 作为主键与外键
-- [x] 数据迁移：新增 Prisma migration，完成 projectId -> projectKey 数据迁移与外键重建
-- [x] 后端改造：项目相关 API 全部切换到 project_key 路径参数与服务语义
-- [x] 后端改造：project_key 在所有 API 查询与校验中大小写不敏感
-- [x] 后端改造：版本 GitHub 拉取支持“未填版本号拉最新，填写版本号拉指定并处理不存在”
-- [x] 后端改造：新增项目 GitHub 仓库信息拉取接口
-- [x] 前端改造：项目选择上下文从 id 切换为 project_key
-- [x] 前端改造：项目管理页支持从 GitHub 导入项目信息
-- [x] 前端改造：版本管理页支持按版本号拉取指定 release
-- [x] 接口同步：更新 verhub.openapi.yaml（路径参数、请求/响应字段、错误码）
-- [x] 文档同步：更新 README.md、docs/DEVELOPMENT.md、ARCHITECTURE.md
-- [x] 验证：执行 backend/web typecheck + 关键测试并记录结果
-
-## 2026-03-21 对外 API 文档中心（进行中）
-
-- [x] 规划：梳理公开 API 与对外管理 API 范围，定义页面信息架构
-- [x] TDD：新增 API 文档工具函数测试（slug、路径参数替换、Try It Out URL 组装）
-- [x] TDD：新增文档注册表测试（公开 API 覆盖、关键管理 API 覆盖、slug 唯一）
-- [x] 领域建模：新增文档数据模型与统一注册表（模块、鉴权、请求/响应示例）
-- [x] 页面实现：新增 /doc 文档中心（顶部导航 + 左侧目录 + 右侧内容）
-- [x] 页面实现：新增 /doc/[slug] 单接口详情页（一个接口一个页面）
-- [x] 组件实现：抽离通用文档组件（方法徽章、参数表格、代码块、详情容器）
-- [x] 组件实现：Try It Out 支持 path/query/header/body 输入与在线请求
-- [x] 能力实现：支持 URL 模板参数（{projectKey}/{id}）替换与请求 URL 预览
-- [x] 反馈修复：文档主内容加宽、移动端去重目录并修复内容可见性
-- [x] 反馈修复：文档过滤不展示接口（管理员登录/API Key 列表/GitHub Release 预览）
-- [x] 反馈修复：补充失败响应示例并优化 Try It Out JSON 响应格式化显示
-- [x] 反馈修复：首页增加文档入口并移除冗余 API 说明区块
-- [x] 反馈增强：响应示例改为 Tab 切换展示（成功/失败）
-- [x] 反馈增强：Try It Out 在宽屏下改为右侧悬浮
-- [x] 反馈增强：Try It Out 支持 URL Query 预填（path/query/body/token）
-- [x] 反馈增强：文档鉴权表述统一为 Token，公开 API 移除 Token 要求
-- [x] 反馈增强：后台 API Demo 改为跳转 /doc 并自动填充已知参数
-- [x] 反馈修复：补齐缺失文档接口（更新公告/编辑行为定义/编辑反馈/删除反馈/查询行为定义）
-- [x] 反馈修复：清理 API Demo 冗余字段（tokenType/scopes）与不一致路径占位符
-- [x] 反馈增强：文档标题栏调整为左标题+左搜索+右侧按钮布局
-- [x] 反馈增强：新增配色切换按钮并保留回到 /doc 目录入口
-- [x] 反馈增强：API 搜索框联动侧边栏与 /doc 列表过滤
-- [x] 文档同步：更新 README.md 与 docs/DEVELOPMENT.md 的 API 文档说明
-- [x] 验证：执行 web test + typecheck，修复问题并记录
-
-## 2026-03-21 项目展示页 + GitHub 历史导入 + 多下载链接（进行中）
-
-- [x] TDD：补充项目元字段（author/author_homepage_url/icon_url/website_url/published_at）测试
-- [x] TDD：补充版本多下载链接与 GitHub 历史导入去重测试
-- [x] Prisma：Project 增加展示页元字段，Version 增加 download_links JSON 字段
-- [x] Migration：提交可审查 SQL（含 downloadUrl -> downloadLinks 回填）
-- [x] 后端：Projects DTO/Service/响应结构支持新增可选字段
-- [x] 后端：GitHub 仓库预览返回作者与图标等元信息
-- [x] 后端：Versions DTO/Service 支持 download_links
-- [x] 后端：新增版本历史导入接口（重复版本号跳过，保留数据库记录）
-- [x] 前端：项目管理页支持编辑/展示新增字段
-- [x] 前端：版本管理页支持历史导入按钮与多下载链接配置
-- [x] 前端：新增项目展示页（项目信息 + 公告 + 版本历史）
-- [x] 接口文档：更新 verhub.openapi.yaml 与 web 文档注册表示例
-- [x] 文档：更新 README.md/ARCHITECTURE.md 功能说明
-- [x] 验证：执行受影响 backend/web 测试与 typecheck
-
-## 2026-03-21 登录跳转修复 + 多语言 SDK 启动（进行中）
-
-- [x] TDD：补充“已登录访问 /login 自动跳转”测试（含 returnTo 安全场景）
-- [x] 修复登录重定向策略（proxy matcher + redirect 决策）
-- [x] 设计统一 SDK 命名空间与方法矩阵（以 web 文档展示接口为准）
-- [x] 实现 TypeScript SDK（public + admin）
-- [x] 实现 Python SDK（public + admin）
-- [x] 实现 vanilla JS SDK（public only）
-- [x] 文档补充：SDK 使用指南与接口覆盖说明
-- [x] 文档补充：CI/CD 中自动增加版本与公告示例
-- [x] 验证：执行受影响 web test + typecheck
-
-## 2026-03-21 SDK 规范化（版本号 + 显式参数 + 注释）（进行中）
-
-- [x] vanilla JS：新增可直接 script 标签使用的 global 构建文件
-- [x] 三端 SDK：统一增加版本号常量/属性
-- [x] 三端 SDK：方法改为显式参数，移除泛化 payload 入参
-- [x] 三端 SDK：补齐 Javadoc/参数注释
-- [x] 文档：更新三端 SDK README 使用说明
-- [x] 验证：执行 JS 导入与 Python 语法编译检查
+- [x] 定义统一弹窗布局基座：`DialogContent` 默认最大高度 + 自适应高度 + 内容裁剪
+- [x] 新增统一滚动内容区：`DialogBody`（`overflow-y-auto`）
+- [x] 迁移版本编辑弹窗至统一模式（支持长表单滚动）
+- [x] 迁移动作/项目/公告/反馈编辑弹窗至统一模式
+- [x] 取消版本编辑时页面回顶行为，改为原地弹窗编辑
+- [~] 统一回归测试：验证弹窗高度限制、滚动容器、编辑不回顶
+- [ ] 文档补充：组件约定和使用示例（README/docs）

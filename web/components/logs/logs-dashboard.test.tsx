@@ -65,7 +65,7 @@ describe("LogsDashboard", () => {
     await waitFor(() => {
       expect(mockedListLogs).toHaveBeenLastCalledWith(
         "valid-token",
-        "project-1",
+        "verhub",
         {
           limit: 10,
           offset: 0,

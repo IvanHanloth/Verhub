@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -14,7 +15,7 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog"
 
-import { ApiError } from "@/lib/api-client"
+import { getErrorMessage } from "@/lib/error-utils"
 import { AdminCard, AdminItemCard } from "@/components/admin/admin-card"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { ProjectApiOverview } from "@/components/admin/project-api-overview"
@@ -39,18 +40,6 @@ type EditFormState = {
   name: string
   description: string
   customData: string
-}
-
-function toMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    return error.message
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return "请求失败，请稍后重试。"
 }
 
 export function ActionsDashboard() {
@@ -116,15 +105,15 @@ export function ActionsDashboard() {
   }, [selectedActionId])
 
   React.useEffect(() => {
-    void loadProjects().catch((error) => toast.error(toMessage(error)))
+    void loadProjects().catch((error) => toast.error(getErrorMessage(error)))
   }, [loadProjects])
 
   React.useEffect(() => {
-    void loadActions().catch((error) => toast.error(toMessage(error)))
+    void loadActions().catch((error) => toast.error(getErrorMessage(error)))
   }, [loadActions])
 
   React.useEffect(() => {
-    void loadRecords().catch((error) => toast.error(toMessage(error)))
+    void loadRecords().catch((error) => toast.error(getErrorMessage(error)))
   }, [loadRecords])
 
   React.useEffect(() => {
@@ -172,7 +161,7 @@ export function ActionsDashboard() {
       setCustomData("")
       await loadActions()
     } catch (error) {
-      toast.error(toMessage(error))
+      toast.error(getErrorMessage(error))
     } finally {
       setLoading(false)
     }
@@ -216,7 +205,7 @@ export function ActionsDashboard() {
       setEditForm(null)
       await loadActions()
     } catch (error) {
-      toast.error(toMessage(error))
+      toast.error(getErrorMessage(error))
     } finally {
       setSavingEdit(false)
     }
@@ -233,7 +222,7 @@ export function ActionsDashboard() {
       toast.success("行为已删除")
       await loadActions()
     } catch (error) {
-      toast.error(toMessage(error))
+      toast.error(getErrorMessage(error))
     }
   }
 
@@ -456,47 +445,49 @@ export function ActionsDashboard() {
             <DialogDescription>修改行为名称、描述与扩展数据。</DialogDescription>
           </DialogHeader>
 
-          {editForm ? (
-            <div className="grid gap-3">
-              <label className="space-y-1 text-sm">
-                <span className="text-slate-700 dark:text-slate-300">行为名称</span>
-                <input
-                  required
-                  value={editForm.name}
-                  onChange={(event) =>
-                    setEditForm((prev) => (prev ? { ...prev, name: event.target.value } : prev))
-                  }
-                  className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
-                />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-slate-700 dark:text-slate-300">行为描述</span>
-                <input
-                  required
-                  value={editForm.description}
-                  onChange={(event) =>
-                    setEditForm((prev) =>
-                      prev ? { ...prev, description: event.target.value } : prev,
-                    )
-                  }
-                  className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
-                />
-              </label>
-              <label className="space-y-1 text-sm">
-                <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
-                <textarea
-                  value={editForm.customData}
-                  onChange={(event) =>
-                    setEditForm((prev) =>
-                      prev ? { ...prev, customData: event.target.value } : prev,
-                    )
-                  }
-                  rows={4}
-                  className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-xs dark:border-white/20 dark:bg-white/10"
-                />
-              </label>
-            </div>
-          ) : null}
+          <DialogBody>
+            {editForm ? (
+              <div className="grid gap-3">
+                <label className="space-y-1 text-sm">
+                  <span className="text-slate-700 dark:text-slate-300">行为名称</span>
+                  <input
+                    required
+                    value={editForm.name}
+                    onChange={(event) =>
+                      setEditForm((prev) => (prev ? { ...prev, name: event.target.value } : prev))
+                    }
+                    className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-slate-700 dark:text-slate-300">行为描述</span>
+                  <input
+                    required
+                    value={editForm.description}
+                    onChange={(event) =>
+                      setEditForm((prev) =>
+                        prev ? { ...prev, description: event.target.value } : prev,
+                      )
+                    }
+                    className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
+                  <textarea
+                    value={editForm.customData}
+                    onChange={(event) =>
+                      setEditForm((prev) =>
+                        prev ? { ...prev, customData: event.target.value } : prev,
+                      )
+                    }
+                    rows={4}
+                    className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-xs dark:border-white/20 dark:bg-white/10"
+                  />
+                </label>
+              </div>
+            ) : null}
+          </DialogBody>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>

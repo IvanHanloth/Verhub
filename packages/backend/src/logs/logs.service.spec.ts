@@ -70,4 +70,90 @@ describe("LogsService", () => {
       }),
     ).rejects.toBeInstanceOf(NotFoundException)
   })
+
+  it("getStatistics returns all level counts", async () => {
+    const prisma = createPrismaMock()
+    prisma.log.count
+      .mockResolvedValueOnce(100) // total
+      .mockResolvedValueOnce(10) // debug
+      .mockResolvedValueOnce(40) // info
+      .mockResolvedValueOnce(30) // warning
+      .mockResolvedValueOnce(20) // error
+
+    const service = new LogsService(prisma as never)
+    const stats = await service.getStatistics()
+
+    expect(stats).toEqual({
+      count: 100,
+      debug_count: 10,
+      info_count: 40,
+      warning_count: 30,
+      error_count: 20,
+    })
+  })
+
+  it("findAll returns paginated logs", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.$transaction.mockResolvedValue([
+      1,
+      [
+        {
+          id: "log-1",
+          level: "INFO",
+          content: "test",
+          deviceInfo: null,
+          customData: null,
+          createdAt: 1000,
+        },
+      ],
+    ])
+
+    const service = new LogsService(prisma as never)
+    const result = await service.findAll("proj", { limit: 10, offset: 0 })
+
+    expect(result.total).toBe(1)
+    expect(result.data[0].level).toBe(1)
+  })
+
+  it("findAll throws when project not found", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue(null)
+
+    const service = new LogsService(prisma as never)
+    await expect(service.findAll("missing", { limit: 10, offset: 0 })).rejects.toBeInstanceOf(
+      NotFoundException,
+    )
+  })
+
+  it("findAll with level filter", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.$transaction.mockResolvedValue([0, []])
+
+    const service = new LogsService(prisma as never)
+    await service.findAll("proj", { limit: 10, offset: 0, level: 3 })
+
+    expect(prisma.log.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ level: "ERROR" }),
+      }),
+    )
+  })
+
+  it("createByProjectKey throws for invalid log level", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+
+    const service = new LogsService(prisma as never)
+    await expect(
+      service.createByProjectKey("proj", { level: 99, content: "bad" }),
+    ).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it("getStatus returns module info", () => {
+    const prisma = createPrismaMock()
+    const service = new LogsService(prisma as never)
+    expect(service.getStatus()).toEqual({ module: "logs", implemented: true })
+  })
 })

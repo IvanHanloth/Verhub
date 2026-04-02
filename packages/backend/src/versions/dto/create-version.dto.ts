@@ -53,17 +53,17 @@ export class CreateVersionDto {
   @IsOptional()
   @IsString()
   @MaxLength(128)
-  title?: string
+  title?: string | null
 
   @IsOptional()
   @IsString()
   @MaxLength(4096)
-  content?: string
+  content?: string | null
 
   @IsOptional()
   @IsString()
   @MaxLength(2048)
-  download_url?: string
+  download_url?: string | null
 
   @IsOptional()
   @IsArray()
@@ -100,7 +100,7 @@ export class CreateVersionDto {
 
   @IsOptional()
   @IsObject()
-  custom_data?: Record<string, unknown>
+  custom_data?: Record<string, unknown> | null
 
   @IsOptional()
   @IsInt()

@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -14,7 +15,9 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog"
 
-import { ApiError, isAuthError } from "@/lib/api-client"
+import { isAuthError } from "@/lib/api-client"
+import { getErrorMessage } from "@/lib/error-utils"
+import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
@@ -58,18 +61,6 @@ const emptyForm: FeedbackFormState = {
   content: "",
   platform: "",
   custom_data: "",
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof ApiError) {
-    return `${error.message} (HTTP ${error.status})`
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return "请求失败，请稍后再试。"
 }
 
 function parseJsonObject(value: string): Record<string, unknown> | undefined {
@@ -119,8 +110,19 @@ export function FeedbacksDashboard() {
   const { selectedProjectKey, setSelectedProjectKey } = useSharedProjectSelection()
 
   const [feedbacks, setFeedbacks] = React.useState<FeedbackItem[]>([])
-  const [total, setTotal] = React.useState(0)
-  const [offset, setOffset] = React.useState(0)
+  const {
+    offset,
+    total,
+    setTotal,
+    page,
+    totalPages,
+    hasPrev,
+    hasNext,
+    onPrev,
+    onNext,
+    adjustAfterDelete,
+    resetOffset,
+  } = usePagination({ pageSize: PAGE_SIZE })
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -135,8 +137,6 @@ export function FeedbacksDashboard() {
   )
 
   const hasToken = token.trim().length > 0
-  const page = Math.floor(offset / PAGE_SIZE) + 1
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const loadProjects = React.useCallback(async () => {
     if (!token) {
@@ -212,7 +212,7 @@ export function FeedbacksDashboard() {
         }
       }
     },
-    [selectedProjectKey, token],
+    [selectedProjectKey, token, setTotal],
   )
 
   React.useEffect(() => {
@@ -229,11 +229,11 @@ export function FeedbacksDashboard() {
   }, [loadFeedbacks, offset])
 
   React.useEffect(() => {
-    setOffset(0)
+    resetOffset()
     setForm(emptyForm)
     setEditingId(null)
     setEditDialogOpen(false)
-  }, [selectedProjectKey])
+  }, [selectedProjectKey, resetOffset])
 
   function beginEdit(item: FeedbackItem) {
     setEditingId(item.id)
@@ -328,9 +328,9 @@ export function FeedbacksDashboard() {
     try {
       await deleteFeedback(token, selectedProjectKey, id)
       toast.success("反馈已删除。")
+      adjustAfterDelete(feedbacks.length - 1)
       const nextOffset =
         feedbacks.length === 1 && offset > 0 ? Math.max(0, offset - PAGE_SIZE) : offset
-      setOffset(nextOffset)
       await loadFeedbacks(nextOffset)
       if (editingId === id) {
         resetForm()
@@ -612,12 +612,7 @@ export function FeedbacksDashboard() {
               </table>
             </div>
 
-            <AdminPagination
-              hasPrev={offset > 0}
-              hasNext={offset + PAGE_SIZE < total}
-              onPrev={() => setOffset((prev) => Math.max(0, prev - PAGE_SIZE))}
-              onNext={() => setOffset((prev) => prev + PAGE_SIZE)}
-            />
+            <AdminPagination hasPrev={hasPrev} hasNext={hasNext} onPrev={onPrev} onNext={onNext} />
           </div>
         ) : null}
       </AdminCard>
@@ -629,71 +624,81 @@ export function FeedbacksDashboard() {
             <DialogDescription>修改反馈内容、评分、平台与扩展数据。</DialogDescription>
           </DialogHeader>
 
-          <form className="grid gap-3" onSubmit={handleSubmit}>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">用户 ID</span>
-              <input
-                type="text"
-                value={form.user_id}
-                onChange={(event) => setForm((prev) => ({ ...prev, user_id: event.target.value }))}
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
-                maxLength={64}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">评分（1-5）</span>
-              <input
-                type="number"
-                min={1}
-                max={5}
-                value={form.rating}
-                onChange={(event) => setForm((prev) => ({ ...prev, rating: event.target.value }))}
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">平台</span>
-              <select
-                value={form.platform}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    platform: event.target.value as "" | ClientPlatform,
-                  }))
-                }
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
-              >
-                <option value="">未指定平台</option>
-                {platformOptions.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">反馈内容</span>
-              <textarea
-                value={form.content}
-                onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))}
-                rows={5}
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
-                maxLength={4096}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
-              <textarea
-                value={form.custom_data}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, custom_data: event.target.value }))
-                }
-                rows={4}
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs dark:border-white/20 dark:bg-white/10"
-              />
-            </label>
+          <form className="flex min-h-0 flex-1 flex-col gap-3" onSubmit={handleSubmit}>
+            <DialogBody className="pr-0">
+              <div className="grid gap-3">
+                <label className="space-y-1 text-sm">
+                  <span className="text-slate-700 dark:text-slate-300">用户 ID</span>
+                  <input
+                    type="text"
+                    value={form.user_id}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, user_id: event.target.value }))
+                    }
+                    className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                    maxLength={64}
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-slate-700 dark:text-slate-300">评分（1-5）</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={5}
+                    value={form.rating}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, rating: event.target.value }))
+                    }
+                    className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-slate-700 dark:text-slate-300">平台</span>
+                  <select
+                    value={form.platform}
+                    onChange={(event) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        platform: event.target.value as "" | ClientPlatform,
+                      }))
+                    }
+                    className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                  >
+                    <option value="">未指定平台</option>
+                    {platformOptions.map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-slate-700 dark:text-slate-300">反馈内容</span>
+                  <textarea
+                    value={form.content}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, content: event.target.value }))
+                    }
+                    rows={5}
+                    className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+                    maxLength={4096}
+                  />
+                </label>
+                <label className="space-y-1 text-sm">
+                  <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
+                  <textarea
+                    value={form.custom_data}
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, custom_data: event.target.value }))
+                    }
+                    rows={4}
+                    className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs dark:border-white/20 dark:bg-white/10"
+                  />
+                </label>
+              </div>
+            </DialogBody>
 
-            <DialogFooter>
+            <DialogFooter className="mt-0">
               <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
                 取消
               </Button>

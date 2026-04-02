@@ -3,6 +3,8 @@ import { Injectable, NotFoundException } from "@nestjs/common"
 import { Prisma, ClientPlatform } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
+import { normalizeProjectKey } from "../common/utils"
+import { toClientPlatform, fromClientPlatform } from "../versions/version-mapping"
 import { CreateFeedbackDto } from "./dto/create-feedback.dto"
 import { QueryFeedbacksDto } from "./dto/query-feedbacks.dto"
 import { UpdateFeedbackDto } from "./dto/update-feedback.dto"
@@ -20,10 +22,6 @@ type FeedbackItem = {
 type FeedbackListResponse = {
   total: number
   data: FeedbackItem[]
-}
-
-function normalizeProjectKey(projectKey: string): string {
-  return projectKey.trim().toLowerCase()
 }
 
 @Injectable()
@@ -101,7 +99,7 @@ export class FeedbacksService {
         userId: dto.user_id,
         rating: dto.rating,
         content: dto.content,
-        platform: this.toClientPlatform(dto.platform),
+        platform: toClientPlatform(dto.platform),
         customData: dto.custom_data as Prisma.InputJsonValue | undefined,
       },
     })
@@ -127,7 +125,7 @@ export class FeedbacksService {
         userId: dto.user_id,
         rating: dto.rating,
         content: dto.content,
-        platform: this.toClientPlatform(dto.platform),
+        platform: toClientPlatform(dto.platform),
         customData: dto.custom_data as Prisma.InputJsonValue | undefined,
       },
     })
@@ -191,26 +189,6 @@ export class FeedbacksService {
     }
   }
 
-  private toClientPlatform(
-    platform: "ios" | "android" | "windows" | "mac" | "web" | undefined,
-  ): ClientPlatform | undefined {
-    if (!platform) {
-      return undefined
-    }
-
-    return platform.toUpperCase() as ClientPlatform
-  }
-
-  private fromClientPlatform(
-    platform: ClientPlatform | null,
-  ): "ios" | "android" | "windows" | "mac" | "web" | null {
-    if (!platform) {
-      return null
-    }
-
-    return platform.toLowerCase() as "ios" | "android" | "windows" | "mac" | "web"
-  }
-
   private toFeedbackItem(feedback: {
     id: string
     userId: string | null
@@ -225,7 +203,7 @@ export class FeedbacksService {
       user_id: feedback.userId,
       rating: feedback.rating,
       content: feedback.content,
-      platform: this.fromClientPlatform(feedback.platform),
+      platform: fromClientPlatform(feedback.platform),
       custom_data: feedback.customData,
       created_at: feedback.createdAt,
     }

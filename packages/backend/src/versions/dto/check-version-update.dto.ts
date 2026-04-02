@@ -20,4 +20,12 @@ export class CheckVersionUpdateDto {
   @IsOptional()
   @IsBoolean()
   include_preview?: boolean
+
+  /** Validate that at least one version identifier is provided */
+  validate(): boolean {
+    if (!this.current_version && !this.current_comparable_version) {
+      return false
+    }
+    return true
+  }
 }

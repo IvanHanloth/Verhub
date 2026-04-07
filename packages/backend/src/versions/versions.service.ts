@@ -19,7 +19,7 @@ import { PrismaService } from "../database/prisma.service"
 import { CreateVersionDto } from "./dto/create-version.dto"
 import { QueryVersionsDto } from "./dto/query-versions.dto"
 import { UpdateVersionDto } from "./dto/update-version.dto"
-import { parseComparableVersion } from "./version-comparator"
+import { compareComparableVersions, parseComparableVersion } from "./version-comparator"
 import {
   isUniqueViolation,
   normalizeVersionTag,

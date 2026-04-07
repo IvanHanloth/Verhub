@@ -88,7 +88,23 @@ function toTimestampSeconds(value: string): number | undefined {
   return Math.floor(millis / 1000)
 }
 
-function toMutationInput(form: FormState): ProjectMutationInput {
+function toMutationInput(
+  form: FormState,
+  options?: { clearOptionalRangeWithNull?: boolean },
+): ProjectMutationInput {
+  const optionalMin = form.optional_update_min_comparable_version.trim()
+  const optionalMax = form.optional_update_max_comparable_version.trim()
+
+  // During edit (clearOptionalRangeWithNull=true): always send the field so
+  // the backend can distinguish "clear to null" from "not provided".
+  // During create: omit empty fields (undefined → column defaults to null).
+  const resolveOptionalField = (value: string): string | null | undefined => {
+    if (options?.clearOptionalRangeWithNull) {
+      return value || null
+    }
+    return value || undefined
+  }
+
   return {
     project_key: form.project_key.trim(),
     name: form.name.trim(),
@@ -99,10 +115,8 @@ function toMutationInput(form: FormState): ProjectMutationInput {
     icon_url: form.icon_url.trim() || undefined,
     website_url: form.website_url.trim() || undefined,
     published_at: toTimestampSeconds(form.published_at),
-    optional_update_min_comparable_version:
-      form.optional_update_min_comparable_version.trim() || undefined,
-    optional_update_max_comparable_version:
-      form.optional_update_max_comparable_version.trim() || undefined,
+    optional_update_min_comparable_version: resolveOptionalField(optionalMin),
+    optional_update_max_comparable_version: resolveOptionalField(optionalMax),
   }
 }
 
@@ -458,7 +472,13 @@ export function ProjectsDashboard() {
 
     setSavingEdit(true)
     try {
-      await updateProject(token, editingProjectKey, toMutationInput(editForm))
+      await updateProject(
+        token,
+        editingProjectKey,
+        toMutationInput(editForm, {
+          clearOptionalRangeWithNull: true,
+        }),
+      )
       toast.success("项目已更新。")
       setEditDialogOpen(false)
       setEditingProjectKey(null)

@@ -84,7 +84,7 @@ export class VersionsService {
         where: { projectKey: normalizedKey },
         take: query.limit,
         skip: query.offset,
-        orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+        orderBy: [{ comparableVersion: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
       }),
     ])
 
@@ -173,24 +173,15 @@ export class VersionsService {
 
     const trimmedVersion = version.trim()
 
-    // 首先尝试精确匹配语义化版本号
     const found = await this.prisma.version.findFirst({
-      where: { projectKey: normalizedKey, version: trimmedVersion },
+      where: {
+        projectKey: normalizedKey,
+        OR: [{ version: trimmedVersion }, { comparableVersion: trimmedVersion }],
+      },
+      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
     })
     if (found) {
       return toVersionItem(found)
-    }
-
-    // 如果不是精确匹配，尝试作为可比较版本号查询
-    const allVersions = await this.prisma.version.findMany({
-      where: { projectKey: normalizedKey, comparableVersion: { not: null } },
-    })
-
-    // 尝试找到匹配的可比较版本号
-    for (const v of allVersions) {
-      if (v.comparableVersion === trimmedVersion) {
-        return toVersionItem(v)
-      }
     }
 
     throw new NotFoundException("Version not found")
@@ -267,7 +258,13 @@ export class VersionsService {
     }
 
     // Validate business rules
-    await this.validateVersionRules(normalizedKey, dto, id)
+    await this.validateVersionRules(normalizedKey, dto, {
+      id: version.id,
+      version: version.version,
+      comparableVersion: version.comparableVersion,
+      isLatest: version.isLatest,
+      isDeprecated: version.isDeprecated,
+    })
 
     try {
       const nextDownloadUrl =
@@ -374,49 +371,66 @@ export class VersionsService {
   private async validateVersionRules(
     projectKey: string,
     dto: CreateVersionDto | UpdateVersionDto,
-    existingId?: string,
+    existingVersion?: {
+      id: string
+      version: string
+      comparableVersion: string | null
+      isLatest: boolean
+      isDeprecated: boolean
+    },
   ): Promise<void> {
-    const isLatest = dto.is_latest ?? false
-    const isDeprecated = dto.is_deprecated ?? false
+    const isLatest = dto.is_latest ?? existingVersion?.isLatest ?? false
+    const isDeprecated = dto.is_deprecated ?? existingVersion?.isDeprecated ?? false
 
     // Rule 1: latest version cannot be deprecated
     if (isLatest && isDeprecated) {
       throw new BadRequestException("Latest version cannot be deprecated")
     }
 
-    // Rule 2: If marking version as deprecated (or if it already is), ensure there's at least one non-deprecated version after it
-    if (isDeprecated) {
-      // Check if there's at least one non-deprecated version in this project
-      const nonDeprecatedCount = await this.prisma.version.count({
-        where: {
-          projectKey,
-          isDeprecated: false,
-          id: existingId ? { not: existingId } : undefined,
-        },
-      })
-
-      if (nonDeprecatedCount === 0) {
-        throw new BadRequestException(
-          "Cannot mark version as deprecated: there must be at least one non-deprecated version available for rollback",
-        )
-      }
+    // Rule 2: deprecated version must have at least one newer, stable and non-deprecated upgrade target.
+    if (!isDeprecated) {
+      return
     }
 
-    // Rule 3: When setting as latest, ensure it's not deprecated
-    if (isLatest) {
-      const currentLatest = await this.prisma.version.findFirst({
-        where: {
-          projectKey,
-          isLatest: true,
-          id: existingId ? { not: existingId } : undefined,
-        },
-      })
+    const baselineVersion = dto.version ?? existingVersion?.version
+    if (!baselineVersion) {
+      throw new BadRequestException("version is required to validate deprecation policy")
+    }
 
-      if (currentLatest && currentLatest.isDeprecated) {
-        throw new BadRequestException(
-          "Cannot set current latest version as deprecated while replacing it",
-        )
+    const currentComparableVersion =
+      dto.comparable_version === undefined && dto.version === undefined
+        ? existingVersion?.comparableVersion
+        : this.resolveComparableVersion(dto.comparable_version, baselineVersion)
+    if (!currentComparableVersion) {
+      throw new BadRequestException(
+        "Deprecated version must provide comparable_version or an existing comparable version",
+      )
+    }
+
+    const candidates = await this.prisma.version.findMany({
+      where: {
+        projectKey,
+        id: existingVersion ? { not: existingVersion.id } : undefined,
+        comparableVersion: { not: null },
+        isPreview: false,
+        isDeprecated: false,
+      },
+      select: {
+        comparableVersion: true,
+      },
+    })
+
+    const hasUpgradeTarget = candidates.some((item) => {
+      if (!item.comparableVersion) {
+        return false
       }
+      return compareComparableVersions(item.comparableVersion, currentComparableVersion) > 0
+    })
+
+    if (!hasUpgradeTarget) {
+      throw new BadRequestException(
+        "Cannot mark version as deprecated: there must be at least one newer non-preview and non-deprecated version available for upgrade",
+      )
     }
   }
 

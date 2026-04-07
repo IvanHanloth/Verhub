@@ -24,6 +24,13 @@ export type VersionFormState = {
   custom_data: string
 }
 
+export type VersionRuleCandidate = {
+  id: string
+  comparable_version?: string
+  is_preview: boolean
+  is_deprecated?: boolean
+}
+
 export const emptyVersionForm: VersionFormState = {
   version: "",
   comparable_version: "",
@@ -120,14 +127,121 @@ export function toCreateInput(form: VersionFormState): CreateVersionInput {
   }
 }
 
+type ParsedComparableVersion = {
+  core: number[]
+  preTag: "alpha" | "beta" | "rc" | null
+  preNumbers: number[]
+}
+
+const COMPARABLE_VERSION_PATTERN =
+  /^(?<core>\d+(?:\.\d+)*)(?:-(?<tag>alpha|beta|rc)(?:\.(?<tail>\d+(?:\.\d+)*))?)?$/
+
+const PRE_RELEASE_WEIGHT: Record<"alpha" | "beta" | "rc", number> = {
+  alpha: 1,
+  beta: 2,
+  rc: 3,
+}
+
+function parseComparableVersion(value: string): ParsedComparableVersion | null {
+  const match = COMPARABLE_VERSION_PATTERN.exec(value.trim())
+  if (!match?.groups?.core) {
+    return null
+  }
+
+  return {
+    core: match.groups.core.split(".").map((item) => Number(item)),
+    preTag: (match.groups.tag as ParsedComparableVersion["preTag"]) ?? null,
+    preNumbers: match.groups.tail ? match.groups.tail.split(".").map((item) => Number(item)) : [],
+  }
+}
+
+function compareNumberArray(left: number[], right: number[]): number {
+  const maxLength = Math.max(left.length, right.length)
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftValue = left[index] ?? 0
+    const rightValue = right[index] ?? 0
+    if (leftValue === rightValue) {
+      continue
+    }
+
+    return leftValue > rightValue ? 1 : -1
+  }
+
+  return 0
+}
+
+function compareComparableVersions(left: string, right: string): number | null {
+  const parsedLeft = parseComparableVersion(left)
+  const parsedRight = parseComparableVersion(right)
+  if (!parsedLeft || !parsedRight) {
+    return null
+  }
+
+  const coreDiff = compareNumberArray(parsedLeft.core, parsedRight.core)
+  if (coreDiff !== 0) {
+    return coreDiff
+  }
+
+  if (!parsedLeft.preTag && !parsedRight.preTag) {
+    return 0
+  }
+  if (!parsedLeft.preTag && parsedRight.preTag) {
+    return 1
+  }
+  if (parsedLeft.preTag && !parsedRight.preTag) {
+    return -1
+  }
+
+  const leftWeight = PRE_RELEASE_WEIGHT[parsedLeft.preTag as "alpha" | "beta" | "rc"]
+  const rightWeight = PRE_RELEASE_WEIGHT[parsedRight.preTag as "alpha" | "beta" | "rc"]
+  if (leftWeight !== rightWeight) {
+    return leftWeight > rightWeight ? 1 : -1
+  }
+
+  return compareNumberArray(parsedLeft.preNumbers, parsedRight.preNumbers)
+}
+
 /**
  * Validate version business rules on the frontend.
  * Returns error message if validation fails, null otherwise.
  */
-export function validateVersionRules(form: VersionFormState): string | null {
+export function validateVersionRules(
+  form: VersionFormState,
+  options?: {
+    candidates?: VersionRuleCandidate[]
+    editingVersionId?: string | null
+  },
+): string | null {
   // Rule: latest version cannot be deprecated
   if (form.is_latest && form.is_deprecated) {
     return "Latest 版本不能被标记为废弃。"
+  }
+
+  // Rule: deprecated version must have at least one newer stable, non-deprecated upgrade target.
+  if (form.is_deprecated) {
+    const currentComparable = form.comparable_version.trim()
+    if (!currentComparable) {
+      return "废弃版本必须提供可比较版本号。"
+    }
+
+    const hasNewerStable = (options?.candidates ?? []).some((item) => {
+      if (options?.editingVersionId && item.id === options.editingVersionId) {
+        return false
+      }
+      if (item.is_preview || item.is_deprecated) {
+        return false
+      }
+      if (!item.comparable_version) {
+        return false
+      }
+
+      const compareResult = compareComparableVersions(item.comparable_version, currentComparable)
+      return compareResult !== null && compareResult > 0
+    })
+
+    if (!hasNewerStable) {
+      return "废弃版本之后必须至少存在一个可升级到的正式版本（非预发布且非废弃）。"
+    }
   }
 
   return null

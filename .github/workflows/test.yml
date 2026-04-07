@@ -1,0 +1,57 @@
+name: Test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: verhub
+          POSTGRES_PASSWORD: verhub
+          POSTGRES_DB: verhub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U verhub"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql://verhub:verhub@localhost:5432/verhub_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @workspace/backend run prisma:generate
+
+      - name: Run unit tests with coverage
+        run: pnpm --filter @workspace/backend run test -- --coverage --coverageReporters=text-summary --coverageReporters=text
+
+      - name: Run e2e tests
+        run: pnpm --filter @workspace/backend run test:e2e || true

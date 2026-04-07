@@ -264,7 +264,9 @@ describe("VersionsDashboard", () => {
         }),
       )
     })
-    expect(mockedToastSuccess).toHaveBeenCalledWith("版本已更新。")
+    expect(mockedToastSuccess).toHaveBeenCalledWith(
+      "版本已更新。之前的 latest 版本标记已自动重置。",
+    )
     scrollSpy.mockRestore()
   })
 

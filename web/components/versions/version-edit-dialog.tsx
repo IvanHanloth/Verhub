@@ -41,7 +41,7 @@ export function VersionEditDialog({
           <DialogDescription>在弹窗中更新版本字段并保存。</DialogDescription>
         </DialogHeader>
 
-        <DialogBody className="pr-4">
+        <DialogBody className="max-h-[70vh] overflow-y-auto pr-4">
           <div className="grid gap-3">
             <label className="space-y-1 text-sm">
               <span className="text-slate-700 dark:text-slate-300">版本号</span>

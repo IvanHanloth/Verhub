@@ -1187,7 +1187,7 @@ paths:
       - $ref: "#/components/parameters/ProjectKey"
     get:
       tags: [Versions]
-      summary: 按 project_key 获取版本列表
+      summary: 按 project_key 获取所有版本（从新到旧）
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
@@ -1205,7 +1205,7 @@ paths:
       - $ref: "#/components/parameters/ProjectKey"
     get:
       tags: [Versions]
-      summary: 按 project_key 获取最新版本
+      summary: 按 project_key 获取最新稳定版本
       responses:
         "200":
           content:
@@ -1226,7 +1226,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/VersionItem"
+                oneOf:
+                  - $ref: "#/components/schemas/VersionItem"
+                  - type: "null"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1238,10 +1240,10 @@ paths:
         required: true
         schema:
           type: string
-        description: 语义化版本号（可 URL 编码）
+        description: 语义化版本号或可比较版本号（可 URL 编码）
     get:
       tags: [Versions]
-      summary: 按版本号获取指定版本信息
+      summary: 按版本号获取指定版本信息（语义化/可比较）
       responses:
         "200":
           content:
@@ -2501,14 +2503,14 @@ components:
         current_version:
           type: string
           maxLength: 64
-          description: 当前语义化版本号（可选）
+          description: 当前语义化版本号（可选，与 current_comparable_version 二选一）
         current_comparable_version:
           type: string
           maxLength: 64
-          description: 当前可比较版本号（当 current_version 无法映射时必填）
+          description: 当前可比较版本号（可选；当两者同时提交时优先使用该字段）
         include_preview:
           type: boolean
-          description: 是否将 preview 版本纳入更新目标候选
+          description: 是否将 preview 版本纳入“是否有更新”的比较候选
 
     CheckVersionUpdateResponse:
       type: object

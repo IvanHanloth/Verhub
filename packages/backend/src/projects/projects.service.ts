@@ -100,10 +100,10 @@ export class ProjectsService {
   }
 
   async create(dto: CreateProjectDto): Promise<ProjectItem> {
-    this.validateComparableRange(
-      dto.optional_update_min_comparable_version,
-      dto.optional_update_max_comparable_version,
-    )
+    const optionalMin = this.normalizeOptionalComparable(dto.optional_update_min_comparable_version)
+    const optionalMax = this.normalizeOptionalComparable(dto.optional_update_max_comparable_version)
+
+    this.validateComparableRange(optionalMin, optionalMax)
 
     try {
       const project = await this.prisma.project.create({
@@ -117,8 +117,8 @@ export class ProjectsService {
           iconUrl: dto.icon_url,
           websiteUrl: dto.website_url,
           publishedAt: dto.published_at,
-          optionalUpdateMinComparableVersion: dto.optional_update_min_comparable_version,
-          optionalUpdateMaxComparableVersion: dto.optional_update_max_comparable_version,
+          optionalUpdateMinComparableVersion: optionalMin,
+          optionalUpdateMaxComparableVersion: optionalMax,
         },
       })
 
@@ -143,11 +143,11 @@ export class ProjectsService {
     // Determine effective values: if DTO has explicit value (including null), use it; otherwise use existing
     const effectiveMin =
       "optional_update_min_comparable_version" in dto
-        ? dto.optional_update_min_comparable_version
+        ? this.normalizeOptionalComparable(dto.optional_update_min_comparable_version)
         : project.optionalUpdateMinComparableVersion
     const effectiveMax =
       "optional_update_max_comparable_version" in dto
-        ? dto.optional_update_max_comparable_version
+        ? this.normalizeOptionalComparable(dto.optional_update_max_comparable_version)
         : project.optionalUpdateMaxComparableVersion
 
     this.validateComparableRange(effectiveMin, effectiveMax)
@@ -168,11 +168,11 @@ export class ProjectsService {
           publishedAt: dto.published_at,
           optionalUpdateMinComparableVersion:
             "optional_update_min_comparable_version" in dto
-              ? dto.optional_update_min_comparable_version
+              ? this.normalizeOptionalComparable(dto.optional_update_min_comparable_version)
               : undefined,
           optionalUpdateMaxComparableVersion:
             "optional_update_max_comparable_version" in dto
-              ? dto.optional_update_max_comparable_version
+              ? this.normalizeOptionalComparable(dto.optional_update_max_comparable_version)
               : undefined,
           updatedAt: nowSeconds(),
         },
@@ -309,5 +309,17 @@ export class ProjectsService {
         "optional_update_min_comparable_version must be less than or equal to optional_update_max_comparable_version",
       )
     }
+  }
+
+  private normalizeOptionalComparable(value: string | null | undefined): string | null | undefined {
+    if (value === undefined) {
+      return undefined
+    }
+    if (value === null) {
+      return null
+    }
+
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : null
   }
 }

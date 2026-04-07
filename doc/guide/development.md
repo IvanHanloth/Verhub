@@ -111,7 +111,8 @@ pnpm --filter @workspace/backend prisma migrate deploy
 - 可比较版本号：`comparable_version`（规则计算用），格式为 `数字段(.数字段)*[-(alpha|beta|rc)(.数字段(.数字段)*)?]`。
 - 公开更新检查接口：`POST /api/v1/public/{projectKey}/versions/check-update`。
 - 最新 preview 接口：`GET /api/v1/public/{projectKey}/versions/latest-preview`。
-- 指定版本查询接口：`GET /api/v1/public/{projectKey}/versions/by-version/{version}`。
+- 指定版本查询接口：`GET /api/v1/public/{projectKey}/versions/by-version/{version}`（支持语义化版本号与可比较版本号）。
+- `check-update` 入参中若同时提交 `current_version` 与 `current_comparable_version`，服务端优先使用后者。
 
 ## 代码质量门禁
 

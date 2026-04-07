@@ -168,6 +168,55 @@ describe("ProjectsService", () => {
     expect(prisma.project.update).not.toHaveBeenCalled()
   })
 
+  it("normalizes empty optional comparable range to null on update", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({
+      projectKey: "project-1",
+      name: "Project",
+      repoUrl: null,
+      description: null,
+      author: null,
+      authorHomepageUrl: null,
+      iconUrl: null,
+      websiteUrl: null,
+      publishedAt: null,
+      optionalUpdateMinComparableVersion: "1.0.0",
+      optionalUpdateMaxComparableVersion: "2.0.0",
+      createdAt: 1,
+      updatedAt: 1,
+    })
+    prisma.project.update.mockResolvedValue({
+      projectKey: "project-1",
+      name: "Project",
+      repoUrl: null,
+      description: null,
+      author: null,
+      authorHomepageUrl: null,
+      iconUrl: null,
+      websiteUrl: null,
+      publishedAt: null,
+      optionalUpdateMinComparableVersion: null,
+      optionalUpdateMaxComparableVersion: null,
+      createdAt: 1,
+      updatedAt: 2,
+    })
+
+    const service = new ProjectsService(prisma as never)
+    await service.update("project-1", {
+      optional_update_min_comparable_version: "   ",
+      optional_update_max_comparable_version: "",
+    })
+
+    expect(prisma.project.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          optionalUpdateMinComparableVersion: null,
+          optionalUpdateMaxComparableVersion: null,
+        }),
+      }),
+    )
+  })
+
   it("getStatistics returns project count", async () => {
     const prisma = createPrismaMock()
     prisma.project.count.mockResolvedValue(5)

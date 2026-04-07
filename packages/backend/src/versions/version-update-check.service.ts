@@ -1,10 +1,12 @@
 /**
  * Version update check service.
  *
- * Implements the client-facing "check for update" logic including
- * version comparison, optional update range evaluation, deprecation
- * detection, and milestone guard. Separated from VersionsService
- * to isolate complex decision logic from CRUD operations.
+ * Implements the client-facing "check for update" logic with three steps:
+ *   1. Determine whether an update is needed
+ *   2. Determine whether the update is required (forced)
+ *   3. Determine the update target version
+ *
+ * Separated from VersionsService to isolate complex decision logic from CRUD.
  */
 
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common"
@@ -29,7 +31,6 @@ export class VersionUpdateCheckService {
     projectKey: string,
     dto: CheckVersionUpdateDto,
   ): Promise<CheckVersionUpdateResponse> {
-    // Validate that at least one version identifier is provided
     if (!dto.validate()) {
       throw new BadRequestException(
         "At least one of current_version or current_comparable_version must be provided",
@@ -49,6 +50,7 @@ export class VersionUpdateCheckService {
       throw new NotFoundException("Project not found")
     }
 
+    // Resolve latest candidates (always needed for the response)
     const { latestCandidate, latestPreview } = await this.resolveLatestCandidates(
       normalizedKey,
       dto.include_preview ?? false,
@@ -57,55 +59,76 @@ export class VersionUpdateCheckService {
       throw new NotFoundException("Version not found")
     }
 
-    const currentRecord = await this.resolveCurrentRecord(normalizedKey, dto.current_version)
+    // Resolve current version record & comparable version
+    const currentRecord = await this.resolveCurrentRecord(
+      normalizedKey,
+      dto.current_version,
+      dto.current_comparable_version,
+    )
     const currentComparableVersion = this.resolveCurrentComparableVersion(dto, currentRecord)
 
-    this.validateComparableVersions(project, currentComparableVersion)
+    this.validateComparableVersions(project)
 
     const latestComparableVersion = latestCandidate.comparableVersion
     if (!latestComparableVersion) {
       throw new BadRequestException("Latest version comparable_version is not configured")
     }
 
+    // ── Step 1: Determine if update is needed ──
+    const isDeprecated = currentRecord?.isDeprecated ?? false
     const hasNewer =
       compareComparableVersions(latestComparableVersion, currentComparableVersion) > 0
+    const shouldUpdate = hasNewer || isDeprecated
 
-    const { required, reasons, targetVersion } = this.evaluateUpdatePolicy(
-      hasNewer,
+    // ── Step 2: Determine if update is required ──
+    const isInOptionalRange = isComparableVersionInRange(
       currentComparableVersion,
-      latestComparableVersion,
-      currentRecord,
-      latestCandidate,
       project.optionalUpdateMinComparableVersion,
       project.optionalUpdateMaxComparableVersion,
     )
+    const required = shouldUpdate && (isDeprecated || (hasNewer && !isInOptionalRange))
 
-    const milestoneTarget = await this.resolveMilestoneGuard(
-      hasNewer,
-      required,
-      normalizedKey,
-      currentComparableVersion,
-      latestComparableVersion,
-    )
+    // ── Step 3: Determine update target ──
+    let targetVersion: VersionRecord | null = null
+    let milestoneTarget: VersionRecord | null = null
 
-    const finalTarget = milestoneTarget ?? targetVersion
+    if (hasNewer) {
+      milestoneTarget = await this.resolveMilestoneGuard(
+        normalizedKey,
+        currentComparableVersion,
+        latestComparableVersion,
+      )
+      targetVersion = milestoneTarget ?? latestCandidate
+    }
+
+    // Build reason codes
+    const reasons: string[] = []
+    if (hasNewer) {
+      reasons.push("newer_version_available")
+    }
+    if (isDeprecated) {
+      reasons.push("current_version_deprecated")
+    }
+    if (hasNewer && !isInOptionalRange) {
+      reasons.push("outside_optional_update_range")
+    }
     if (milestoneTarget) {
       reasons.push("milestone_guard")
     }
 
     return {
-      should_update: hasNewer || required,
+      should_update: shouldUpdate,
       required,
       reason_codes: reasons,
       current_version: currentRecord?.version ?? dto.current_version?.trim() ?? null,
       current_comparable_version: currentComparableVersion,
       latest_version: toVersionItem(latestCandidate),
       latest_preview_version: latestPreview ? toVersionItem(latestPreview) : null,
-      target_version: toVersionItem(finalTarget),
+      target_version: targetVersion ? toVersionItem(targetVersion) : null,
       milestone: {
         current: currentRecord?.isMilestone ?? false,
         latest: latestCandidate.isMilestone,
-        latest_in_current: milestoneTarget ? toVersionItem(milestoneTarget) : null,
+        target_is_milestone: milestoneTarget !== null,
       },
     }
   }
@@ -143,20 +166,38 @@ export class VersionUpdateCheckService {
   private async resolveCurrentRecord(
     projectKey: string,
     currentVersion: string | undefined,
+    currentComparableVersion: string | undefined,
   ): Promise<{
     version: string
     comparableVersion: string | null
     isMilestone: boolean
     isDeprecated: boolean
   } | null> {
-    if (!currentVersion) {
+    const preferredComparableVersion = currentComparableVersion?.trim()
+    if (preferredComparableVersion) {
+      return this.prisma.version.findFirst({
+        where: {
+          projectKey,
+          comparableVersion: preferredComparableVersion,
+        },
+        select: {
+          version: true,
+          comparableVersion: true,
+          isMilestone: true,
+          isDeprecated: true,
+        },
+      })
+    }
+
+    const preferredVersion = currentVersion?.trim()
+    if (!preferredVersion) {
       return null
     }
 
     return this.prisma.version.findFirst({
       where: {
         projectKey,
-        version: currentVersion.trim(),
+        version: preferredVersion,
       },
       select: {
         version: true,
@@ -182,14 +223,10 @@ export class VersionUpdateCheckService {
     return currentComparableVersion
   }
 
-  private validateComparableVersions(
-    project: {
-      optionalUpdateMinComparableVersion: string | null
-      optionalUpdateMaxComparableVersion: string | null
-    },
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _currentComparableVersion?: string,
-  ): void {
+  private validateComparableVersions(project: {
+    optionalUpdateMinComparableVersion: string | null
+    optionalUpdateMaxComparableVersion: string | null
+  }): void {
     if (project.optionalUpdateMinComparableVersion) {
       parseComparableVersion(project.optionalUpdateMinComparableVersion)
     }
@@ -199,63 +236,20 @@ export class VersionUpdateCheckService {
   }
 
   /**
-   * Evaluate whether the update should be required based on optional range,
-   * deprecation, and version comparison.
-   */
-  private evaluateUpdatePolicy(
-    hasNewer: boolean,
-    currentComparableVersion: string,
-    _latestComparableVersion: string,
-    currentRecord: { isDeprecated: boolean } | null,
-    latestCandidate: VersionRecord,
-    optionalMin: string | null,
-    optionalMax: string | null,
-  ): { required: boolean; reasons: string[]; targetVersion: VersionRecord } {
-    const reasons: string[] = []
-    let required = false
-
-    if (hasNewer) {
-      reasons.push("newer_version_available")
-    }
-
-    const isInOptionalRange = isComparableVersionInRange(
-      currentComparableVersion,
-      optionalMin,
-      optionalMax,
-    )
-    if (hasNewer && !isInOptionalRange) {
-      required = true
-      reasons.push("outside_optional_update_range")
-    }
-
-    if (currentRecord?.isDeprecated && hasNewer) {
-      required = true
-      reasons.push("current_version_deprecated")
-    }
-
-    return { required, reasons, targetVersion: latestCandidate }
-  }
-
-  /**
-   * When a required update exists, check for milestone versions between
-   * current and latest. The earliest milestone becomes the update target
-   * to enforce step-by-step major upgrades.
+   * Find milestone versions between current and latest.
+   * Returns the nearest newer milestone to enforce step-by-step upgrades.
    */
   private async resolveMilestoneGuard(
-    hasNewer: boolean,
-    required: boolean,
     projectKey: string,
     currentComparableVersion: string,
     latestComparableVersion: string,
   ): Promise<VersionRecord | null> {
-    if (!hasNewer || !required) {
-      return null
-    }
-
     const milestoneCandidatesRaw = await this.prisma.version.findMany({
       where: {
         projectKey,
         isMilestone: true,
+        isPreview: false,
+        isDeprecated: false,
         comparableVersion: { not: null },
       },
     })

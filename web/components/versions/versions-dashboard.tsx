@@ -224,14 +224,25 @@ export function VersionsDashboard() {
         return
       }
 
-      const rulesError = validateVersionRules(form)
+      const rulesError = validateVersionRules(form, {
+        candidates: versions.map((item) => ({
+          id: item.id,
+          comparable_version: item.comparable_version,
+          is_preview: item.is_preview,
+          is_deprecated: item.is_deprecated,
+        })),
+      })
       if (rulesError) {
         toast.error(rulesError)
         return
       }
 
       await createVersion(token, selectedProjectKey, payload)
-      toast.success("版本已发布。")
+      if (payload.is_latest) {
+        toast.success("版本已发布。之前的 latest 版本标记已自动重置。")
+      } else {
+        toast.success("版本已发布。")
+      }
       setForm(emptyVersionForm)
       resetVersionsOffset()
       await loadVersions(0)
@@ -283,7 +294,15 @@ export function VersionsDashboard() {
       return
     }
 
-    const rulesError = validateVersionRules(editForm)
+    const rulesError = validateVersionRules(editForm, {
+      candidates: versions.map((item) => ({
+        id: item.id,
+        comparable_version: item.comparable_version,
+        is_preview: item.is_preview,
+        is_deprecated: item.is_deprecated,
+      })),
+      editingVersionId: editingVersionId,
+    })
     if (rulesError) {
       toast.error(rulesError)
       return
@@ -292,7 +311,11 @@ export function VersionsDashboard() {
     setSavingEdit(true)
     try {
       await updateVersion(token, selectedProjectKey, editingVersionId, toCreateInput(editForm))
-      toast.success("版本已更新。")
+      if (editForm.is_latest) {
+        toast.success("版本已更新。之前的 latest 版本标记已自动重置。")
+      } else {
+        toast.success("版本已更新。")
+      }
       setEditDialogOpen(false)
       setEditingVersionId(null)
       await loadVersions(offset)
@@ -902,7 +925,12 @@ export function VersionsDashboard() {
               {simulationResult.should_update ? "需要更新" : "无需更新"} /
               {simulationResult.required ? " 必须更新" : " 可选更新"}
             </p>
-            <p>目标版本：{simulationResult.target_version.version}</p>
+            <p>最新版本：{simulationResult.latest_version.version}</p>
+            <p>
+              更新目标：
+              {simulationResult.target_version ? simulationResult.target_version.version : "无"}
+              {simulationResult.milestone.target_is_milestone ? "（里程碑）" : ""}
+            </p>
             <p>判定原因：{simulationResult.reason_codes.join("、") || "无"}</p>
             <p>
               里程碑：当前 {simulationResult.milestone.current ? "是" : "否"}，最新

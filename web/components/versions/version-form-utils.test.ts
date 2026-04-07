@@ -7,6 +7,7 @@ import {
   toCreateInput,
   toDateTimeLocal,
   toTimestampSeconds,
+  validateVersionRules,
   type VersionFormState,
 } from "./version-form-utils"
 
@@ -140,5 +141,69 @@ describe("emptyVersionForm", () => {
     expect(emptyVersionForm.is_milestone).toBe(false)
     expect(emptyVersionForm.is_deprecated).toBe(false)
     expect(emptyVersionForm.platforms).toEqual([])
+  })
+})
+
+describe("validateVersionRules", () => {
+  it("rejects latest + deprecated combination", () => {
+    const form: VersionFormState = {
+      ...emptyVersionForm,
+      version: "1.0.0",
+      comparable_version: "1.0.0",
+      is_latest: true,
+      is_deprecated: true,
+    }
+
+    expect(validateVersionRules(form)).toBe("Latest 版本不能被标记为废弃。")
+  })
+
+  it("rejects deprecated version when no newer stable candidate exists", () => {
+    const form: VersionFormState = {
+      ...emptyVersionForm,
+      version: "1.0.0",
+      comparable_version: "1.0.0",
+      is_latest: false,
+      is_deprecated: true,
+    }
+
+    const candidates = [
+      {
+        id: "v-preview",
+        comparable_version: "2.0.0-rc.1",
+        is_preview: true,
+        is_deprecated: false,
+      },
+      {
+        id: "v-deprecated",
+        comparable_version: "2.0.0",
+        is_preview: false,
+        is_deprecated: true,
+      },
+    ]
+
+    expect(validateVersionRules(form, { candidates })).toBe(
+      "废弃版本之后必须至少存在一个可升级到的正式版本（非预发布且非废弃）。",
+    )
+  })
+
+  it("accepts deprecated version when newer stable candidate exists", () => {
+    const form: VersionFormState = {
+      ...emptyVersionForm,
+      version: "1.0.0",
+      comparable_version: "1.0.0",
+      is_latest: false,
+      is_deprecated: true,
+    }
+
+    const candidates = [
+      {
+        id: "v-newer",
+        comparable_version: "1.1.0",
+        is_preview: false,
+        is_deprecated: false,
+      },
+    ]
+
+    expect(validateVersionRules(form, { candidates })).toBeNull()
   })
 })

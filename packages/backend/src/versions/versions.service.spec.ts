@@ -524,30 +524,27 @@ describe("VersionsService", () => {
     expect(result.version).toBe("1.2.3")
   })
 
-  it("findByVersionNumber falls back to comparableVersion", async () => {
+  it("findByVersionNumber supports comparableVersion lookup", async () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
-    prisma.version.findFirst.mockResolvedValue(null) // no exact match
-    prisma.version.findMany.mockResolvedValue([
-      {
-        comparableVersion: "1.2.3",
-        id: "v1",
-        version: "v1.2.3",
-        title: null,
-        content: null,
-        downloadUrl: null,
-        downloadLinks: null,
-        forced: false,
-        platform: null,
-        customData: null,
-        isLatest: false,
-        isPreview: false,
-        isMilestone: false,
-        isDeprecated: false,
-        publishedAt: 1000,
-        createdAt: 1000,
-      },
-    ])
+    prisma.version.findFirst.mockResolvedValue({
+      comparableVersion: "1.2.3",
+      id: "v1",
+      version: "v1.2.3",
+      title: null,
+      content: null,
+      downloadUrl: null,
+      downloadLinks: null,
+      forced: false,
+      platform: null,
+      customData: null,
+      isLatest: false,
+      isPreview: false,
+      isMilestone: false,
+      isDeprecated: false,
+      publishedAt: 1000,
+      createdAt: 1000,
+    })
 
     const service = new VersionsService(prisma as never)
     const result = await service.findByVersionNumber("proj", "1.2.3")
@@ -757,7 +754,7 @@ describe("VersionsService", () => {
   it("throws when deprecating last non-deprecated version", async () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
-    prisma.version.count.mockResolvedValue(0) // no non-deprecated versions
+    prisma.version.findMany.mockResolvedValue([])
 
     const service = new VersionsService(prisma as never)
     await expect(
@@ -767,6 +764,46 @@ describe("VersionsService", () => {
         is_deprecated: true,
       }),
     ).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it("throws when creating a deprecated version without newer stable upgrade target", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.version.findMany.mockResolvedValue([])
+
+    const service = new VersionsService(prisma as never)
+    await expect(
+      service.create("proj", {
+        version: "1.0.0",
+        comparable_version: "1.0.0",
+        is_deprecated: true,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it("throws when updating a latest version to deprecated without explicitly unsetting latest", async () => {
+    const prisma = createPrismaMock()
+    prisma.version.findFirst.mockResolvedValue({
+      id: "v1",
+      projectKey: "proj",
+      version: "1.0.0",
+      comparableVersion: "1.0.0",
+      isLatest: true,
+      isPreview: false,
+      isDeprecated: false,
+      downloadUrl: null,
+      downloadLinks: null,
+    })
+    prisma.version.findMany.mockResolvedValue([
+      {
+        comparableVersion: "2.0.0",
+      },
+    ])
+
+    const service = new VersionsService(prisma as never)
+    await expect(service.update("proj", "v1", { is_deprecated: true })).rejects.toBeInstanceOf(
+      BadRequestException,
+    )
   })
 
   // ── ensureLatestForProject ──

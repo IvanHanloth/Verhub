@@ -1,11 +1,16 @@
 import * as React from "react"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { toast } from "sonner"
 
 import { ApiError } from "@/lib/api-client"
-import { createProject, listProjects, previewProjectFromGithubRepo } from "@/lib/projects-api"
+import {
+  createProject,
+  listProjects,
+  previewProjectFromGithubRepo,
+  updateProject,
+} from "@/lib/projects-api"
 
 import { ProjectsDashboard } from "./projects-dashboard"
 
@@ -27,6 +32,7 @@ vi.mock("sonner", () => ({
 const mockedListProjects = vi.mocked(listProjects)
 const mockedPreviewProjectFromGithubRepo = vi.mocked(previewProjectFromGithubRepo)
 const mockedCreateProject = vi.mocked(createProject)
+const mockedUpdateProject = vi.mocked(updateProject)
 const mockedToastError = vi.mocked(toast.error)
 
 describe("ProjectsDashboard", () => {
@@ -35,6 +41,7 @@ describe("ProjectsDashboard", () => {
     mockedListProjects.mockReset()
     mockedPreviewProjectFromGithubRepo.mockReset()
     mockedCreateProject.mockReset()
+    mockedUpdateProject.mockReset()
     mockedToastError.mockReset()
   })
 
@@ -186,5 +193,71 @@ describe("ProjectsDashboard", () => {
 
     expect(mockedToastError).toHaveBeenCalledWith("可选更新范围下限格式不合法。")
     expect(mockedCreateProject).not.toHaveBeenCalled()
+  })
+
+  it("sends null for optional range fields when clearing values during edit", async () => {
+    const user = userEvent.setup()
+    window.localStorage.setItem("verhub-admin-token", "valid-token")
+    mockedListProjects.mockResolvedValue({
+      total: 1,
+      data: [
+        {
+          id: "project-1",
+          project_key: "verhub",
+          name: "Verhub",
+          repo_url: "https://github.com/verhub/verhub",
+          description: null,
+          author: null,
+          author_homepage_url: null,
+          icon_url: null,
+          website_url: null,
+          optional_update_min_comparable_version: "1.0.0",
+          optional_update_max_comparable_version: "2.0.0",
+          published_at: null,
+          created_at: Math.floor(Date.parse("2026-03-20T00:00:00.000Z") / 1000),
+          updated_at: Math.floor(Date.parse("2026-03-20T00:00:00.000Z") / 1000),
+        },
+      ],
+    })
+    mockedUpdateProject.mockResolvedValue({
+      id: "project-1",
+      project_key: "verhub",
+      name: "Verhub",
+      repo_url: "https://github.com/verhub/verhub",
+      description: null,
+      author: null,
+      author_homepage_url: null,
+      icon_url: null,
+      website_url: null,
+      optional_update_min_comparable_version: null,
+      optional_update_max_comparable_version: null,
+      published_at: null,
+      created_at: Math.floor(Date.parse("2026-03-20T00:00:00.000Z") / 1000),
+      updated_at: Math.floor(Date.parse("2026-03-20T00:00:00.000Z") / 1000),
+    })
+
+    render(React.createElement(ProjectsDashboard))
+
+    await screen.findByText("ID: project-1")
+    await user.click(screen.getByRole("button", { name: "编辑" }))
+
+    const dialog = screen.getByRole("dialog")
+    const minInput = within(dialog).getByPlaceholderText("例如：1.0.0")
+    const maxInput = within(dialog).getByPlaceholderText("例如：1.99.99")
+
+    await user.clear(minInput)
+    await user.clear(maxInput)
+    await user.click(within(dialog).getByRole("button", { name: "保存修改" }))
+
+    await waitFor(() => {
+      expect(mockedUpdateProject).toHaveBeenCalledWith(
+        "valid-token",
+        "verhub",
+        expect.objectContaining({
+          optional_update_min_comparable_version: null,
+          optional_update_max_comparable_version: null,
+        }),
+      )
+    })
   })
 })

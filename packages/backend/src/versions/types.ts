@@ -89,11 +89,11 @@ export type CheckVersionUpdateResponse = {
   current_comparable_version: string
   latest_version: VersionItem
   latest_preview_version: VersionItem | null
-  target_version: VersionItem
+  target_version: VersionItem | null
   milestone: {
     current: boolean
     latest: boolean
-    latest_in_current: VersionItem | null
+    target_is_milestone: boolean
   }
 }
 

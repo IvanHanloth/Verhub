@@ -99,7 +99,7 @@
 
 公开更新接口：
 
-- `GET /api/v1/public/{projectKey}/versions/by-version/{version}`
+- `GET /api/v1/public/{projectKey}/versions/by-version/{version}`（支持语义化版本号与可比较版本号）
 - `GET /api/v1/public/{projectKey}/versions/latest-preview`
 - `POST /api/v1/public/{projectKey}/versions/check-update`
 
@@ -107,8 +107,12 @@
 
 1. 比较当前版本与目标版本（按 `comparable_version`）
 2. 检查是否超出项目级可选更新范围
-3. 检查当前版本是否被废弃
-4. 检查是否触发里程碑拦截（必须先升到当前里程碑最新）
+3. 检查当前版本是否被废弃（废弃版本有更新时必更）
+4. 检查是否触发里程碑拦截（存在里程碑时先升到最早里程碑版本）
+
+参数优先级：
+
+- `current_version` 与 `current_comparable_version` 同时提交时，服务端优先使用 `current_comparable_version`
 
 判定结果通过以下字段返回：
 
@@ -130,6 +134,7 @@
 
 - 当前版本在范围内：可以提示更新但不强制
 - 当前版本不在范围内：遇到新版本将触发必更
+- 支持将范围下限/上限清空并保存
 
 ## 2. 版本管理页配置“版本策略”
 

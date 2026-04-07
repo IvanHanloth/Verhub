@@ -1,7 +1,33 @@
-import { IsInt, IsOptional, IsString, IsUrl, Matches, MaxLength, Min } from "class-validator"
+import { Transform } from "class-transformer"
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Matches,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from "class-validator"
 
 const COMPARABLE_VERSION_PATTERN =
   /^(?<core>\d+(?:\.\d+)*)(?:-(?<tag>alpha|beta|rc)(?:\.(?<tail>\d+(?:\.\d+)*))?)?$/
+
+/**
+ * Transform that normalizes empty / whitespace-only strings to `null`.
+ * Preserves `undefined` (property not sent) and `null` (explicit clear).
+ */
+function NullableStringTransform() {
+  return Transform(({ value }: { value: unknown }) => {
+    if (value === undefined) return undefined
+    if (value === null) return null
+    if (typeof value === "string") {
+      const trimmed = value.trim()
+      return trimmed.length > 0 ? trimmed : null
+    }
+    return value
+  })
+}
 
 export class CreateProjectDto {
   @IsString()
@@ -47,7 +73,8 @@ export class CreateProjectDto {
   @Min(0)
   published_at?: number
 
-  @IsOptional()
+  @NullableStringTransform()
+  @ValidateIf((_object, value) => value !== null && value !== undefined)
   @IsString()
   @MaxLength(64)
   @Matches(COMPARABLE_VERSION_PATTERN, {
@@ -55,7 +82,8 @@ export class CreateProjectDto {
   })
   optional_update_min_comparable_version?: string | null
 
-  @IsOptional()
+  @NullableStringTransform()
+  @ValidateIf((_object, value) => value !== null && value !== undefined)
   @IsString()
   @MaxLength(64)
   @Matches(COMPARABLE_VERSION_PATTERN, {

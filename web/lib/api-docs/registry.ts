@@ -22,7 +22,16 @@ const endpointsSeed: EndpointSeed[] = [
       },
     ],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     responseBody: {
       label: "200 响应",
       language: "json",
@@ -72,7 +81,16 @@ const endpointsSeed: EndpointSeed[] = [
         example: "0",
       },
     ],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     responseBody: {
       label: "200 响应",
       language: "json",
@@ -118,7 +136,16 @@ const endpointsSeed: EndpointSeed[] = [
       },
     ],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     responseBody: {
       label: "200 响应",
       language: "json",
@@ -143,7 +170,16 @@ const endpointsSeed: EndpointSeed[] = [
     auth: { mode: "none", description: "无需鉴权" },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     responseBody: {
       label: "200 响应",
       language: "json",
@@ -176,7 +212,16 @@ const endpointsSeed: EndpointSeed[] = [
       },
     ],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     responseBody: {
       label: "200 响应",
       language: "json",
@@ -201,7 +246,16 @@ const endpointsSeed: EndpointSeed[] = [
     auth: { mode: "none", description: "无需鉴权" },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     requestBody: {
       label: "请求体",
       language: "json",
@@ -267,7 +321,16 @@ const endpointsSeed: EndpointSeed[] = [
         description: "平台过滤（ios/android/windows/mac/web）",
       },
     ],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     responseBody: {
       label: "200 响应",
       language: "json",
@@ -304,7 +367,16 @@ const endpointsSeed: EndpointSeed[] = [
         description: "平台过滤（ios/android/windows/mac/web）",
       },
     ],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     responseBody: {
       label: "200 响应",
       language: "json",
@@ -328,7 +400,16 @@ const endpointsSeed: EndpointSeed[] = [
     auth: { mode: "none", description: "无需鉴权" },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     requestBody: {
       label: "请求体",
       language: "json",
@@ -360,7 +441,16 @@ const endpointsSeed: EndpointSeed[] = [
     auth: { mode: "none", description: "无需鉴权" },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     requestBody: {
       label: "请求体",
       language: "json",
@@ -391,7 +481,16 @@ const endpointsSeed: EndpointSeed[] = [
     auth: { mode: "none", description: "无需鉴权" },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     requestBody: {
       label: "请求体",
       language: "json",
@@ -929,6 +1028,132 @@ const endpointsSeed: EndpointSeed[] = [
   "success": true
 }`,
     },
+  },
+  {
+    module: "Statistics",
+    visibility: "admin",
+    title: "查询接口请求统计概览",
+    description:
+      "按项目返回指定时间范围内的公开接口请求总数，以及按接口、平台、地区的分组汇总。未指定时间范围时默认统计最近 7 天。",
+    method: "GET",
+    path: "/admin/projects/{projectKey}/stats/requests/overview",
+    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
+    queryParams: [
+      {
+        name: "start_time",
+        type: "number",
+        required: false,
+        description: "开始时间（Unix 秒），缺省为 end_time 前 7 天",
+      },
+      {
+        name: "end_time",
+        type: "number",
+        required: false,
+        description: "结束时间（Unix 秒），缺省为当前时间",
+      },
+    ],
+    headers: [
+      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+    ],
+    responseBody: {
+      label: "200 响应",
+      language: "json",
+      content: `{
+  "start_time": 1760000000,
+  "end_time": 1760604800,
+  "total": 1280,
+  "by_endpoint": [
+    { "endpoint": "VERSION_CHECK_UPDATE", "count": 860 },
+    { "endpoint": "ANNOUNCEMENT_LATEST", "count": 420 }
+  ],
+  "by_platform": [
+    { "platform": "WINDOWS", "count": 900 },
+    { "platform": "ANDROID", "count": 380 }
+  ],
+  "by_region": [{ "region": "UNKNOWN", "count": 1280 }]
+}`,
+    },
+    errorResponses: [
+      {
+        label: "400 参数错误",
+        language: "json",
+        content: `{
+  "message": "start_time must not be greater than end_time",
+  "error": "Bad Request",
+  "statusCode": 400
+}`,
+      },
+    ],
+  },
+  {
+    module: "Statistics",
+    visibility: "admin",
+    title: "查询接口请求时间序列",
+    description:
+      "按小时或按天返回请求数序列。统计始终以小时为最小粒度存储，granularity=day 时在查询阶段汇总；范围内无请求的时间桶以 0 返回，便于直接绘制曲线。",
+    method: "GET",
+    path: "/admin/projects/{projectKey}/stats/requests/timeseries",
+    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
+    queryParams: [
+      {
+        name: "start_time",
+        type: "number",
+        required: false,
+        description: "开始时间（Unix 秒），缺省为 end_time 前 7 天",
+      },
+      {
+        name: "end_time",
+        type: "number",
+        required: false,
+        description: "结束时间（Unix 秒），缺省为当前时间",
+      },
+      {
+        name: "granularity",
+        type: "string",
+        required: false,
+        description: "聚合粒度：hour（默认）或 day",
+        example: "hour",
+      },
+      {
+        name: "endpoint",
+        type: "string",
+        required: false,
+        description:
+          "仅统计指定接口，缺省统计全部。可选值：PROJECT_DETAIL / VERSION_LIST / VERSION_LATEST / VERSION_LATEST_PREVIEW / VERSION_BY_VERSION / VERSION_CHECK_UPDATE / ANNOUNCEMENT_LIST / ANNOUNCEMENT_LATEST / FEEDBACK_SUBMIT / LOG_UPLOAD / ACTION_RECORD",
+        example: "VERSION_CHECK_UPDATE",
+      },
+    ],
+    headers: [
+      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+    ],
+    responseBody: {
+      label: "200 响应",
+      language: "json",
+      content: `{
+  "start_time": 1760000000,
+  "end_time": 1760007200,
+  "granularity": "hour",
+  "endpoint": null,
+  "data": [
+    { "bucket": 1760000000, "count": 12 },
+    { "bucket": 1760003600, "count": 0 },
+    { "bucket": 1760007200, "count": 31 }
+  ]
+}`,
+    },
+    errorResponses: [
+      {
+        label: "400 参数错误",
+        language: "json",
+        content: `{
+  "message": "start_time must not be greater than end_time",
+  "error": "Bad Request",
+  "statusCode": 400
+}`,
+      },
+    ],
   },
 ]
 

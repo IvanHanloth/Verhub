@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import {
+  BarChart3,
   Bell,
   ClipboardList,
   FolderKanban,
@@ -40,6 +41,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { href: "/admin", label: "概览", icon: LayoutDashboard },
+  { href: "/admin/analytics", label: "统计大屏", icon: BarChart3 },
   { href: "/admin/projects", label: "项目管理", icon: FolderKanban },
   { href: "/admin/versions", label: "版本管理", icon: ClipboardList },
   { href: "/admin/announcements", label: "公告管理", icon: Bell },

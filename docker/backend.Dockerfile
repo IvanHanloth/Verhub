@@ -1,4 +1,6 @@
-FROM node:24-alpine AS backend-builder
+# Shared dependency + source layer. The production build and the hot-reload dev
+# stage both branch off this so they resolve identical dependencies.
+FROM node:24-alpine AS backend-deps
 
 RUN apk add --no-cache openssl python3 make g++
 WORKDIR /app
@@ -15,7 +17,29 @@ RUN pnpm install --filter @workspace/backend... --frozen-lockfile
 COPY packages ./packages
 
 RUN pnpm --filter @workspace/backend prisma:generate
+
+FROM backend-deps AS backend-builder
+
 RUN pnpm --filter @workspace/backend build
+
+# Hot-reload development stage: sources are bind-mounted by docker-compose.dev.yml
+# and `nest start --watch` recompiles in place. Never used for production images.
+FROM backend-deps AS backend-dev
+
+COPY docker/backend-dev-entrypoint.sh /usr/local/bin/backend-dev-entrypoint.sh
+RUN chmod +x /usr/local/bin/backend-dev-entrypoint.sh && mkdir -p /bootstrap
+
+ENV NODE_ENV=development
+ENV PORT=4000
+ENV BOOTSTRAP_SECRET_DIR=/bootstrap
+
+EXPOSE 4000
+
+# Longer start period than production: the first watch build compiles from scratch.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=5 \
+  CMD node -e "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["backend-dev-entrypoint.sh"]
 
 FROM node:24-alpine AS backend-runtime
 

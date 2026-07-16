@@ -12,6 +12,9 @@ import {
 } from "@nestjs/common"
 
 import { JwtAdminGuard } from "../auth/guards/jwt-admin.guard"
+import { PublicEndpoint } from "@prisma/client"
+
+import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 import { CreateActionDto } from "./dto/create-action.dto"
 import { CreateActionRecordDto } from "./dto/create-action-record.dto"
 import { QueryActionsDto } from "./dto/query-actions.dto"
@@ -78,6 +81,7 @@ export class ActionsController {
   }
 
   @Post("public/:projectKey/actions")
+  @TrackEndpoint(PublicEndpoint.ACTION_RECORD)
   async createRecordByProjectKey(
     @Param("projectKey") projectKey: string,
     @Body() dto: CreateActionRecordDto,

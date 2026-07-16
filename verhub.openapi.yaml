@@ -18,6 +18,8 @@ tags:
   - name: Announcements
   - name: Feedbacks
   - name: Logs
+  - name: Actions
+  - name: Statistics
 
 paths:
   /health:
@@ -1088,6 +1090,44 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Feedbacks]
+      summary: 更新反馈
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFeedbackDto"
+      responses:
+        "200":
+          description: 更新后的反馈
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Feedbacks]
+      summary: 删除反馈
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSuccessResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /admin/feedbacks/statistics:
     get:
@@ -1170,6 +1210,8 @@ paths:
   /public/{projectKey}:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ClientPlatformHeader"
+      - $ref: "#/components/parameters/ClientPlatformQuery"
     get:
       tags: [Projects]
       summary: 按 project_key 获取项目信息
@@ -1185,6 +1227,8 @@ paths:
   /public/{projectKey}/versions:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ClientPlatformHeader"
+      - $ref: "#/components/parameters/ClientPlatformQuery"
     get:
       tags: [Versions]
       summary: 按 project_key 获取所有版本（从新到旧）
@@ -1203,6 +1247,8 @@ paths:
   /public/{projectKey}/versions/latest:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ClientPlatformHeader"
+      - $ref: "#/components/parameters/ClientPlatformQuery"
     get:
       tags: [Versions]
       summary: 按 project_key 获取最新稳定版本
@@ -1218,6 +1264,8 @@ paths:
   /public/{projectKey}/versions/latest-preview:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ClientPlatformHeader"
+      - $ref: "#/components/parameters/ClientPlatformQuery"
     get:
       tags: [Versions]
       summary: 按 project_key 获取最新 preview 版本
@@ -1235,6 +1283,8 @@ paths:
   /public/{projectKey}/versions/by-version/{version}:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ClientPlatformHeader"
+      - $ref: "#/components/parameters/ClientPlatformQuery"
       - name: version
         in: path
         required: true
@@ -1256,6 +1306,7 @@ paths:
   /public/{projectKey}/versions/check-update:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ClientPlatformHeader"
     post:
       tags: [Versions]
       summary: 提交当前版本并自动检查是否需要更新
@@ -1279,6 +1330,8 @@ paths:
   /public/{projectKey}/announcements:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ClientPlatformHeader"
+      - $ref: "#/components/parameters/ClientPlatformQuery"
     get:
       tags: [Announcements]
       summary: 按 project_key 获取公告列表
@@ -1303,6 +1356,8 @@ paths:
   /public/{projectKey}/announcements/latest:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ClientPlatformHeader"
+      - $ref: "#/components/parameters/ClientPlatformQuery"
     get:
       tags: [Announcements]
       summary: 按 project_key 获取最新公告
@@ -1325,6 +1380,7 @@ paths:
   /public/{projectKey}/feedbacks:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ClientPlatformHeader"
     post:
       tags: [Feedbacks]
       summary: 客户端上报反馈
@@ -1342,6 +1398,77 @@ paths:
                 $ref: "#/components/schemas/FeedbackItem"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /admin/projects/{projectKey}/stats/requests/overview:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+    get:
+      tags: [Statistics]
+      summary: 查询项目公开接口请求统计概览
+      description: |
+        返回指定时间范围内的总请求数，以及按接口、平台、地区的分组汇总。
+        未指定时间范围时默认统计最近 7 天。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StartTime"
+        - $ref: "#/components/parameters/EndTime"
+      responses:
+        "200":
+          description: 统计概览
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestStatsOverview"
+        "400":
+          description: 参数错误（如 start_time > end_time）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/projects/{projectKey}/stats/requests/timeseries:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+    get:
+      tags: [Statistics]
+      summary: 查询项目公开接口请求时间序列
+      description: |
+        按小时或按天返回请求数序列。统计始终以小时为最小粒度存储，
+        granularity=day 时在查询阶段汇总。范围内没有请求的时间桶以 0 返回。
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StartTime"
+        - $ref: "#/components/parameters/EndTime"
+        - name: granularity
+          in: query
+          schema:
+            type: string
+            enum: [hour, day]
+            default: hour
+        - name: endpoint
+          in: query
+          description: 仅统计指定接口，省略则统计全部接口
+          schema:
+            $ref: "#/components/schemas/PublicEndpoint"
+      responses:
+        "200":
+          description: 请求数时间序列
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestStatsTimeseries"
+        "400":
+          description: 参数错误（如 start_time > end_time）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /admin/projects/{projectKey}/logs:
     parameters:
@@ -1404,6 +1531,7 @@ paths:
   /public/{projectKey}/logs:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ClientPlatformHeader"
     post:
       tags: [Logs]
       summary: 客户端上报日志
@@ -1610,6 +1738,7 @@ paths:
   /public/{projectKey}/actions:
     parameters:
       - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ClientPlatformHeader"
     post:
       tags: [Actions]
       summary: 上报行为记录
@@ -1676,6 +1805,28 @@ components:
       description: 项目主键 project_key（大小写不敏感）
       schema:
         type: string
+    ClientPlatformHeader:
+      name: x-verhub-platform
+      in: header
+      required: false
+      description: |
+        客户端平台声明，仅用于请求统计，不影响接口返回内容。
+        识别优先级：本请求头 > query 参数 `platform` > 请求体 `platform` 字段 > User-Agent 推断。
+        取值大小写不敏感，无法识别时统计为 UNKNOWN。
+        建议 SDK 显式声明本请求头：服务端调用的 User-Agent 往往不可靠。
+      schema:
+        type: string
+        enum: [ios, ipados, android, windows, win32, mac, macos, darwin, web, browser]
+    ClientPlatformQuery:
+      name: platform
+      in: query
+      required: false
+      description: |
+        客户端平台声明（等价于 `x-verhub-platform` 请求头，优先级低于请求头）。
+        仅用于请求统计，不影响接口返回内容。
+      schema:
+        type: string
+        enum: [ios, ipados, android, windows, win32, mac, macos, darwin, web, browser]
     EntityId:
       name: id
       in: path
@@ -1723,6 +1874,12 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
     NotFound:
       description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadRequest:
+      description: 请求参数错误
       content:
         application/json:
           schema:
@@ -2092,6 +2249,12 @@ components:
           type: string
           maxLength: 64
           description: 项目级可选更新范围上限（可比较版本号）
+        stats_retention_days:
+          type: integer
+          minimum: 1
+          maximum: 365
+          default: 365
+          description: 接口请求统计保留时长（天），超出部分每日自动清理
 
     UpdateProjectDto:
       type: object
@@ -2132,6 +2295,12 @@ components:
         optional_update_max_comparable_version:
           type: string
           maxLength: 64
+        stats_retention_days:
+          type: integer
+          minimum: 1
+          maximum: 365
+          default: 365
+          description: 接口请求统计保留时长（天），超出部分每日自动清理
 
     ProjectItem:
       type: object
@@ -2149,6 +2318,7 @@ components:
           published_at,
           optional_update_min_comparable_version,
           optional_update_max_comparable_version,
+          stats_retention_days,
           created_at,
           updated_at,
         ]
@@ -2178,12 +2348,117 @@ components:
           type: [string, "null"]
         optional_update_max_comparable_version:
           type: [string, "null"]
+        stats_retention_days:
+          type: integer
+          description: 接口请求统计保留时长（天）
         created_at:
           type: integer
           format: int64
         updated_at:
           type: integer
           format: int64
+
+    PublicEndpoint:
+      type: string
+      description: 被统计的公开接口标识
+      enum:
+        - PROJECT_DETAIL
+        - VERSION_LIST
+        - VERSION_LATEST
+        - VERSION_LATEST_PREVIEW
+        - VERSION_BY_VERSION
+        - VERSION_CHECK_UPDATE
+        - ANNOUNCEMENT_LIST
+        - ANNOUNCEMENT_LATEST
+        - FEEDBACK_SUBMIT
+        - LOG_UPLOAD
+        - ACTION_RECORD
+
+    StatPlatform:
+      type: string
+      description: |
+        请求来源平台。优先取 SDK 显式声明（`x-verhub-platform` 请求头、
+        query 或 body 的 platform 字段），否则由 User-Agent 推断，
+        无法识别时为 UNKNOWN。
+      enum: [IOS, ANDROID, WINDOWS, MAC, WEB, UNKNOWN]
+
+    RequestStatsOverview:
+      type: object
+      required: [start_time, end_time, total, by_endpoint, by_platform, by_region]
+      properties:
+        start_time:
+          type: integer
+          format: int64
+        end_time:
+          type: integer
+          format: int64
+        total:
+          type: integer
+          description: 时间范围内的请求总数
+        by_endpoint:
+          type: array
+          description: 按接口汇总，按请求数降序
+          items:
+            type: object
+            required: [endpoint, count]
+            properties:
+              endpoint:
+                $ref: "#/components/schemas/PublicEndpoint"
+              count:
+                type: integer
+        by_platform:
+          type: array
+          description: 按平台汇总，按请求数降序
+          items:
+            type: object
+            required: [platform, count]
+            properties:
+              platform:
+                $ref: "#/components/schemas/StatPlatform"
+              count:
+                type: integer
+        by_region:
+          type: array
+          description: 按地区汇总。地区解析尚未实现，当前恒为单个 UNKNOWN 分组。
+          items:
+            type: object
+            required: [region, count]
+            properties:
+              region:
+                type: string
+              count:
+                type: integer
+
+    RequestStatsTimeseries:
+      type: object
+      required: [start_time, end_time, granularity, endpoint, data]
+      properties:
+        start_time:
+          type: integer
+          format: int64
+        end_time:
+          type: integer
+          format: int64
+        granularity:
+          type: string
+          enum: [hour, day]
+        endpoint:
+          oneOf:
+            - $ref: "#/components/schemas/PublicEndpoint"
+            - type: "null"
+          description: 若查询时指定了接口则回显，否则为 null
+        data:
+          type: array
+          items:
+            type: object
+            required: [bucket, count]
+            properties:
+              bucket:
+                type: integer
+                format: int64
+                description: 时间桶起点（Unix 秒，UTC 对齐到整点或整天）
+              count:
+                type: integer
 
     ProjectListResponse:
       type: object

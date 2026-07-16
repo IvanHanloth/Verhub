@@ -1,10 +1,11 @@
 import type { Metadata } from "next"
-import { redirect } from "next/navigation"
+
+import { AnalyticsDashboard } from "@/components/analytics/analytics-dashboard"
 
 export const metadata: Metadata = {
-  title: "分析重定向",
+  title: "统计大屏",
 }
 
-export default function AnalyticsRedirectPage() {
-  redirect("/admin")
+export default function DashboardAnalyticsPage() {
+  return <AnalyticsDashboard />
 }

@@ -1,6 +1,9 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common"
 
 import { JwtAdminGuard } from "../auth/guards/jwt-admin.guard"
+import { PublicEndpoint } from "@prisma/client"
+
+import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 
 import { CreateFeedbackDto } from "./dto/create-feedback.dto"
 import { QueryFeedbacksDto } from "./dto/query-feedbacks.dto"
@@ -43,6 +46,7 @@ export class FeedbacksController {
   }
 
   @Post("public/:projectKey/feedbacks")
+  @TrackEndpoint(PublicEndpoint.FEEDBACK_SUBMIT)
   async createByProjectKey(
     @Param("projectKey") projectKey: string,
     @Body() dto: CreateFeedbackDto,

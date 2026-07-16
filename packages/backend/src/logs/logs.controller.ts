@@ -1,6 +1,9 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common"
 
 import { JwtAdminGuard } from "../auth/guards/jwt-admin.guard"
+import { PublicEndpoint } from "@prisma/client"
+
+import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 
 import { QueryLogsDto } from "./dto/query-logs.dto"
 import { UploadLogDto } from "./dto/upload-log.dto"
@@ -17,6 +20,7 @@ export class LogsController {
   }
 
   @Post("public/:projectKey/logs")
+  @TrackEndpoint(PublicEndpoint.LOG_UPLOAD)
   async createByProjectKey(@Param("projectKey") projectKey: string, @Body() dto: UploadLogDto) {
     return this.logsService.createByProjectKey(projectKey, dto)
   }

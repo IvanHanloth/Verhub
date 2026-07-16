@@ -46,6 +46,11 @@ import {
 
 const PAGE_SIZE = 10
 
+/** Keep in sync with the backend's stats retention bounds. */
+const DEFAULT_STATS_RETENTION_DAYS = 365
+const MIN_STATS_RETENTION_DAYS = 1
+const MAX_STATS_RETENTION_DAYS = 365
+
 type FormState = {
   project_key: string
   name: string
@@ -58,6 +63,7 @@ type FormState = {
   published_at: string
   optional_update_min_comparable_version: string
   optional_update_max_comparable_version: string
+  stats_retention_days: string
 }
 
 const emptyForm: FormState = {
@@ -72,6 +78,7 @@ const emptyForm: FormState = {
   published_at: "",
   optional_update_min_comparable_version: "",
   optional_update_max_comparable_version: "",
+  stats_retention_days: String(DEFAULT_STATS_RETENTION_DAYS),
 }
 
 function toTimestampSeconds(value: string): number | undefined {
@@ -86,6 +93,26 @@ function toTimestampSeconds(value: string): number | undefined {
   }
 
   return Math.floor(millis / 1000)
+}
+
+function toStatsRetentionDays(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return undefined
+  }
+
+  const days = Number(trimmed)
+  if (
+    !Number.isInteger(days) ||
+    days < MIN_STATS_RETENTION_DAYS ||
+    days > MAX_STATS_RETENTION_DAYS
+  ) {
+    throw new Error(
+      `统计保留时长需为 ${MIN_STATS_RETENTION_DAYS}-${MAX_STATS_RETENTION_DAYS} 之间的整数天`,
+    )
+  }
+
+  return days
 }
 
 function toMutationInput(
@@ -117,6 +144,7 @@ function toMutationInput(
     published_at: toTimestampSeconds(form.published_at),
     optional_update_min_comparable_version: resolveOptionalField(optionalMin),
     optional_update_max_comparable_version: resolveOptionalField(optionalMax),
+    stats_retention_days: toStatsRetentionDays(form.stats_retention_days),
   }
 }
 
@@ -275,6 +303,24 @@ function ProjectFormFields({
         />
         {maxComparableError ? <p className="text-xs text-rose-500">{maxComparableError}</p> : null}
       </label>
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">统计保留时长（天）</span>
+        <input
+          type="number"
+          min={MIN_STATS_RETENTION_DAYS}
+          max={MAX_STATS_RETENTION_DAYS}
+          step={1}
+          placeholder={String(DEFAULT_STATS_RETENTION_DAYS)}
+          value={form.stats_retention_days}
+          onChange={(event) =>
+            setForm((prev) => ({ ...prev, stats_retention_days: event.target.value }))
+          }
+          className={inputClassName}
+        />
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          超出该时长的接口请求统计会被自动清理，最长 {MAX_STATS_RETENTION_DAYS} 天。
+        </p>
+      </label>
     </>
   )
 }
@@ -391,6 +437,7 @@ export function ProjectsDashboard() {
         : "",
       optional_update_min_comparable_version: project.optional_update_min_comparable_version ?? "",
       optional_update_max_comparable_version: project.optional_update_max_comparable_version ?? "",
+      stats_retention_days: String(project.stats_retention_days ?? DEFAULT_STATS_RETENTION_DAYS),
     })
     setEditDialogOpen(true)
   }
@@ -410,6 +457,7 @@ export function ProjectsDashboard() {
         : "",
       optional_update_min_comparable_version: project.optional_update_min_comparable_version ?? "",
       optional_update_max_comparable_version: project.optional_update_max_comparable_version ?? "",
+      stats_retention_days: String(project.stats_retention_days ?? DEFAULT_STATS_RETENTION_DAYS),
     })
     toast.success("已复制配置到表单，可直接创建新项目。")
     scrollToPageTop()

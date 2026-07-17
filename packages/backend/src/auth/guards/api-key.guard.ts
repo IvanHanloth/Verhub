@@ -1,8 +1,15 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common"
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from "@nestjs/common"
 import { Reflector } from "@nestjs/core"
 
 import { ApiKeyManagementService } from "../api-key-management.service"
 import { API_SCOPE_KEY } from "./api-scope.decorator"
+import { extractApiKey } from "./credential"
 
 type RequestLike = {
   headers: Record<string, string | string[] | undefined>
@@ -22,6 +29,8 @@ function pickString(value: unknown): string | undefined {
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
+  private readonly logger = new Logger(ApiKeyGuard.name)
+
   constructor(
     private readonly apiKeyManagementService: ApiKeyManagementService,
     private readonly reflector: Reflector,
@@ -33,11 +42,20 @@ export class ApiKeyGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ])
-    const apiKeyHeader = request.headers["x-api-key"]
-    const apiKey = Array.isArray(apiKeyHeader) ? apiKeyHeader[0] : apiKeyHeader
+    const apiKey = extractApiKey(request)
 
     if (!apiKey) {
       throw new UnauthorizedException("Missing api key")
+    }
+
+    // Fail closed: an endpoint that declares no scope has not opted into API
+    // key access, so a forgotten @RequireApiScope can never widen what a key
+    // can reach. Admin JWT callers are unaffected — they never reach here.
+    if (!requiredScope) {
+      this.logger.error(
+        `[auth][api-key] endpoint ${context.getClass().name}.${context.getHandler().name} accepts api keys but declares no @RequireApiScope; denying`,
+      )
+      throw new UnauthorizedException("API key is not accepted on this endpoint")
     }
 
     const projectId =

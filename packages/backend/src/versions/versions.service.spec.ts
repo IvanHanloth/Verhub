@@ -21,6 +21,30 @@ function createPrismaMock() {
   }
 }
 
+function buildVersionRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "v1",
+    projectKey: "proj",
+    version: "1.0.0",
+    comparableVersion: "1.0.0",
+    title: null,
+    content: null,
+    downloadUrl: null,
+    downloadLinks: null,
+    forced: false,
+    platform: null,
+    platforms: [],
+    customData: null,
+    isLatest: false,
+    isPreview: false,
+    isMilestone: false,
+    isDeprecated: false,
+    publishedAt: 1000,
+    createdAt: 1000,
+    ...overrides,
+  }
+}
+
 describe("VersionsService", () => {
   it("throws when project does not exist", async () => {
     const prisma = createPrismaMock()
@@ -850,5 +874,156 @@ describe("VersionsService", () => {
 
     // Should have promoted another version to latest
     expect(prisma.version.update).toHaveBeenCalledTimes(2)
+  })
+
+  it("update clears download url when explicitly set to null", async () => {
+    const prisma = createPrismaMock()
+    prisma.version.findFirst.mockResolvedValue({
+      id: "v1",
+      projectKey: "proj",
+      version: "1.0.0",
+      comparableVersion: "1.0.0",
+      isLatest: false,
+      isPreview: false,
+      isDeprecated: false,
+      downloadUrl: "https://old.com/app",
+      downloadLinks: [{ url: "https://old.com/app" }],
+    })
+    prisma.version.update.mockResolvedValue(buildVersionRecord({ downloadUrl: null }))
+
+    const service = new VersionsService(prisma as never)
+    await service.update("proj", "v1", { download_url: null })
+
+    expect(prisma.version.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ downloadUrl: null, downloadLinks: [] }),
+      }),
+    )
+  })
+
+  it("update keeps current download url when field is omitted", async () => {
+    const prisma = createPrismaMock()
+    prisma.version.findFirst.mockResolvedValue({
+      id: "v1",
+      projectKey: "proj",
+      version: "1.0.0",
+      comparableVersion: "1.0.0",
+      isLatest: false,
+      isPreview: false,
+      isDeprecated: false,
+      downloadUrl: "https://old.com/app",
+      downloadLinks: [{ url: "https://old.com/app" }],
+    })
+    prisma.version.update.mockResolvedValue(buildVersionRecord())
+
+    const service = new VersionsService(prisma as never)
+    await service.update("proj", "v1", { title: "Renamed" })
+
+    expect(prisma.version.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ downloadUrl: "https://old.com/app" }),
+      }),
+    )
+  })
+})
+
+describe("VersionsService.upsertByVersion", () => {
+  it("creates the version when the project has no version with that number", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.version.findUnique.mockResolvedValue(null)
+    prisma.version.create.mockResolvedValue(buildVersionRecord({ version: "1.2.3" }))
+    prisma.version.updateMany.mockResolvedValue({ count: 0 })
+
+    const service = new VersionsService(prisma as never)
+    const result = await service.upsertByVersion("proj", "1.2.3", { title: "Release" })
+
+    expect(result.created).toBe(true)
+    expect(prisma.version.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // comparable_version is derived from the path segment when omitted
+        data: expect.objectContaining({ version: "1.2.3", comparableVersion: "1.2.3" }),
+      }),
+    )
+  })
+
+  it("updates in place when the version already exists", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.version.findUnique.mockResolvedValue({ id: "v1" })
+    prisma.version.findFirst.mockResolvedValue({
+      id: "v1",
+      projectKey: "proj",
+      version: "1.2.3",
+      comparableVersion: "1.2.3",
+      isLatest: false,
+      isPreview: false,
+      isDeprecated: false,
+      downloadUrl: null,
+      downloadLinks: null,
+    })
+    prisma.version.update.mockResolvedValue(buildVersionRecord({ version: "1.2.3" }))
+
+    const service = new VersionsService(prisma as never)
+    const result = await service.upsertByVersion("proj", "1.2.3", { title: "Re-published" })
+
+    expect(result.created).toBe(false)
+    expect(prisma.version.create).not.toHaveBeenCalled()
+    expect(prisma.version.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "v1" },
+        data: expect.objectContaining({ title: "Re-published" }),
+      }),
+    )
+  })
+
+  it("rejects a body version that disagrees with the path", async () => {
+    const prisma = createPrismaMock()
+    const service = new VersionsService(prisma as never)
+
+    await expect(
+      service.upsertByVersion("proj", "1.2.3", { version: "9.9.9" }),
+    ).rejects.toBeInstanceOf(BadRequestException)
+    expect(prisma.version.create).not.toHaveBeenCalled()
+  })
+
+  it("throws when the project does not exist", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue(null)
+
+    const service = new VersionsService(prisma as never)
+    await expect(service.upsertByVersion("missing", "1.2.3", {})).rejects.toBeInstanceOf(
+      NotFoundException,
+    )
+  })
+
+  it("falls back to update when a concurrent publish wins the insert race", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    // Absent on first lookup, present once the racing writer has committed.
+    prisma.version.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "v1" })
+    prisma.version.create.mockRejectedValue(
+      Object.assign(new Error("unique"), { code: "P2002", name: "PrismaClientKnownRequestError" }),
+    )
+    prisma.version.findFirst.mockResolvedValue({
+      id: "v1",
+      projectKey: "proj",
+      version: "1.2.3",
+      comparableVersion: "1.2.3",
+      isLatest: false,
+      isPreview: false,
+      isDeprecated: false,
+      downloadUrl: null,
+      downloadLinks: null,
+    })
+    prisma.version.update.mockResolvedValue(buildVersionRecord({ version: "1.2.3" }))
+
+    const service = new VersionsService(prisma as never)
+    const result = await service.upsertByVersion("proj", "1.2.3", { title: "Racy" })
+
+    expect(result.created).toBe(false)
+    expect(prisma.version.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "v1" } }),
+    )
   })
 })

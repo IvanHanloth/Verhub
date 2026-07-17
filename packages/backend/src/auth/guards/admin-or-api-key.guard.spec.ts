@@ -1,35 +1,68 @@
-import { ExecutionContext } from "@nestjs/common"
+import { ExecutionContext, UnauthorizedException } from "@nestjs/common"
 
 import { AdminOrApiKeyGuard } from "./admin-or-api-key.guard"
 
-describe("AdminOrApiKeyGuard", () => {
-  const mockContext = {} as ExecutionContext
+function contextWithHeaders(headers: Record<string, string | string[] | undefined>) {
+  return {
+    switchToHttp: () => ({ getRequest: () => ({ headers }) }),
+  } as unknown as ExecutionContext
+}
 
-  it("returns true when JWT guard succeeds", async () => {
+describe("AdminOrApiKeyGuard", () => {
+  const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1MSJ9.sig"
+  const apiKey = "vh_0123456789abcdef"
+
+  it("routes a bearer JWT to the JWT guard", async () => {
     const jwtGuard = { canActivate: jest.fn().mockResolvedValue(true) }
-    const apiKeyGuard = { canActivate: jest.fn().mockResolvedValue(false) }
+    const apiKeyGuard = { canActivate: jest.fn() }
     const guard = new AdminOrApiKeyGuard(jwtGuard as never, apiKeyGuard as never)
 
-    const result = await guard.canActivate(mockContext)
-    expect(result).toBe(true)
+    const context = contextWithHeaders({ authorization: `Bearer ${jwt}` })
+    expect(await guard.canActivate(context)).toBe(true)
     expect(apiKeyGuard.canActivate).not.toHaveBeenCalled()
   })
 
-  it("falls back to API key guard when JWT guard throws", async () => {
-    const jwtGuard = { canActivate: jest.fn().mockRejectedValue(new Error("JWT failed")) }
+  it("routes a vh_-prefixed bearer token to the API key guard", async () => {
+    const jwtGuard = { canActivate: jest.fn() }
     const apiKeyGuard = { canActivate: jest.fn().mockResolvedValue(true) }
     const guard = new AdminOrApiKeyGuard(jwtGuard as never, apiKeyGuard as never)
 
-    const result = await guard.canActivate(mockContext)
-    expect(result).toBe(true)
-    expect(apiKeyGuard.canActivate).toHaveBeenCalledWith(mockContext)
+    const context = contextWithHeaders({ authorization: `Bearer ${apiKey}` })
+    expect(await guard.canActivate(context)).toBe(true)
+    expect(jwtGuard.canActivate).not.toHaveBeenCalled()
   })
 
-  it("rejects when both guards fail", async () => {
-    const jwtGuard = { canActivate: jest.fn().mockRejectedValue(new Error("JWT failed")) }
-    const apiKeyGuard = { canActivate: jest.fn().mockRejectedValue(new Error("API key failed")) }
+  it("routes the legacy X-API-Key header to the API key guard", async () => {
+    const jwtGuard = { canActivate: jest.fn() }
+    const apiKeyGuard = { canActivate: jest.fn().mockResolvedValue(true) }
     const guard = new AdminOrApiKeyGuard(jwtGuard as never, apiKeyGuard as never)
 
-    await expect(guard.canActivate(mockContext)).rejects.toThrow("API key failed")
+    const context = contextWithHeaders({ "x-api-key": apiKey })
+    expect(await guard.canActivate(context)).toBe(true)
+    expect(jwtGuard.canActivate).not.toHaveBeenCalled()
+  })
+
+  it("surfaces the JWT guard's own error rather than an api key error", async () => {
+    const jwtGuard = {
+      canActivate: jest.fn().mockRejectedValue(new UnauthorizedException("Invalid bearer token")),
+    }
+    const apiKeyGuard = { canActivate: jest.fn() }
+    const guard = new AdminOrApiKeyGuard(jwtGuard as never, apiKeyGuard as never)
+
+    const context = contextWithHeaders({ authorization: `Bearer ${jwt}` })
+    await expect(guard.canActivate(context)).rejects.toThrow("Invalid bearer token")
+    expect(apiKeyGuard.canActivate).not.toHaveBeenCalled()
+  })
+
+  it("rejects when no credential is supplied", async () => {
+    const jwtGuard = { canActivate: jest.fn() }
+    const apiKeyGuard = { canActivate: jest.fn() }
+    const guard = new AdminOrApiKeyGuard(jwtGuard as never, apiKeyGuard as never)
+
+    await expect(guard.canActivate(contextWithHeaders({}))).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    )
+    expect(jwtGuard.canActivate).not.toHaveBeenCalled()
+    expect(apiKeyGuard.canActivate).not.toHaveBeenCalled()
   })
 })

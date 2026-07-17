@@ -1,6 +1,7 @@
 import { BadRequestException, Controller, Get, Param, Query, UseGuards } from "@nestjs/common"
 
-import { JwtAdminGuard } from "../auth/guards/jwt-admin.guard"
+import { AdminOrApiKeyGuard } from "../auth/guards/admin-or-api-key.guard"
+import { RequireApiScope } from "../auth/guards/api-scope.decorator"
 import { nowSeconds } from "../common/utils"
 import { QueryRequestStatsDto, QueryRequestTimeseriesDto } from "./dto/query-request-stats.dto"
 import { DAY_SECONDS, RequestStatsService, StatsRange } from "./request-stats.service"
@@ -9,12 +10,13 @@ import { DAY_SECONDS, RequestStatsService, StatsRange } from "./request-stats.se
 const DEFAULT_RANGE_SECONDS = 7 * DAY_SECONDS
 
 @Controller("admin/projects/:projectKey/stats/requests")
-@UseGuards(JwtAdminGuard)
+@UseGuards(AdminOrApiKeyGuard)
 export class RequestStatsController {
   constructor(private readonly requestStatsService: RequestStatsService) {}
 
   /** Everything the big screen needs for one project, in a single round trip. */
   @Get("overview")
+  @RequireApiScope("stats:read")
   async getOverview(@Param("projectKey") projectKey: string, @Query() query: QueryRequestStatsDto) {
     const range = this.resolveRange(query)
 
@@ -36,6 +38,7 @@ export class RequestStatsController {
   }
 
   @Get("timeseries")
+  @RequireApiScope("stats:read")
   async getTimeseries(
     @Param("projectKey") projectKey: string,
     @Query() query: QueryRequestTimeseriesDto,

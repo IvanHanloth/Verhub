@@ -388,6 +388,7 @@ paths:
       summary: 获取项目列表
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
@@ -404,6 +405,7 @@ paths:
       summary: 创建项目
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -431,6 +433,7 @@ paths:
       summary: 获取项目统计信息
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -450,6 +453,7 @@ paths:
       summary: 从 GitHub 仓库地址预览项目信息
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       parameters:
         - name: repo_url
           in: query
@@ -477,6 +481,7 @@ paths:
       summary: 获取单个项目
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -492,6 +497,7 @@ paths:
       summary: 更新项目
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -519,6 +525,7 @@ paths:
       summary: 删除项目
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -536,6 +543,7 @@ paths:
       summary: Projects 模块状态
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -553,6 +561,7 @@ paths:
       summary: 获取版本列表
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
@@ -603,6 +612,7 @@ paths:
       summary: 从 GitHub Release 预填版本草稿
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       parameters:
         - name: tag
           in: query
@@ -631,12 +641,58 @@ paths:
       summary: 从 GitHub Release 导入历史版本
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/VersionImportResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/projects/{projectKey}/versions/by-version/{version}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+      - name: version
+        in: path
+        required: true
+        description: 目标版本号，按 version 字段精确匹配
+        schema:
+          type: string
+          maxLength: 64
+    put:
+      tags: [Versions]
+      summary: 按版本号创建或更新版本（支持管理员 JWT 或 API Key）
+      description: >
+        幂等发布端点：项目下不存在该版本号时创建，已存在则就地更新，
+        调用方无需先查出版本 id。API Key 需要 `versions:write` scope。
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertVersionDto"
+      responses:
+        "200":
+          description: 已有版本被更新
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionItem"
+        "201":
+          description: 版本被创建
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionItem"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -653,6 +709,7 @@ paths:
       summary: 获取单个版本
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -668,6 +725,7 @@ paths:
       summary: 更新版本
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -695,6 +753,7 @@ paths:
       summary: 删除版本
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -714,6 +773,7 @@ paths:
       summary: Versions 模块状态
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -729,6 +789,7 @@ paths:
       summary: 通过 project_key 创建版本（兼容路径）
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -758,6 +819,7 @@ paths:
       summary: 按版本ID获取版本（兼容路径）
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -773,6 +835,7 @@ paths:
       summary: 按版本ID更新版本（兼容路径）
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -800,6 +863,7 @@ paths:
       summary: 按版本ID删除版本（兼容路径）
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -817,6 +881,7 @@ paths:
       summary: 获取版本统计信息
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -853,6 +918,7 @@ paths:
       summary: 获取公告列表
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
@@ -871,6 +937,7 @@ paths:
       summary: 创建公告
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -897,6 +964,7 @@ paths:
       summary: 获取单条公告
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -912,6 +980,7 @@ paths:
       summary: 更新公告
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -933,6 +1002,7 @@ paths:
       summary: 删除公告
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -952,6 +1022,7 @@ paths:
       summary: Announcements 模块状态
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -967,6 +1038,7 @@ paths:
       summary: 通过 project_key 创建公告（兼容路径）
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -996,6 +1068,7 @@ paths:
       summary: 按公告ID更新公告（兼容路径）
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -1017,6 +1090,7 @@ paths:
       summary: 按公告ID删除公告（兼容路径）
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -1034,6 +1108,7 @@ paths:
       summary: 获取公告统计信息
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -1057,6 +1132,7 @@ paths:
       summary: 获取反馈列表
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
@@ -1080,6 +1156,7 @@ paths:
       summary: 获取单条反馈
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -1095,6 +1172,7 @@ paths:
       summary: 更新反馈
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -1117,6 +1195,7 @@ paths:
       summary: 删除反馈
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           description: 删除成功
@@ -1135,6 +1214,7 @@ paths:
       summary: 获取反馈统计信息
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -1164,6 +1244,7 @@ paths:
       summary: 按反馈ID更新反馈（兼容路径）
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -1185,6 +1266,7 @@ paths:
       summary: 按反馈ID删除反馈（兼容路径）
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -1410,6 +1492,7 @@ paths:
         未指定时间范围时默认统计最近 7 天。
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/StartTime"
         - $ref: "#/components/parameters/EndTime"
@@ -1440,6 +1523,7 @@ paths:
         granularity=day 时在查询阶段汇总。范围内没有请求的时间桶以 0 返回。
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/StartTime"
         - $ref: "#/components/parameters/EndTime"
@@ -1478,6 +1562,7 @@ paths:
       summary: 查询日志
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
@@ -1507,6 +1592,7 @@ paths:
       summary: 获取日志统计信息
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -1575,6 +1661,7 @@ paths:
       summary: 获取项目行为分类列表
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
@@ -1595,6 +1682,7 @@ paths:
       summary: 创建项目行为分类
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -1624,6 +1712,7 @@ paths:
       summary: 获取行为分类下的行为记录
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
@@ -1642,6 +1731,7 @@ paths:
       summary: 更新行为分类
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -1663,6 +1753,7 @@ paths:
       summary: 删除行为分类
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -1686,6 +1777,7 @@ paths:
       summary: 获取单条行为记录
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -1703,6 +1795,7 @@ paths:
       summary: 获取行为分类统计
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -1722,6 +1815,7 @@ paths:
       summary: 获取行为记录统计
       security:
         - BearerAuth: []
+        - ApiKeyAuth: []
       responses:
         "200":
           content:
@@ -1774,11 +1868,20 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: >
+        Authorization: Bearer <凭据>。管理员 JWT（POST /auth/login 获取，默认 2 小时过期）
+        与 API Key（vh_ 前缀，长期有效）在所有 /admin/* 接口上等价，任一有效即放行；
+        服务端按凭据形态自动识别。/auth/* 下的凭据管理接口只接受管理员 JWT。
     ApiKeyAuth:
       type: apiKey
       in: header
       name: x-api-key
-      description: 版本创建接口支持 API Key 认证
+      description: >
+        传 API Key 的兼容别名，等价于把同一个 Key 放进 Authorization: Bearer；
+        新接入建议统一用 BearerAuth。API Key 按 scope 授权：读接口需要 <资源>:read，
+        写接口需要 <资源>:write，写权限不隐含读权限；资源为 projects / versions /
+        announcements / feedbacks / logs / actions，另有 stats:read 用于请求统计接口。
+        scope 或项目范围不匹配返回 401。
 
   parameters:
     Limit:
@@ -2561,8 +2664,9 @@ components:
           type: string
           maxLength: 4096
         download_url:
-          type: string
+          type: [string, "null"]
           maxLength: 2048
+          description: 传 null 清空下载地址；省略该字段则保持原值
         download_links:
           type: array
           items:
@@ -2587,6 +2691,14 @@ components:
         custom_data:
           type: object
           additionalProperties: true
+
+    UpsertVersionDto:
+      allOf:
+        - $ref: "#/components/schemas/UpdateVersionDto"
+      description: >
+        全部字段可选。目标版本号取自路径，`version` 可以省略；若提交则必须与路径一致。
+        更新已有版本时，省略的字段保持原值，显式提交 null 的字段被置空。
+        新建时 `comparable_version` 省略则由版本号推导（去掉前导 v）。
 
     VersionItem:
       type: object

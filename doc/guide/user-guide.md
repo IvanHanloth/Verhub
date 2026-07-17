@@ -165,6 +165,22 @@
 
 ## API Key 使用建议
 
+API API Key 可用于**全部管理接口**，与管理员登录后拿到的 JWT 等价。调用时放在 `Authorization: Bearer` 里即可：
+
+```bash
+curl -X PUT "https://api.example.com/api/v1/admin/projects/demo/versions/by-version/1.2.3" \
+  -H "Authorization: Bearer vh_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Release 1.2.3","is_latest":true}'
+```
+
+能访问哪些接口由 Key 的权限（scope）和项目范围决定：读接口需要 `<资源>:read`，写接口需要 `<资源>:write`，**写权限不包含读权限**。两个例外要知道：
+
+- 创建、轮换、撤销 API Key 这类凭据管理操作只能由管理员登录后进行，不能用 API Key 调用——否则一个 Key 就能换出权限更大的 Key。
+- `X-API-Key` 请求头仍然可用（老集成不受影响），但新接入建议统一用 `Authorization: Bearer`。
+
+详见开发指南的「管理接口认证方式」。
+
 - 为不同系统生成独立 Key，便于追踪与撤销
 - 设置合理过期时间，避免长期暴露风险
 - 仅授予必要权限与项目范围

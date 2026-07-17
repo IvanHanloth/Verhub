@@ -27,6 +27,7 @@ type ProjectItem = {
   published_at: number | null
   optional_update_min_comparable_version: string | null
   optional_update_max_comparable_version: string | null
+  stats_retention_days: number
   created_at: number
   updated_at: number
 }
@@ -119,6 +120,7 @@ export class ProjectsService {
           publishedAt: dto.published_at,
           optionalUpdateMinComparableVersion: optionalMin,
           optionalUpdateMaxComparableVersion: optionalMax,
+          statsRetentionDays: dto.stats_retention_days,
         },
       })
 
@@ -174,6 +176,7 @@ export class ProjectsService {
             "optional_update_max_comparable_version" in dto
               ? this.normalizeOptionalComparable(dto.optional_update_max_comparable_version)
               : undefined,
+          statsRetentionDays: dto.stats_retention_days,
           updatedAt: nowSeconds(),
         },
       })
@@ -274,6 +277,7 @@ export class ProjectsService {
     publishedAt: number | null
     optionalUpdateMinComparableVersion: string | null
     optionalUpdateMaxComparableVersion: string | null
+    statsRetentionDays: number
     createdAt: number
     updatedAt: number
   }): ProjectItem {
@@ -290,6 +294,7 @@ export class ProjectsService {
       published_at: project.publishedAt,
       optional_update_min_comparable_version: project.optionalUpdateMinComparableVersion,
       optional_update_max_comparable_version: project.optionalUpdateMaxComparableVersion,
+      stats_retention_days: project.statsRetentionDays,
       created_at: project.createdAt,
       updated_at: project.updatedAt,
     }

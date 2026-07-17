@@ -13,6 +13,7 @@ export type ProjectItem = {
   published_at: number | null
   optional_update_min_comparable_version?: string | null
   optional_update_max_comparable_version?: string | null
+  stats_retention_days?: number
   created_at: number
   updated_at: number
 }
@@ -34,6 +35,7 @@ export type ProjectMutationInput = {
   published_at?: number
   optional_update_min_comparable_version?: string | null
   optional_update_max_comparable_version?: string | null
+  stats_retention_days?: number
 }
 
 export type GithubRepoProjectPreview = {

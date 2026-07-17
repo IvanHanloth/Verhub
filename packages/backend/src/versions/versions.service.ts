@@ -19,6 +19,7 @@ import { PrismaService } from "../database/prisma.service"
 import { CreateVersionDto } from "./dto/create-version.dto"
 import { QueryVersionsDto } from "./dto/query-versions.dto"
 import { UpdateVersionDto } from "./dto/update-version.dto"
+import { UpsertVersionDto } from "./dto/upsert-version.dto"
 import { compareComparableVersions, parseComparableVersion } from "./version-comparator"
 import {
   isUniqueViolation,
@@ -201,7 +202,7 @@ export class VersionsService {
       const isLatest = dto.is_latest ?? !isPreview
       const publishedAt = dto.published_at ?? nowSeconds()
       const comparableVersion = this.resolveComparableVersion(dto.comparable_version, dto.version)
-      const downloadData = resolveDownloadData(dto.download_url ?? undefined, dto.download_links)
+      const downloadData = resolveDownloadData(dto.download_url, dto.download_links)
 
       const created = await this.prisma.version.create({
         data: {
@@ -248,6 +249,66 @@ export class VersionsService {
     return this.create(projectKey, dto)
   }
 
+  /**
+   * Create the version, or update it in place when the project already has one
+   * with this exact version number.
+   *
+   * Addressed by version number rather than record id so that publishing
+   * clients (CI pipelines using an API key) can be idempotent without having to
+   * look the id up first.
+   */
+  async upsertByVersion(
+    projectKey: string,
+    version: string,
+    dto: UpsertVersionDto,
+  ): Promise<{ item: VersionItem; created: boolean }> {
+    const normalizedKey = normalizeProjectKey(projectKey)
+    const targetVersion = version.trim()
+    if (!targetVersion) {
+      throw new BadRequestException("version path segment is required")
+    }
+    if (dto.version !== undefined && dto.version.trim() !== targetVersion) {
+      throw new BadRequestException("version in body must match the version in the path")
+    }
+
+    await this.ensureProjectExists(normalizedKey)
+
+    const existing = await this.prisma.version.findUnique({
+      where: { projectKey_version: { projectKey: normalizedKey, version: targetVersion } },
+      select: { id: true },
+    })
+
+    if (existing) {
+      const item = await this.update(normalizedKey, existing.id, { ...dto, version: targetVersion })
+      return { item, created: false }
+    }
+
+    try {
+      const item = await this.create(normalizedKey, {
+        ...dto,
+        version: targetVersion,
+        comparable_version: this.resolveComparableVersion(dto.comparable_version, targetVersion),
+      })
+      return { item, created: true }
+    } catch (error: unknown) {
+      // A concurrent publish inserted the same version between our lookup and
+      // this create. Fall back to updating what the other writer created rather
+      // than failing a request the caller is entitled to treat as idempotent.
+      if (!(error instanceof ConflictException)) {
+        throw error
+      }
+      const raced = await this.prisma.version.findUnique({
+        where: { projectKey_version: { projectKey: normalizedKey, version: targetVersion } },
+        select: { id: true },
+      })
+      if (!raced) {
+        throw error
+      }
+      const item = await this.update(normalizedKey, raced.id, { ...dto, version: targetVersion })
+      return { item, created: false }
+    }
+  }
+
   async update(projectKey: string, id: string, dto: UpdateVersionDto): Promise<VersionItem> {
     const normalizedKey = normalizeProjectKey(projectKey)
     const version = await this.prisma.version.findFirst({
@@ -267,10 +328,8 @@ export class VersionsService {
     })
 
     try {
-      const nextDownloadUrl =
-        dto.download_url === undefined ? undefined : (dto.download_url ?? null)
       const nextDownloadData = resolveDownloadData(
-        dto.download_url ?? undefined,
+        dto.download_url,
         dto.download_links,
         version.downloadUrl,
         parseDownloadLinks(version.downloadLinks),
@@ -296,7 +355,7 @@ export class VersionsService {
           comparableVersion: nextComparableVersion,
           title: dto.title,
           content: dto.content,
-          downloadUrl: nextDownloadData.downloadUrl ?? nextDownloadUrl,
+          downloadUrl: nextDownloadData.downloadUrl,
           downloadLinks: nextDownloadData.downloadLinks,
           forced: false,
           isLatest: nextIsLatest,

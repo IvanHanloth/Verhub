@@ -1,6 +1,10 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common"
 
-import { JwtAdminGuard } from "../auth/guards/jwt-admin.guard"
+import { AdminOrApiKeyGuard } from "../auth/guards/admin-or-api-key.guard"
+import { RequireApiScope } from "../auth/guards/api-scope.decorator"
+import { PublicEndpoint } from "@prisma/client"
+
+import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 
 import { CreateFeedbackDto } from "./dto/create-feedback.dto"
 import { QueryFeedbacksDto } from "./dto/query-feedbacks.dto"
@@ -12,19 +16,22 @@ export class FeedbacksController {
   constructor(private readonly feedbacksService: FeedbacksService) {}
 
   @Get("admin/projects/:projectKey/feedbacks")
-  @UseGuards(JwtAdminGuard)
+  @UseGuards(AdminOrApiKeyGuard)
+  @RequireApiScope("feedbacks:read")
   async findAll(@Param("projectKey") projectKey: string, @Query() query: QueryFeedbacksDto) {
     return this.feedbacksService.findAll(projectKey, query)
   }
 
   @Get("admin/projects/:projectKey/feedbacks/:id")
-  @UseGuards(JwtAdminGuard)
+  @UseGuards(AdminOrApiKeyGuard)
+  @RequireApiScope("feedbacks:read")
   async findOne(@Param("projectKey") projectKey: string, @Param("id") id: string) {
     return this.feedbacksService.findOne(projectKey, id)
   }
 
   @Patch("admin/projects/:projectKey/feedbacks/:id")
-  @UseGuards(JwtAdminGuard)
+  @UseGuards(AdminOrApiKeyGuard)
+  @RequireApiScope("feedbacks:write")
   async update(
     @Param("projectKey") projectKey: string,
     @Param("id") id: string,
@@ -34,7 +41,8 @@ export class FeedbacksController {
   }
 
   @Delete("admin/projects/:projectKey/feedbacks/:id")
-  @UseGuards(JwtAdminGuard)
+  @UseGuards(AdminOrApiKeyGuard)
+  @RequireApiScope("feedbacks:write")
   async remove(@Param("projectKey") projectKey: string, @Param("id") id: string) {
     await this.feedbacksService.remove(projectKey, id)
     return {
@@ -43,6 +51,7 @@ export class FeedbacksController {
   }
 
   @Post("public/:projectKey/feedbacks")
+  @TrackEndpoint(PublicEndpoint.FEEDBACK_SUBMIT)
   async createByProjectKey(
     @Param("projectKey") projectKey: string,
     @Body() dto: CreateFeedbackDto,
@@ -51,7 +60,8 @@ export class FeedbacksController {
   }
 
   @Get("admin/feedbacks/statistics")
-  @UseGuards(JwtAdminGuard)
+  @UseGuards(AdminOrApiKeyGuard)
+  @RequireApiScope("feedbacks:read")
   async getStatistics() {
     return this.feedbacksService.getStatistics()
   }

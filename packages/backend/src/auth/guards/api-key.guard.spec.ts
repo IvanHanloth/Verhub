@@ -24,7 +24,7 @@ describe("ApiKeyGuard", () => {
 
   it("rejects requests without x-api-key header", async () => {
     const apiKeyService = { validateApiKey: jest.fn() }
-    reflector.getAllAndOverride.mockReturnValue(undefined)
+    reflector.getAllAndOverride.mockReturnValue("versions:write")
     const guard = new ApiKeyGuard(apiKeyService as never, reflector as never)
     const context = createMockExecutionContext({})
 
@@ -46,7 +46,7 @@ describe("ApiKeyGuard", () => {
 
   it("allows when api key is valid", async () => {
     const apiKeyService = { validateApiKey: jest.fn().mockResolvedValue(true) }
-    reflector.getAllAndOverride.mockReturnValue(undefined)
+    reflector.getAllAndOverride.mockReturnValue("versions:write")
     const guard = new ApiKeyGuard(apiKeyService as never, reflector as never)
     const context = createMockExecutionContext({ "x-api-key": "valid-key" })
 
@@ -56,7 +56,7 @@ describe("ApiKeyGuard", () => {
 
   it("extracts projectKey from params", async () => {
     const apiKeyService = { validateApiKey: jest.fn().mockResolvedValue(true) }
-    reflector.getAllAndOverride.mockReturnValue(undefined)
+    reflector.getAllAndOverride.mockReturnValue("versions:write")
     const guard = new ApiKeyGuard(apiKeyService as never, reflector as never)
     const context = createMockExecutionContext(
       { "x-api-key": "valid-key" },
@@ -64,7 +64,7 @@ describe("ApiKeyGuard", () => {
     )
 
     await guard.canActivate(context)
-    expect(apiKeyService.validateApiKey).toHaveBeenCalledWith("valid-key", undefined, {
+    expect(apiKeyService.validateApiKey).toHaveBeenCalledWith("valid-key", "versions:write", {
       projectId: undefined,
       projectKey: "my-project",
     })
@@ -72,7 +72,7 @@ describe("ApiKeyGuard", () => {
 
   it("extracts project_key from query", async () => {
     const apiKeyService = { validateApiKey: jest.fn().mockResolvedValue(true) }
-    reflector.getAllAndOverride.mockReturnValue(undefined)
+    reflector.getAllAndOverride.mockReturnValue("versions:write")
     const guard = new ApiKeyGuard(apiKeyService as never, reflector as never)
     const context = createMockExecutionContext(
       { "x-api-key": "valid-key" },
@@ -81,7 +81,7 @@ describe("ApiKeyGuard", () => {
     )
 
     await guard.canActivate(context)
-    expect(apiKeyService.validateApiKey).toHaveBeenCalledWith("valid-key", undefined, {
+    expect(apiKeyService.validateApiKey).toHaveBeenCalledWith("valid-key", "versions:write", {
       projectId: undefined,
       projectKey: "queried-project",
     })
@@ -89,7 +89,7 @@ describe("ApiKeyGuard", () => {
 
   it("extracts projectId from body", async () => {
     const apiKeyService = { validateApiKey: jest.fn().mockResolvedValue(true) }
-    reflector.getAllAndOverride.mockReturnValue(undefined)
+    reflector.getAllAndOverride.mockReturnValue("versions:write")
     const guard = new ApiKeyGuard(apiKeyService as never, reflector as never)
     const context = createMockExecutionContext(
       { "x-api-key": "valid-key" },
@@ -99,7 +99,7 @@ describe("ApiKeyGuard", () => {
     )
 
     await guard.canActivate(context)
-    expect(apiKeyService.validateApiKey).toHaveBeenCalledWith("valid-key", undefined, {
+    expect(apiKeyService.validateApiKey).toHaveBeenCalledWith("valid-key", "versions:write", {
       projectId: "body-project-id",
       projectKey: undefined,
     })
@@ -107,7 +107,7 @@ describe("ApiKeyGuard", () => {
 
   it("handles array x-api-key header (takes first)", async () => {
     const apiKeyService = { validateApiKey: jest.fn().mockResolvedValue(true) }
-    reflector.getAllAndOverride.mockReturnValue(undefined)
+    reflector.getAllAndOverride.mockReturnValue("versions:write")
     const guard = new ApiKeyGuard(apiKeyService as never, reflector as never)
     const context = {
       switchToHttp: () => ({
@@ -123,20 +123,54 @@ describe("ApiKeyGuard", () => {
     } as unknown as ExecutionContext
 
     await guard.canActivate(context)
-    expect(apiKeyService.validateApiKey).toHaveBeenCalledWith("first-key", undefined, {
+    expect(apiKeyService.validateApiKey).toHaveBeenCalledWith("first-key", "versions:write", {
       projectId: undefined,
       projectKey: undefined,
     })
   })
 
-  it("ignores empty/whitespace string values for project fields", async () => {
+  it("denies an api key on an endpoint that declares no scope", async () => {
     const apiKeyService = { validateApiKey: jest.fn().mockResolvedValue(true) }
     reflector.getAllAndOverride.mockReturnValue(undefined)
+    const guard = new ApiKeyGuard(apiKeyService as never, reflector as never)
+    const context = createMockExecutionContext({ "x-api-key": "valid-key" })
+
+    // Fail closed: a missing @RequireApiScope must never mean "any key allowed".
+    await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException)
+    expect(apiKeyService.validateApiKey).not.toHaveBeenCalled()
+  })
+
+  it("accepts an api key sent as a bearer token", async () => {
+    const apiKeyService = { validateApiKey: jest.fn().mockResolvedValue(true) }
+    reflector.getAllAndOverride.mockReturnValue("versions:write")
+    const guard = new ApiKeyGuard(apiKeyService as never, reflector as never)
+    const context = createMockExecutionContext({ authorization: "Bearer vh_abc123" })
+
+    expect(await guard.canActivate(context)).toBe(true)
+    expect(apiKeyService.validateApiKey).toHaveBeenCalledWith("vh_abc123", "versions:write", {
+      projectId: undefined,
+      projectKey: undefined,
+    })
+  })
+
+  it("ignores a bearer token that is a JWT rather than an api key", async () => {
+    const apiKeyService = { validateApiKey: jest.fn() }
+    reflector.getAllAndOverride.mockReturnValue("versions:write")
+    const guard = new ApiKeyGuard(apiKeyService as never, reflector as never)
+    const context = createMockExecutionContext({ authorization: "Bearer eyJhbGci.eyJzdWIi.sig" })
+
+    await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException)
+    expect(apiKeyService.validateApiKey).not.toHaveBeenCalled()
+  })
+
+  it("ignores empty/whitespace string values for project fields", async () => {
+    const apiKeyService = { validateApiKey: jest.fn().mockResolvedValue(true) }
+    reflector.getAllAndOverride.mockReturnValue("versions:write")
     const guard = new ApiKeyGuard(apiKeyService as never, reflector as never)
     const context = createMockExecutionContext({ "x-api-key": "valid-key" }, { projectKey: "  " })
 
     await guard.canActivate(context)
-    expect(apiKeyService.validateApiKey).toHaveBeenCalledWith("valid-key", undefined, {
+    expect(apiKeyService.validateApiKey).toHaveBeenCalledWith("valid-key", "versions:write", {
       projectId: undefined,
       projectKey: undefined,
     })

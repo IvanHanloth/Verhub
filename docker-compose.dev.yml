@@ -1,3 +1,11 @@
+# Development stack with hot reload.
+#
+# Sources are bind-mounted into the dev image stages, which already contain
+# installed node_modules. Only source directories are mounted — never a
+# node_modules path — so the host's platform-specific installs (and pnpm's
+# absolute symlinks) never leak into the Linux containers.
+#
+#   docker compose -f docker-compose.dev.yml up -d --build
 name: verhub
 
 networks:
@@ -23,6 +31,9 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    # Exposed on the host for psql / Prisma Studio during development only.
+    ports:
+      - "${VERHUB_POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     logging: &default-logging
@@ -35,10 +46,7 @@ services:
     build:
       context: .
       dockerfile: docker/backend.Dockerfile
-      target: backend-runtime
-      args:
-        VERHUB_BUILD_VERSION: ${VERHUB_BUILD_VERSION:-dev}
-        VERHUB_BUILD_PUBLISHED_AT: ${VERHUB_BUILD_PUBLISHED_AT:-unknown}
+      target: backend-dev
     image: ${VERHUB_BACKEND_IMAGE:-verhub-backend-dev}:${VERHUB_TAG:-dev}
     pull_policy: never
     container_name: verhub-backend
@@ -46,8 +54,12 @@ services:
     networks:
       - verhub-net
     environment:
-      NODE_ENV: production
+      NODE_ENV: development
       PORT: 4000
+      # Bind mounts from a Windows/macOS host do not deliver inotify events into
+      # the container, so tsc's watcher must poll instead.
+      TSC_WATCHFILE: PriorityPollingInterval
+      TSC_WATCHDIRECTORY: DynamicPriorityPolling
       DATABASE_URL: postgresql://${VERHUB_POSTGRES_USER:-verhub}:${VERHUB_POSTGRES_PASSWORD}@postgres:5432/${VERHUB_POSTGRES_DB:-verhub}?schema=public
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-2h}
@@ -61,29 +73,35 @@ services:
       test:
         - CMD-SHELL
         - node -e "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-      interval: 30s
+      interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 120s
     volumes:
       - bootstrap-secrets:/bootstrap
+      - ./packages/backend/src:/app/packages/backend/src
+      - ./packages/backend/prisma:/app/packages/backend/prisma
     logging: *default-logging # 引用日志配置
 
   frontend:
     build:
       context: .
       dockerfile: docker/frontend.Dockerfile
-      target: frontend-runtime
+      target: frontend-dev
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
-        VERHUB_BUILD_VERSION: ${VERHUB_BUILD_VERSION:-dev}
-        VERHUB_BUILD_PUBLISHED_AT: ${VERHUB_BUILD_PUBLISHED_AT:-unknown}
     image: ${VERHUB_FRONTEND_IMAGE:-verhub-frontend-dev}:${VERHUB_TAG:-dev}
     pull_policy: never
     container_name: verhub-frontend
     restart: unless-stopped
     networks:
       - verhub-net
+    environment:
+      NODE_ENV: development
+      # Same reason as the backend: poll the bind mount instead of relying on
+      # inotify events that never arrive.
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
     depends_on:
       backend:
         condition: service_healthy
@@ -91,13 +109,20 @@ services:
       test:
         - CMD-SHELL
         - wget --no-verbose --tries=1 --spider http://127.0.0.1/healthz || exit 1
-      interval: 30s
+      interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 120s
     ports:
       - "${VERHUB_HTTP_PORT:-80}:80"
       - "${VERHUB_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./web/app:/app/web/app
+      - ./web/components:/app/web/components
+      - ./web/hooks:/app/web/hooks
+      - ./web/lib:/app/web/lib
+      - ./web/public:/app/web/public
+      - ./packages/ui/src:/app/packages/ui/src
     logging: *default-logging # 引用日志配置
 
 volumes:

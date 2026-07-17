@@ -1,6 +1,10 @@
 import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common"
 
-import { JwtAdminGuard } from "../auth/guards/jwt-admin.guard"
+import { AdminOrApiKeyGuard } from "../auth/guards/admin-or-api-key.guard"
+import { RequireApiScope } from "../auth/guards/api-scope.decorator"
+import { PublicEndpoint } from "@prisma/client"
+
+import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 
 import { QueryLogsDto } from "./dto/query-logs.dto"
 import { UploadLogDto } from "./dto/upload-log.dto"
@@ -11,18 +15,21 @@ export class LogsController {
   constructor(private readonly logsService: LogsService) {}
 
   @Get("admin/projects/:projectKey/logs")
-  @UseGuards(JwtAdminGuard)
+  @UseGuards(AdminOrApiKeyGuard)
+  @RequireApiScope("logs:read")
   async findAll(@Param("projectKey") projectKey: string, @Query() query: QueryLogsDto) {
     return this.logsService.findAll(projectKey, query)
   }
 
   @Post("public/:projectKey/logs")
+  @TrackEndpoint(PublicEndpoint.LOG_UPLOAD)
   async createByProjectKey(@Param("projectKey") projectKey: string, @Body() dto: UploadLogDto) {
     return this.logsService.createByProjectKey(projectKey, dto)
   }
 
   @Get("admin/logs/statistics")
-  @UseGuards(JwtAdminGuard)
+  @UseGuards(AdminOrApiKeyGuard)
+  @RequireApiScope("logs:read")
   async getStatistics() {
     return this.logsService.getStatistics()
   }

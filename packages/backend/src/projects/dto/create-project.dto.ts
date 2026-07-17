@@ -5,10 +5,16 @@ import {
   IsString,
   IsUrl,
   Matches,
+  Max,
   MaxLength,
   Min,
   ValidateIf,
 } from "class-validator"
+
+import {
+  MAX_STATS_RETENTION_DAYS,
+  MIN_STATS_RETENTION_DAYS,
+} from "../../stats/stats-retention.service"
 
 const COMPARABLE_VERSION_PATTERN =
   /^(?<core>\d+(?:\.\d+)*)(?:-(?<tag>alpha|beta|rc)(?:\.(?<tail>\d+(?:\.\d+)*))?)?$/
@@ -72,6 +78,13 @@ export class CreateProjectDto {
   @IsInt()
   @Min(0)
   published_at?: number
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => (value === undefined ? undefined : Number(value)))
+  @IsInt()
+  @Min(MIN_STATS_RETENTION_DAYS)
+  @Max(MAX_STATS_RETENTION_DAYS)
+  stats_retention_days?: number
 
   @NullableStringTransform()
   @ValidateIf((_object, value) => value !== null && value !== undefined)

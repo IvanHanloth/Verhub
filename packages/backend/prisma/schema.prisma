@@ -27,6 +27,34 @@ enum ClientPlatform {
   WEB
 }
 
+/// Platform dimension for request statistics. Mirrors ClientPlatform but adds
+/// UNKNOWN, since a caller may send no SDK platform hint and no parseable UA.
+enum StatPlatform {
+  IOS
+  ANDROID
+  WINDOWS
+  MAC
+  WEB
+  UNKNOWN
+}
+
+/// Public endpoints tracked by request statistics. One member per public route;
+/// adding a public route means adding a member here and mapping it in the
+/// statistics interceptor.
+enum PublicEndpoint {
+  PROJECT_DETAIL
+  VERSION_LIST
+  VERSION_LATEST
+  VERSION_LATEST_PREVIEW
+  VERSION_BY_VERSION
+  VERSION_CHECK_UPDATE
+  ANNOUNCEMENT_LIST
+  ANNOUNCEMENT_LATEST
+  FEEDBACK_SUBMIT
+  LOG_UPLOAD
+  ACTION_RECORD
+}
+
 model User {
   id           String   @id @default(cuid())
   username     String   @unique
@@ -70,6 +98,8 @@ model Project {
   publishedAt   Int?
   optionalUpdateMinComparableVersion String?
   optionalUpdateMaxComparableVersion String?
+  /// How long hourly request statistics are kept, in days. Capped at 365.
+  statsRetentionDays Int         @default(365)
   createdAt     Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   updatedAt     Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   versions      Version[]
@@ -77,6 +107,34 @@ model Project {
   feedbacks     Feedback[]
   logs          Log[]
   actions       Action[]
+  requestStats  ApiRequestStat[]
+}
+
+/// Hourly rollup of public API requests, one row per
+/// (project, endpoint, hour, platform, region) combination.
+///
+/// `region` is reserved for a future GeoIP lookup and is always "UNKNOWN" today.
+/// It stays in the unique constraint so that populating it later does not
+/// require a table rewrite. Dimension columns are NOT NULL with an explicit
+/// UNKNOWN sentinel: Postgres treats NULLs as distinct in unique indexes, which
+/// would silently break the upsert-increment.
+model ApiRequestStat {
+  id         String         @id @default(cuid())
+  projectKey String
+  endpoint   PublicEndpoint
+  /// Unix seconds truncated to the start of the hour (UTC).
+  hourBucket Int
+  platform   StatPlatform   @default(UNKNOWN)
+  region     String         @default("UNKNOWN")
+  count      Int            @default(0)
+  createdAt  Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt  Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
+
+  @@unique([projectKey, endpoint, hourBucket, platform, region])
+  @@index([projectKey, hourBucket])
+  @@index([hourBucket])
 }
 
 model Action {

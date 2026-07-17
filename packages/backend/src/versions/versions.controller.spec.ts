@@ -6,6 +6,7 @@ describe("VersionsController", () => {
     findOne: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    upsertByVersion: jest.fn(),
     remove: jest.fn(),
     getStatus: jest.fn(),
   }
@@ -75,6 +76,26 @@ describe("VersionsController", () => {
 
     await controller.update("proj", "v1", dto as never)
     expect(mockVersionsService.update).toHaveBeenCalledWith("proj", "v1", dto)
+  })
+
+  it("upsertByVersion answers 201 when the version was created", async () => {
+    const item = { id: "v1", version: "1.2.3" }
+    mockVersionsService.upsertByVersion.mockResolvedValue({ item, created: true })
+    const res = { status: jest.fn() }
+
+    const dto = { title: "Release" }
+    expect(await controller.upsertByVersion("proj", "1.2.3", dto as never, res as never)).toBe(item)
+    expect(mockVersionsService.upsertByVersion).toHaveBeenCalledWith("proj", "1.2.3", dto)
+    expect(res.status).toHaveBeenCalledWith(201)
+  })
+
+  it("upsertByVersion answers 200 when an existing version was updated", async () => {
+    const item = { id: "v1", version: "1.2.3" }
+    mockVersionsService.upsertByVersion.mockResolvedValue({ item, created: false })
+    const res = { status: jest.fn() }
+
+    expect(await controller.upsertByVersion("proj", "1.2.3", {} as never, res as never)).toBe(item)
+    expect(res.status).toHaveBeenCalledWith(200)
   })
 
   it("remove delegates and returns success", async () => {

@@ -22,7 +22,16 @@ const endpointsSeed: EndpointSeed[] = [
       },
     ],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     responseBody: {
       label: "200 响应",
       language: "json",
@@ -72,7 +81,16 @@ const endpointsSeed: EndpointSeed[] = [
         example: "0",
       },
     ],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     responseBody: {
       label: "200 响应",
       language: "json",
@@ -118,7 +136,16 @@ const endpointsSeed: EndpointSeed[] = [
       },
     ],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     responseBody: {
       label: "200 响应",
       language: "json",
@@ -143,7 +170,16 @@ const endpointsSeed: EndpointSeed[] = [
     auth: { mode: "none", description: "无需鉴权" },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     responseBody: {
       label: "200 响应",
       language: "json",
@@ -176,7 +212,16 @@ const endpointsSeed: EndpointSeed[] = [
       },
     ],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     responseBody: {
       label: "200 响应",
       language: "json",
@@ -201,7 +246,16 @@ const endpointsSeed: EndpointSeed[] = [
     auth: { mode: "none", description: "无需鉴权" },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     requestBody: {
       label: "请求体",
       language: "json",
@@ -267,7 +321,16 @@ const endpointsSeed: EndpointSeed[] = [
         description: "平台过滤（ios/android/windows/mac/web）",
       },
     ],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     responseBody: {
       label: "200 响应",
       language: "json",
@@ -304,7 +367,16 @@ const endpointsSeed: EndpointSeed[] = [
         description: "平台过滤（ios/android/windows/mac/web）",
       },
     ],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     responseBody: {
       label: "200 响应",
       language: "json",
@@ -328,7 +400,16 @@ const endpointsSeed: EndpointSeed[] = [
     auth: { mode: "none", description: "无需鉴权" },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     requestBody: {
       label: "请求体",
       language: "json",
@@ -360,7 +441,16 @@ const endpointsSeed: EndpointSeed[] = [
     auth: { mode: "none", description: "无需鉴权" },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     requestBody: {
       label: "请求体",
       language: "json",
@@ -391,7 +481,16 @@ const endpointsSeed: EndpointSeed[] = [
     auth: { mode: "none", description: "无需鉴权" },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [],
-    headers: [],
+    headers: [
+      {
+        name: "x-verhub-platform",
+        type: "string",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响返回内容。可选值：ios / android / windows / mac / web。缺省时由 User-Agent 推断，无法识别记为 UNKNOWN。",
+        example: "windows",
+      },
+    ],
     requestBody: {
       label: "请求体",
       language: "json",
@@ -417,11 +516,19 @@ const endpointsSeed: EndpointSeed[] = [
     description: "创建新的项目元数据。",
     method: "POST",
     path: "/admin/projects",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [],
     queryParams: [],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     requestBody: {
       label: "请求体",
@@ -455,7 +562,10 @@ const endpointsSeed: EndpointSeed[] = [
     description: "删除项目及其关联管理数据。",
     method: "DELETE",
     path: "/admin/projects/{projectKey}",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [
       {
         name: "projectKey",
@@ -466,7 +576,12 @@ const endpointsSeed: EndpointSeed[] = [
     ],
     queryParams: [],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     responseBody: {
       label: "200 响应",
@@ -483,11 +598,19 @@ const endpointsSeed: EndpointSeed[] = [
     description: "为指定项目新增版本。",
     method: "POST",
     path: "/admin/projects/{projectKey}/versions",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     requestBody: {
       label: "请求体",
@@ -529,14 +652,22 @@ const endpointsSeed: EndpointSeed[] = [
     description: "修改版本字段，支持 latest/preview/published_at。",
     method: "PATCH",
     path: "/admin/projects/{projectKey}/versions/{id}",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [
       { name: "projectKey", type: "string", required: true, description: "项目标识" },
       { name: "id", type: "string", required: true, description: "版本 ID" },
     ],
     queryParams: [],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     requestBody: {
       label: "请求体",
@@ -564,14 +695,22 @@ const endpointsSeed: EndpointSeed[] = [
     description: "删除指定版本。",
     method: "DELETE",
     path: "/admin/projects/{projectKey}/versions/{id}",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [
       { name: "projectKey", type: "string", required: true, description: "项目标识" },
       { name: "id", type: "string", required: true, description: "版本 ID" },
     ],
     queryParams: [],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     responseBody: {
       label: "200 响应",
@@ -588,11 +727,19 @@ const endpointsSeed: EndpointSeed[] = [
     description: "创建对外公告。",
     method: "POST",
     path: "/admin/projects/{projectKey}/announcements",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     requestBody: {
       label: "请求体",
@@ -626,14 +773,22 @@ const endpointsSeed: EndpointSeed[] = [
     description: "编辑指定公告的标题、内容、置顶状态与发布时间。",
     method: "PATCH",
     path: "/admin/projects/{projectKey}/announcements/{id}",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [
       { name: "projectKey", type: "string", required: true, description: "项目标识" },
       { name: "id", type: "string", required: true, description: "公告 ID" },
     ],
     queryParams: [],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     requestBody: {
       label: "请求体",
@@ -667,14 +822,22 @@ const endpointsSeed: EndpointSeed[] = [
     description: "删除公告记录。",
     method: "DELETE",
     path: "/admin/projects/{projectKey}/announcements/{id}",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [
       { name: "projectKey", type: "string", required: true, description: "项目标识" },
       { name: "id", type: "string", required: true, description: "公告 ID" },
     ],
     queryParams: [],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     responseBody: {
       label: "200 响应",
@@ -691,14 +854,22 @@ const endpointsSeed: EndpointSeed[] = [
     description: "按项目分页查询反馈。",
     method: "GET",
     path: "/admin/projects/{projectKey}/feedbacks",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [
       { name: "limit", type: "number", required: false, description: "分页大小" },
       { name: "offset", type: "number", required: false, description: "分页偏移" },
     ],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     responseBody: {
       label: "200 响应",
@@ -723,14 +894,22 @@ const endpointsSeed: EndpointSeed[] = [
     description: "编辑指定反馈内容与评分。",
     method: "PATCH",
     path: "/admin/projects/{projectKey}/feedbacks/{id}",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [
       { name: "projectKey", type: "string", required: true, description: "项目标识" },
       { name: "id", type: "string", required: true, description: "反馈 ID" },
     ],
     queryParams: [],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     requestBody: {
       label: "请求体",
@@ -758,14 +937,22 @@ const endpointsSeed: EndpointSeed[] = [
     description: "删除指定反馈记录。",
     method: "DELETE",
     path: "/admin/projects/{projectKey}/feedbacks/{id}",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [
       { name: "projectKey", type: "string", required: true, description: "项目标识" },
       { name: "id", type: "string", required: true, description: "反馈 ID" },
     ],
     queryParams: [],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     responseBody: {
       label: "200 响应",
@@ -782,7 +969,10 @@ const endpointsSeed: EndpointSeed[] = [
     description: "按项目查询日志，支持级别与时间范围筛选。",
     method: "GET",
     path: "/admin/projects/{projectKey}/logs",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [
       { name: "limit", type: "number", required: false, description: "分页大小", example: "20" },
@@ -792,7 +982,12 @@ const endpointsSeed: EndpointSeed[] = [
       { name: "end_time", type: "number", required: false, description: "结束时间（Unix 秒）" },
     ],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     responseBody: {
       label: "200 响应",
@@ -817,14 +1012,22 @@ const endpointsSeed: EndpointSeed[] = [
     description: "按项目获取行为定义列表。",
     method: "GET",
     path: "/admin/projects/{projectKey}/actions",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
     queryParams: [
       { name: "limit", type: "number", required: false, description: "分页大小", example: "20" },
       { name: "offset", type: "number", required: false, description: "分页偏移", example: "0" },
     ],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     responseBody: {
       label: "200 响应",
@@ -849,11 +1052,19 @@ const endpointsSeed: EndpointSeed[] = [
     description: "新增行为埋点定义。",
     method: "POST",
     path: "/admin/projects/actions",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [],
     queryParams: [],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     requestBody: {
       label: "请求体",
@@ -881,11 +1092,19 @@ const endpointsSeed: EndpointSeed[] = [
     description: "更新行为定义名称、描述与扩展字段。",
     method: "PATCH",
     path: "/admin/actions/{action_id}",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [{ name: "action_id", type: "string", required: true, description: "行为 ID" }],
     queryParams: [],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     requestBody: {
       label: "请求体",
@@ -916,11 +1135,19 @@ const endpointsSeed: EndpointSeed[] = [
     description: "删除行为定义。",
     method: "DELETE",
     path: "/admin/actions/{action_id}",
-    auth: { mode: "bearer", description: "需要 Token（Authorization: Bearer <token>）" },
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
     pathParams: [{ name: "action_id", type: "string", required: true, description: "行为 ID" }],
     queryParams: [],
     headers: [
-      { name: "Authorization", type: "string", required: true, description: "Bearer Token" },
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
     ],
     responseBody: {
       label: "200 响应",
@@ -929,6 +1156,148 @@ const endpointsSeed: EndpointSeed[] = [
   "success": true
 }`,
     },
+  },
+  {
+    module: "Statistics",
+    visibility: "admin",
+    title: "查询接口请求统计概览",
+    description:
+      "按项目返回指定时间范围内的公开接口请求总数，以及按接口、平台、地区的分组汇总。未指定时间范围时默认统计最近 7 天。",
+    method: "GET",
+    path: "/admin/projects/{projectKey}/stats/requests/overview",
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
+    pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
+    queryParams: [
+      {
+        name: "start_time",
+        type: "number",
+        required: false,
+        description: "开始时间（Unix 秒），缺省为 end_time 前 7 天",
+      },
+      {
+        name: "end_time",
+        type: "number",
+        required: false,
+        description: "结束时间（Unix 秒），缺省为当前时间",
+      },
+    ],
+    headers: [
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
+    ],
+    responseBody: {
+      label: "200 响应",
+      language: "json",
+      content: `{
+  "start_time": 1760000000,
+  "end_time": 1760604800,
+  "total": 1280,
+  "by_endpoint": [
+    { "endpoint": "VERSION_CHECK_UPDATE", "count": 860 },
+    { "endpoint": "ANNOUNCEMENT_LATEST", "count": 420 }
+  ],
+  "by_platform": [
+    { "platform": "WINDOWS", "count": 900 },
+    { "platform": "ANDROID", "count": 380 }
+  ],
+  "by_region": [{ "region": "UNKNOWN", "count": 1280 }]
+}`,
+    },
+    errorResponses: [
+      {
+        label: "400 参数错误",
+        language: "json",
+        content: `{
+  "message": "start_time must not be greater than end_time",
+  "error": "Bad Request",
+  "statusCode": 400
+}`,
+      },
+    ],
+  },
+  {
+    module: "Statistics",
+    visibility: "admin",
+    title: "查询接口请求时间序列",
+    description:
+      "按小时或按天返回请求数序列。统计始终以小时为最小粒度存储，granularity=day 时在查询阶段汇总；范围内无请求的时间桶以 0 返回，便于直接绘制曲线。",
+    method: "GET",
+    path: "/admin/projects/{projectKey}/stats/requests/timeseries",
+    auth: {
+      mode: "bearer",
+      description: "需要管理员 JWT 或 API Key，二者等价（Authorization: Bearer <token>）",
+    },
+    pathParams: [{ name: "projectKey", type: "string", required: true, description: "项目标识" }],
+    queryParams: [
+      {
+        name: "start_time",
+        type: "number",
+        required: false,
+        description: "开始时间（Unix 秒），缺省为 end_time 前 7 天",
+      },
+      {
+        name: "end_time",
+        type: "number",
+        required: false,
+        description: "结束时间（Unix 秒），缺省为当前时间",
+      },
+      {
+        name: "granularity",
+        type: "string",
+        required: false,
+        description: "聚合粒度：hour（默认）或 day",
+        example: "hour",
+      },
+      {
+        name: "endpoint",
+        type: "string",
+        required: false,
+        description:
+          "仅统计指定接口，缺省统计全部。可选值：PROJECT_DETAIL / VERSION_LIST / VERSION_LATEST / VERSION_LATEST_PREVIEW / VERSION_BY_VERSION / VERSION_CHECK_UPDATE / ANNOUNCEMENT_LIST / ANNOUNCEMENT_LATEST / FEEDBACK_SUBMIT / LOG_UPLOAD / ACTION_RECORD",
+        example: "VERSION_CHECK_UPDATE",
+      },
+    ],
+    headers: [
+      {
+        name: "Authorization",
+        type: "string",
+        required: true,
+        description: "Bearer <管理员 JWT 或 API Key>",
+      },
+    ],
+    responseBody: {
+      label: "200 响应",
+      language: "json",
+      content: `{
+  "start_time": 1760000000,
+  "end_time": 1760007200,
+  "granularity": "hour",
+  "endpoint": null,
+  "data": [
+    { "bucket": 1760000000, "count": 12 },
+    { "bucket": 1760003600, "count": 0 },
+    { "bucket": 1760007200, "count": 31 }
+  ]
+}`,
+    },
+    errorResponses: [
+      {
+        label: "400 参数错误",
+        language: "json",
+        content: `{
+  "message": "start_time must not be greater than end_time",
+  "error": "Bad Request",
+  "statusCode": 400
+}`,
+      },
+    ],
   },
 ]
 

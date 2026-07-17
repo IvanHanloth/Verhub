@@ -148,14 +148,65 @@ pnpm typecheck
 
 接口覆盖范围以 Web 文档中心展示接口为准（`web/lib/api-docs/registry.ts`），避免封装文档外的私有接口。
 
+## 管理接口认证方式
+
+**所有 `/admin/*` 接口统一鉴权：管理员 JWT 和 API Key 完全等价，任一有效即放行。** 统一走同一个请求头：
+
+```
+Authorization: Bearer <管理员 JWT 或 API Key>
+```
+
+服务端按凭据本身的形态自动识别：API Key 是 `vh_` 前缀的字符串，JWT 是三段点分结构，两者不会混淆。调用方不需要关心脚本里拿的是哪一种。
+
+| 凭据       | 获取方式                              | 有效期                                | 典型场景              |
+| ---------- | ------------------------------------- | ------------------------------------- | --------------------- |
+| 管理员 JWT | `POST /auth/login`（用户名 + 密码）   | 由 `JWT_EXPIRES_IN` 控制，默认 2 小时 | 前端管理后台会话      |
+| API Key    | 管理后台或 `POST /auth/api-keys` 创建 | 创建时指定，可长期有效                | CI/CD、脚本、外部系统 |
+
+`X-API-Key: <key>` 作为兼容别名保留，仍可用于传 API Key；新接入建议统一用 `Authorization: Bearer`。两个头都给出时以 `X-API-Key` 为准。
+
+### 权限：API Key 按 scope 授权
+
+JWT 是管理员身份，天然拥有全部权限。API Key 则按 scope 逐个接口校验，规则很简单：
+
+- 读接口（GET）要求 `<资源>:read`，写接口（POST/PUT/PATCH/DELETE）要求 `<资源>:write`；
+- **写权限不隐含读权限**——需要读就显式授予 `:read`；
+- 资源即 `projects` / `versions` / `announcements` / `feedbacks` / `logs` / `actions`，另有 `stats:read` 用于请求统计接口。
+
+Key 的项目范围（全部项目或指定项目）也会一并校验。scope 或项目范围不匹配时返回 `401`。
+
+### 例外：凭据管理接口只接受 JWT
+
+`/auth/*` 下的凭据管理接口（创建、轮换、撤销 API Key，以及 `admin-profile`、`me`）**只接受管理员 JWT**，用 API Key 调用一律 `401`。
+
+这是有意为之：否则任何一个 Key 都能凭 `tokens:write` 铸造出全权限的新 Key，scope 体系就形同虚设。换句话说，**不能用凭据去管理凭据**——新建 Key 必须由管理员登录后操作。
+
+## 写入版本：创建 vs. 幂等发布
+
+管理端有两个写入版本的接口（与其余管理接口一样，JWT 与 API Key 均可，API Key 需要 `versions:write`）：
+
+| 接口                                                             | 语义                                                         |
+| ---------------------------------------------------------------- | ------------------------------------------------------------ |
+| `POST /admin/projects/{projectKey}/versions`                     | 只创建。项目下已存在同名版本号时返回 `409`。                 |
+| `PUT /admin/projects/{projectKey}/versions/by-version/{version}` | 幂等发布。不存在则创建（`201`），已存在则就地更新（`200`）。 |
+
+CI 流水线应优先用 `PUT`：它按版本号寻址，不需要先查出版本的数据库 id，重跑同一个工作流也不会因为版本已存在而失败。
+
+`PUT` 的请求体字段全部可选，采用部分更新语义：
+
+- 省略的字段保持原值；
+- 显式提交 `null` 的字段会被置空（例如 `{"download_url": null}` 清空下载地址）；
+- 路径里的版本号即目标版本，`version` 可以省略；若提交则必须与路径一致，否则返回 `400`；
+- 新建时 `comparable_version` 省略则由版本号推导（去掉前导 `v`）。
+
 ## CI/CD 集成示例：自动增加版本与公告
 
-下面示例展示如何在 GitHub Actions 中，在发布后自动调用管理接口创建版本和公告。
+下面示例展示如何在 GitHub Actions 中，在发布后自动调用管理接口发布版本和公告。
 
 前置条件：
 
 - 已在仓库 Secret 中配置 `VERHUB_BASE_URL`（例如 `https://api.example.com/api/v1`）
-- 已配置 `VERHUB_ADMIN_TOKEN`（Bearer Token）
+- 已配置 `VERHUB_API_KEY`，scope 至少包含 `versions:write` 与 `announcements:write`
 - 工作流触发时可拿到版本号（如 `v1.2.3`）
 
 ```yaml
@@ -172,25 +223,27 @@ jobs:
   notify-verhub:
     runs-on: ubuntu-latest
     steps:
-      - name: Create version in Verhub
+      - name: Publish version to Verhub
         env:
           VERHUB_BASE_URL: ${{ secrets.VERHUB_BASE_URL }}
-          VERHUB_ADMIN_TOKEN: ${{ secrets.VERHUB_ADMIN_TOKEN }}
+          VERHUB_API_KEY: ${{ secrets.VERHUB_API_KEY }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          curl -sS -X POST "${VERHUB_BASE_URL}/admin/projects/verhub/versions" \
-            -H "Authorization: Bearer ${VERHUB_ADMIN_TOKEN}" \
+          curl -sS --fail-with-body \
+            -X PUT "${VERHUB_BASE_URL}/admin/projects/verhub/versions/by-version/${RELEASE_VERSION}" \
+            -H "Authorization: Bearer ${VERHUB_API_KEY}" \
             -H "Content-Type: application/json" \
-            -d "{\"version\":\"${RELEASE_VERSION}\",\"comparable_version\":\"${RELEASE_VERSION#v}\",\"title\":\"Release ${RELEASE_VERSION}\",\"content\":\"Automated release by CI\",\"is_latest\":true,\"is_preview\":false}"
+            -d "{\"comparable_version\":\"${RELEASE_VERSION#v}\",\"title\":\"Release ${RELEASE_VERSION}\",\"content\":\"Automated release by CI\",\"is_latest\":true,\"is_preview\":false}"
 
       - name: Create announcement in Verhub
         env:
           VERHUB_BASE_URL: ${{ secrets.VERHUB_BASE_URL }}
-          VERHUB_ADMIN_TOKEN: ${{ secrets.VERHUB_ADMIN_TOKEN }}
+          VERHUB_API_KEY: ${{ secrets.VERHUB_API_KEY }}
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          curl -sS -X POST "${VERHUB_BASE_URL}/admin/projects/verhub/announcements" \
-            -H "Authorization: Bearer ${VERHUB_ADMIN_TOKEN}" \
+          curl -sS --fail-with-body \
+            -X POST "${VERHUB_BASE_URL}/admin/projects/verhub/announcements" \
+            -H "Authorization: Bearer ${VERHUB_API_KEY}" \
             -H "Content-Type: application/json" \
             -d "{\"title\":\"版本 ${RELEASE_VERSION} 已发布\",\"content\":\"本次发布由 CI 自动同步到 Verhub。\",\"is_pinned\":false,\"author\":\"github-actions\"}"
 ```
@@ -199,4 +252,5 @@ jobs:
 
 - 将项目键 `verhub` 抽为变量，适配多项目流水线
 - 在调用前增加一次健康检查与权限校验
-- 失败时输出响应体并中止流水线，避免“代码已发布但公告未同步”的不一致状态
+- 上面用 `--fail-with-body` 让 HTTP 错误直接中止流水线并打印响应体，避免“代码已发布但公告未同步”的不一致状态
+- 只给 CI 的 Key 授予它真正用到的 scope（这里是 `versions:write` + `announcements:write`）与项目范围，不要图省事授予全部

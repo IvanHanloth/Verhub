@@ -2,25 +2,44 @@
 
 任务状态标识：[ ] 待办 · [x] 完成 · [~] 进行中
 
-## 后端测试与 CI/CD
 
-- [x] 修复原有 3 个失败测试（version-update-check DTO 实例化）
-- [x] 新建 22 个测试文件（controllers / guards / utilities）
-- [x] 扩展 8 个已有 service spec（feedbacks / announcements / versions / actions / projects / api-key-management / admin-bootstrap / logs）
-- [x] 修复实现 bug：versions.service.ts 缺少 BadRequestException 导入
-- [x] 修复实现 bug：projects.service.ts validateComparableRange 未正确处理 null
-- [x] 全部 325 个测试通过，覆盖率 Statements 83.24% / Lines 84.33% / Functions 86.98% / Branches 72.95%
-- [x] 新增 CI/CD 工作流 .github/workflows/test.yml（push/PR 触发，PostgreSQL 服务，单元测试+覆盖率）
-- [x] jest.config.ts 添加 coverageThreshold（statements/lines/functions ≥ 80%，branches ≥ 60%）
 
-（所有历史任务已完成，详见 git 历史。）
+## 版本治理修复（2026-04）
 
-## 弹窗统一模式组件（2026-04）
+- [x] 补充后端单元测试：检查更新策略（废弃强制、里程碑阶段目标、双版本参数优先级）
+- [x] 修复后端检查更新逻辑：同传版本号时优先可比较版本；里程碑目标对可选更新同样生效
+- [x] 强化后端版本治理：latest 禁止废弃、废弃版本必须存在更高非预发布且非废弃可升级目标
+- [x] 前端补充版本治理前置校验：废弃版本需存在可升级正式目标
+- [x] 前端修复项目可选更新范围置空入库：编辑提交显式发送 null
+- [x] 新增版本检查更新 e2e 测试（后端）
+- [x] 同步接口与说明文档（OpenAPI / README / docs）
+- [~] 执行完整回归（backend 单元+e2e，web 单测）
 
-- [x] 定义统一弹窗布局基座：`DialogContent` 默认最大高度 + 自适应高度 + 内容裁剪
-- [x] 新增统一滚动内容区：`DialogBody`（`overflow-y-auto`）
-- [x] 迁移版本编辑弹窗至统一模式（支持长表单滚动）
-- [x] 迁移动作/项目/公告/反馈编辑弹窗至统一模式
-- [x] 取消版本编辑时页面回顶行为，改为原地弹窗编辑
-- [~] 统一回归测试：验证弹窗高度限制、滚动容器、编辑不回顶
-- [ ] 文档补充：组件约定和使用示例（README/docs）
+## 接口请求统计与统计大屏（2026-07）
+
+- [x] 数据模型：`ApiRequestStat`（项目 × 接口 × 小时 × 平台 × 地区）+ 项目级 `statsRetentionDays`
+- [x] 埋点：`@TrackEndpoint` 装饰器 + 全局拦截器，覆盖全部 11 个公开接口
+- [x] 计数原子性：raw `INSERT ... ON CONFLICT DO UPDATE`，避免并发下 upsert 丢计数
+- [x] 旁路语义：仅成功请求计数；统计失败只告警不影响公开接口响应
+- [x] 平台识别：`x-verhub-platform` / query / body 显式声明优先，回退 User-Agent 推断
+- [x] 保留期清理：每日 03:00 定时任务按项目 retention 清理，硬上限 365 天
+- [x] 查询接口：overview（总数 + 接口/平台/地区分组）与 timeseries（hour/day + 接口过滤、空桶补零）
+- [x] 项目管理页新增「统计保留时长」配置项
+- [x] 统计大屏 `/admin/analytics`：曲线图 / 条形图 / 饼状图 / 明细表，以项目为单位
+- [x] 图表配色：新增 `--series-1..8` 分类色板（现有 `--chart-*` 为单色蓝阶，不适用于分类维度），明暗两套均通过 CVD/对比度校验
+- [x] 后端单测 29 个（平台识别 / 计数 / 拦截器 / 保留期），全量 366 通过
+- [x] 真实环境验证：docker 开发栈端到端跑通（计数、平台优先级、404 不计数、聚合与大屏一致）
+- [x] 修复迁移索引名：Postgres 63 字符截断与 Prisma 预期名不一致（region_k vs regi_key），会导致 schema 永久漂移
+- [x] 迁移校验：`migrate diff` 确认迁移与 schema.prisma 无漂移；空库全量应用 11 个迁移；生产镜像 entrypoint 自动 `migrate deploy` 实测通过
+- [x] 同步接口与说明文档（OpenAPI / README / 应用内 /doc 注册表）
+- [x] OpenAPI 全面性审计：83 条路由 100% 覆盖，$ref 全部可解析，枚举与 Prisma 对齐
+- [x] 补充 `x-verhub-platform` / `platform` 参数文档（11 个公开接口，OpenAPI + /doc 均已覆盖）
+- [x] 补录既有遗漏：反馈 PATCH/DELETE 接口文档、Actions tag、components.responses.BadRequest
+- [ ] 地区维度：`region` 字段已预留，GeoIP 解析待实现（当前恒为 UNKNOWN）
+- [ ] 大屏可视化增强：地区地图、按接口下钻的时间序列切换
+
+## 开发体验（2026-07）
+
+- [x] `docker-compose.dev.yml` 改为热重载模式：新增 `backend-dev` / `frontend-dev` 镜像 stage，仅挂载源码目录
+- [x] 绑定挂载文件监听：后端 tsc 轮询、前端 `WATCHPACK_POLLING`（Turbopack 不支持轮询，容器内改用 webpack）
+- [x] 开发栈映射 PostgreSQL 端口到宿主机，便于 psql / Prisma Studio 调试

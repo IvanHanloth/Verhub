@@ -132,9 +132,12 @@ export function normalizeDownloadLinks(
 /**
  * Resolve the effective download URL and links from the incoming DTO,
  * optionally falling back to the current persisted values during update.
+ *
+ * `undefined` means "not supplied" and falls back to the current value, while
+ * an explicit `null` clears the stored value. Keep the two apart at call sites.
  */
 export function resolveDownloadData(
-  downloadUrl: string | undefined,
+  downloadUrl: string | null | undefined,
   downloadLinks: Array<{ url: string; name?: string; platform?: string }> | undefined,
   currentDownloadUrl?: string | null,
   currentDownloadLinks?: Array<{ url: string; name?: string; platform?: string }>,

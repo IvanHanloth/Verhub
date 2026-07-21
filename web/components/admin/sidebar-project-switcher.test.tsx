@@ -25,6 +25,7 @@ function project(key: string, name: string) {
     author_homepage_url: null,
     icon_url: null,
     website_url: null,
+    docs_url: null,
     published_at: null,
     created_at: 0,
     updated_at: 0,

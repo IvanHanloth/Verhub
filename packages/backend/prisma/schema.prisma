@@ -95,6 +95,7 @@ model Project {
   authorHomepageUrl String?
   iconUrl       String?
   websiteUrl    String?
+  docsUrl       String?
   publishedAt   Int?
   optionalUpdateMinComparableVersion String?
   optionalUpdateMaxComparableVersion String?

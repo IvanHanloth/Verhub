@@ -22,6 +22,7 @@ import { getErrorMessage } from "@/lib/error-utils"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
+import { MarkdownEditor } from "@/components/markdown/markdown-editor"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import { useAdminProjects } from "@/hooks/use-admin-projects"
 import { usePagination } from "@/hooks/use-pagination"
@@ -589,17 +590,15 @@ export function VersionsDashboard() {
               className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
             />
           </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-slate-700 dark:text-slate-300">更新内容</span>
-            <textarea
-              placeholder="描述本次版本的主要变化"
-              value={form.content}
-              onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))}
-              rows={4}
-              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-              maxLength={4096}
-            />
-          </label>
+          <MarkdownEditor
+            label="更新内容"
+            placeholder="描述本次版本的主要变化"
+            value={form.content}
+            onChange={(value) => setForm((prev) => ({ ...prev, content: value }))}
+            rows={4}
+            className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
+            maxLength={4096}
+          />
 
           <label className="space-y-1 text-sm">
             <span className="text-slate-700 dark:text-slate-300">发布时间</span>

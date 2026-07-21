@@ -11,6 +11,7 @@ import { ApiError } from "@/lib/api-client"
 import { loginWithPassword } from "@/lib/auth-api"
 import { normalizeReturnTo, setSessionToken } from "@/lib/auth-session"
 import { ThemeLogo } from "@/components/branding/theme-logo"
+import { RouteTransition } from "@/components/route-transition"
 
 function toMessage(error: unknown): string {
   if (error instanceof ApiError) {
@@ -124,7 +125,9 @@ function PageFallback() {
 export default function Page() {
   return (
     <Suspense fallback={<PageFallback />}>
-      <LoginPageContent />
+      <RouteTransition>
+        <LoginPageContent />
+      </RouteTransition>
     </Suspense>
   )
 }

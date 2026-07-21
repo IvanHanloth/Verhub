@@ -3,6 +3,7 @@ import { Suspense } from "react"
 
 import { DocHeader } from "@/components/docs/doc-header"
 import { ApiSidebar } from "@/components/docs/api-sidebar"
+import { RouteTransition } from "@/components/route-transition"
 
 export const metadata: Metadata = {
   title: {
@@ -36,7 +37,9 @@ export default function DocLayout({ children }: { children: React.ReactNode }) {
             <ApiSidebar />
           </Suspense>
         </div>
-        <main className="min-w-0">{children}</main>
+        <main className="min-w-0">
+          <RouteTransition>{children}</RouteTransition>
+        </main>
       </div>
     </div>
   )

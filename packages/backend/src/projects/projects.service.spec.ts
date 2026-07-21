@@ -95,6 +95,7 @@ describe("ProjectsService", () => {
       author_homepage_url: "https://github.com/octocat",
       icon_url: "https://avatars.githubusercontent.com/u/1?v=4",
       website_url: "https://example.com",
+      docs_url: null,
       published_at: Math.floor(Date.parse("2026-03-20T10:00:00.000Z") / 1000),
       optional_update_min_comparable_version: null,
       optional_update_max_comparable_version: null,

@@ -24,6 +24,7 @@ type ProjectItem = {
   author_homepage_url: string | null
   icon_url: string | null
   website_url: string | null
+  docs_url: string | null
   published_at: number | null
   optional_update_min_comparable_version: string | null
   optional_update_max_comparable_version: string | null
@@ -46,6 +47,7 @@ type GithubRepoPreview = {
   author_homepage_url: string | null
   icon_url: string | null
   website_url: string | null
+  docs_url: string | null
   published_at: number | null
   optional_update_min_comparable_version: string | null
   optional_update_max_comparable_version: string | null
@@ -117,6 +119,7 @@ export class ProjectsService {
           authorHomepageUrl: dto.author_homepage_url,
           iconUrl: dto.icon_url,
           websiteUrl: dto.website_url,
+          docsUrl: dto.docs_url,
           publishedAt: dto.published_at,
           optionalUpdateMinComparableVersion: optionalMin,
           optionalUpdateMaxComparableVersion: optionalMax,
@@ -167,6 +170,7 @@ export class ProjectsService {
           authorHomepageUrl: dto.author_homepage_url,
           iconUrl: dto.icon_url,
           websiteUrl: dto.website_url,
+          docsUrl: dto.docs_url,
           publishedAt: dto.published_at,
           optionalUpdateMinComparableVersion:
             "optional_update_min_comparable_version" in dto
@@ -252,6 +256,8 @@ export class ProjectsService {
       author_homepage_url: payload.owner?.html_url?.trim() || null,
       icon_url: payload.owner?.avatar_url?.trim() || null,
       website_url: payload.homepage?.trim() || null,
+      // GitHub 仓库信息里没有对应的文档站字段，只能留空由用户手填
+      docs_url: null,
       published_at: Number.isFinite(publishedAt) ? publishedAt : null,
       optional_update_min_comparable_version: null,
       optional_update_max_comparable_version: null,
@@ -274,6 +280,7 @@ export class ProjectsService {
     authorHomepageUrl: string | null
     iconUrl: string | null
     websiteUrl: string | null
+    docsUrl: string | null
     publishedAt: number | null
     optionalUpdateMinComparableVersion: string | null
     optionalUpdateMaxComparableVersion: string | null
@@ -291,6 +298,7 @@ export class ProjectsService {
       author_homepage_url: project.authorHomepageUrl,
       icon_url: project.iconUrl,
       website_url: project.websiteUrl,
+      docs_url: project.docsUrl,
       published_at: project.publishedAt,
       optional_update_min_comparable_version: project.optionalUpdateMinComparableVersion,
       optional_update_max_comparable_version: project.optionalUpdateMaxComparableVersion,

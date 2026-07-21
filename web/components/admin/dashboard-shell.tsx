@@ -27,8 +27,8 @@ import { getAdminProfile } from "@/lib/auth-api"
 import { clearSessionToken, getSessionToken } from "@/lib/auth-session"
 import { AdminProjectsProvider } from "@/hooks/use-admin-projects"
 import { ThemeLogo } from "@/components/branding/theme-logo"
+import { RouteTransition } from "@/components/route-transition"
 
-import { PageTransition } from "./page-transition"
 import { SidebarProjectSwitcher } from "./sidebar-project-switcher"
 
 type Props = {
@@ -147,8 +147,7 @@ export function DashboardShell({ children }: Props) {
           <aside
             className={`fixed top-4 bottom-4 left-3 z-40 flex w-70 flex-col justify-between rounded-3xl border border-slate-900/15 bg-white/85 p-5 shadow-2xl backdrop-blur-xl transition-transform duration-300 sm:left-4 lg:sticky lg:top-5 lg:h-[calc(100svh-2.5rem)] lg:translate-x-0 dark:border-white/15 dark:bg-black/45 ${mobileOpen ? "translate-x-0" : "-translate-x-[115%]"}`}
           >
-            {/* min-h-0 + overflow-y-auto: 底部的项目选择与主题按钮是常驻的，
-              导航项变多时应该由这一段自己滚动，而不是把它们挤出可视区。 */}
+            {/* min-h-0 + overflow-y-auto：导航项过多时由这一段自行滚动，保持底部操作栏常驻 */}
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="mb-8 flex items-center justify-between">
                 <div>
@@ -191,30 +190,28 @@ export function DashboardShell({ children }: Props) {
               </nav>
             </div>
 
-            <div className="mt-4 shrink-0 space-y-3">
-              <SidebarProjectSwitcher />
-              <div className="flex items-center justify-between">
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="outline"
-                  onClick={logout}
-                  title="退出登录"
-                  aria-label="退出登录"
-                >
-                  <LogOut className="size-4" />
-                </Button>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="outline"
-                  onClick={cycleTheme}
-                  title={themeToggleLabel}
-                  aria-label={themeToggleLabel}
-                >
-                  <ThemeIcon className="size-4" />
-                </Button>
-              </div>
+            <div className="mt-4 flex shrink-0 items-center gap-2">
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                onClick={logout}
+                title="退出登录"
+                aria-label="退出登录"
+              >
+                <LogOut className="size-4" />
+              </Button>
+              <SidebarProjectSwitcher className="flex-1" />
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                onClick={cycleTheme}
+                title={themeToggleLabel}
+                aria-label={themeToggleLabel}
+              >
+                <ThemeIcon className="size-4" />
+              </Button>
             </div>
           </aside>
 
@@ -237,7 +234,7 @@ export function DashboardShell({ children }: Props) {
                 <Menu className="size-4" />
                 菜单
               </button>
-              <PageTransition routeKey={pathname}>{children}</PageTransition>
+              <RouteTransition>{children}</RouteTransition>
             </div>
           </main>
         </div>

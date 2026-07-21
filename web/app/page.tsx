@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 
 import { HomePageView } from "@/components/marketing/home-page"
+import { RouteTransition } from "@/components/route-transition"
 
 export const metadata: Metadata = {
   title: "首页",
@@ -18,5 +19,9 @@ export const metadata: Metadata = {
 }
 
 export default function HomePage() {
-  return <HomePageView />
+  return (
+    <RouteTransition>
+      <HomePageView />
+    </RouteTransition>
+  )
 }

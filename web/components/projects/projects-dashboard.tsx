@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import {
-  Check,
   Copy,
   ExternalLink,
   Loader2,
@@ -34,7 +33,7 @@ import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
-import { GithubWebhookSettings } from "@/components/projects/github-webhook-settings"
+import { MarkdownEditor } from "@/components/markdown/markdown-editor"
 import { validateComparableVersion } from "@/lib/comparable-version"
 import { scrollToPageTop } from "@/lib/scroll"
 import {
@@ -63,6 +62,7 @@ type FormState = {
   author_homepage_url: string
   icon_url: string
   website_url: string
+  docs_url: string
   published_at: string
   optional_update_min_comparable_version: string
   optional_update_max_comparable_version: string
@@ -78,6 +78,7 @@ const emptyForm: FormState = {
   author_homepage_url: "",
   icon_url: "",
   website_url: "",
+  docs_url: "",
   published_at: "",
   optional_update_min_comparable_version: "",
   optional_update_max_comparable_version: "",
@@ -144,6 +145,7 @@ function toMutationInput(
     author_homepage_url: form.author_homepage_url.trim() || undefined,
     icon_url: form.icon_url.trim() || undefined,
     website_url: form.website_url.trim() || undefined,
+    docs_url: form.docs_url.trim() || undefined,
     published_at: toTimestampSeconds(form.published_at),
     optional_update_min_comparable_version: resolveOptionalField(optionalMin),
     optional_update_max_comparable_version: resolveOptionalField(optionalMax),
@@ -206,17 +208,15 @@ function ProjectFormFields({
           maxLength={512}
         />
       </label>
-      <label className="space-y-1 text-sm">
-        <span className="text-slate-700 dark:text-slate-300">项目描述</span>
-        <textarea
-          placeholder="简要说明项目用途和范围"
-          value={form.description}
-          onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
-          rows={4}
-          className={inputClassName}
-          maxLength={2048}
-        />
-      </label>
+      <MarkdownEditor
+        label="项目描述"
+        placeholder="简要说明项目用途和范围"
+        value={form.description}
+        onChange={(value) => setForm((prev) => ({ ...prev, description: value }))}
+        rows={4}
+        className={inputClassName}
+        maxLength={2048}
+      />
       <label className="space-y-1 text-sm">
         <span className="text-slate-700 dark:text-slate-300">作者</span>
         <input
@@ -259,6 +259,17 @@ function ProjectFormFields({
           placeholder="https://example.com"
           value={form.website_url}
           onChange={(event) => setForm((prev) => ({ ...prev, website_url: event.target.value }))}
+          className={inputClassName}
+          maxLength={512}
+        />
+      </label>
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">文档链接</span>
+        <input
+          type="url"
+          placeholder="https://docs.example.com"
+          value={form.docs_url}
+          onChange={(event) => setForm((prev) => ({ ...prev, docs_url: event.target.value }))}
           className={inputClassName}
           maxLength={512}
         />
@@ -436,6 +447,7 @@ export function ProjectsDashboard() {
       author_homepage_url: project.author_homepage_url ?? "",
       icon_url: project.icon_url ?? "",
       website_url: project.website_url ?? "",
+      docs_url: project.docs_url ?? "",
       published_at: project.published_at
         ? new Date(project.published_at * 1000).toISOString().slice(0, 16)
         : "",
@@ -456,6 +468,7 @@ export function ProjectsDashboard() {
       author_homepage_url: project.author_homepage_url ?? "",
       icon_url: project.icon_url ?? "",
       website_url: project.website_url ?? "",
+      docs_url: project.docs_url ?? "",
       published_at: project.published_at
         ? new Date(project.published_at * 1000).toISOString().slice(0, 16)
         : "",
@@ -601,6 +614,7 @@ export function ProjectsDashboard() {
         author_homepage_url: preview.author_homepage_url ?? "",
         icon_url: preview.icon_url ?? "",
         website_url: preview.website_url ?? "",
+        docs_url: preview.docs_url ?? "",
         published_at: preview.published_at
           ? new Date(preview.published_at * 1000).toISOString().slice(0, 16)
           : "",
@@ -776,6 +790,16 @@ export function ProjectsDashboard() {
                             官网：{project.website_url}
                           </a>
                         ) : null}
+                        {project.docs_url ? (
+                          <a
+                            className="mt-1 block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
+                            href={project.docs_url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            文档：{project.docs_url}
+                          </a>
+                        ) : null}
                       </td>
                       <td className="px-3 py-2 align-top text-xs text-slate-700 dark:text-slate-300">
                         {project.optional_update_min_comparable_version ?? "-∞"}
@@ -784,18 +808,6 @@ export function ProjectsDashboard() {
                       </td>
                       <td className="px-3 py-2 align-top">
                         <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="border-white/20 bg-white/5"
-                            disabled={project.project_key === selectedProjectKey}
-                            onClick={() => setSelectedProjectKey(project.project_key)}
-                          >
-                            <Check className="size-4" />
-                            {project.project_key === selectedProjectKey
-                              ? "当前项目"
-                              : "设为当前项目"}
-                          </Button>
                           <Button
                             asChild
                             type="button"
@@ -865,13 +877,6 @@ export function ProjectsDashboard() {
                 minComparableError={editMinComparableError}
                 maxComparableError={editMaxComparableError}
                 theme="light"
-              />
-              {/* Keyed on the project so switching rows refetches instead of
-                  showing the previous project's webhook state. */}
-              <GithubWebhookSettings
-                key={editingProjectKey ?? "none"}
-                token={token}
-                projectKey={editingProjectKey}
               />
             </div>
           </DialogBody>

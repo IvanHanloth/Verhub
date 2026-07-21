@@ -75,6 +75,11 @@ export class CreateProjectDto {
   website_url?: string
 
   @IsOptional()
+  @IsUrl({ require_protocol: true })
+  @MaxLength(512)
+  docs_url?: string
+
+  @IsOptional()
   @IsInt()
   @Min(0)
   published_at?: number

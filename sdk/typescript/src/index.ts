@@ -104,7 +104,8 @@ class VerhubBaseClient {
     const payload = this.tryParseJson(raw)
 
     if (!response.ok) {
-      const message = this.extractErrorMessage(payload) ?? `Request failed with status ${response.status}`
+      const message =
+        this.extractErrorMessage(payload) ?? `Request failed with status ${response.status}`
       throw new VerhubApiError(message, response.status, payload)
     }
 
@@ -260,7 +261,13 @@ export class VerhubPublicApi {
    * @param rating 评分
    * @param platform 平台
    */
-  createFeedback(projectKey: string, content: string, userId?: string, rating?: number, platform?: string) {
+  createFeedback(
+    projectKey: string,
+    content: string,
+    userId?: string,
+    rating?: number,
+    platform?: string,
+  ) {
     return this.client.request("POST", "/public/{projectKey}/feedbacks", {
       pathParams: { projectKey },
       body: compact({ user_id: userId, rating, content, platform }),
@@ -322,6 +329,7 @@ export class VerhubAdminApi {
    * @param iconUrl 图标地址
    * @param websiteUrl 官网地址
    * @param publishedAt 发布时间
+   * @param docsUrl 文档地址（排在 publishedAt 之后，避免改动既有位置参数的顺序）
    */
   createProject(
     projectKey: string,
@@ -333,6 +341,7 @@ export class VerhubAdminApi {
     iconUrl?: string,
     websiteUrl?: string,
     publishedAt?: number,
+    docsUrl?: string,
   ) {
     return this.client.request("POST", "/admin/projects", {
       auth: "bearer",
@@ -345,6 +354,7 @@ export class VerhubAdminApi {
         author_homepage_url: authorHomepageUrl,
         icon_url: iconUrl,
         website_url: websiteUrl,
+        docs_url: docsUrl,
         published_at: publishedAt,
       }),
     })
@@ -537,7 +547,13 @@ export class VerhubAdminApi {
    * @param content 内容
    * @param platform 平台
    */
-  updateFeedback(projectKey: string, id: string, rating?: number, content?: string, platform?: string) {
+  updateFeedback(
+    projectKey: string,
+    id: string,
+    rating?: number,
+    content?: string,
+    platform?: string,
+  ) {
     return this.client.request("PATCH", "/admin/projects/{projectKey}/feedbacks/{id}", {
       auth: "bearer",
       pathParams: { projectKey, id },
@@ -564,7 +580,14 @@ export class VerhubAdminApi {
    * @param startTime 开始时间
    * @param endTime 结束时间
    */
-  listLogs(projectKey: string, limit?: number, offset?: number, level?: number, startTime?: number, endTime?: number) {
+  listLogs(
+    projectKey: string,
+    limit?: number,
+    offset?: number,
+    level?: number,
+    startTime?: number,
+    endTime?: number,
+  ) {
     return this.client.request("GET", "/admin/projects/{projectKey}/logs", {
       auth: "bearer",
       pathParams: { projectKey },

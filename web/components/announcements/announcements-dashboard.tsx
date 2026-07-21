@@ -18,6 +18,7 @@ import {
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
+import { MarkdownEditor } from "@/components/markdown/markdown-editor"
 import {
   createAnnouncement,
   deleteAnnouncement,
@@ -138,17 +139,15 @@ function AnnouncementFormFields({
         />
       </label>
 
-      <label className="space-y-1 text-sm">
-        <span className="text-slate-700 dark:text-slate-300">公告内容</span>
-        <textarea
-          value={form.content}
-          onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))}
-          rows={6}
-          className={inputClassName}
-          required
-          maxLength={4096}
-        />
-      </label>
+      <MarkdownEditor
+        label="公告内容"
+        value={form.content}
+        onChange={(value) => setForm((prev) => ({ ...prev, content: value }))}
+        rows={6}
+        className={inputClassName}
+        required
+        maxLength={4096}
+      />
 
       <label className="space-y-1 text-sm">
         <span className="text-slate-700 dark:text-slate-300">发布时间</span>

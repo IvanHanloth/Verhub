@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 
 import { ProjectShowcaseView } from "@/components/projects/project-showcase-view"
+import { RouteTransition } from "@/components/route-transition"
 import { getProjectShowcaseData } from "@/lib/public-api-server"
 
 type PageProps = {
@@ -65,10 +66,12 @@ export default async function ProjectShowcasePage({ params }: PageProps) {
   }
 
   return (
-    <ProjectShowcaseView
-      project={data.project}
-      versions={data.versions}
-      announcements={data.announcements}
-    />
+    <RouteTransition>
+      <ProjectShowcaseView
+        project={data.project}
+        versions={data.versions}
+        announcements={data.announcements}
+      />
+    </RouteTransition>
   )
 }

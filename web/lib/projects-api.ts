@@ -10,6 +10,7 @@ export type ProjectItem = {
   author_homepage_url: string | null
   icon_url: string | null
   website_url: string | null
+  docs_url: string | null
   published_at: number | null
   optional_update_min_comparable_version?: string | null
   optional_update_max_comparable_version?: string | null
@@ -32,6 +33,7 @@ export type ProjectMutationInput = {
   author_homepage_url?: string
   icon_url?: string
   website_url?: string
+  docs_url?: string
   published_at?: number
   optional_update_min_comparable_version?: string | null
   optional_update_max_comparable_version?: string | null
@@ -47,6 +49,7 @@ export type GithubRepoProjectPreview = {
   author_homepage_url: string | null
   icon_url: string | null
   website_url: string | null
+  docs_url: string | null
   published_at: number | null
   optional_update_min_comparable_version?: string | null
   optional_update_max_comparable_version?: string | null

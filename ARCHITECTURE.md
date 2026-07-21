@@ -104,8 +104,9 @@ Webhook 鉴权（Project）：
 
 项目展示元数据（Project）：
 
-- 新增可选字段：`author`、`authorHomepageUrl`、`iconUrl`、`websiteUrl`、`publishedAt`。
-- 用于公共项目展示页与客户端启动信息补全；GitHub 仓库预览可自动回填上述信息。
+- 新增可选字段：`author`、`authorHomepageUrl`、`iconUrl`、`websiteUrl`、`docsUrl`、`publishedAt`。
+- 用于公共项目展示页与客户端启动信息补全；GitHub 仓库预览可自动回填上述信息（`docsUrl` 除外，仓库接口无对应字段，需手动填写）。
+- 展示页的项目描述、版本更新内容与公告正文按 Markdown（GFM）渲染，渲染前经白名单清洗；管理端对应表单提供编写/预览切换。
 
 ## 4. 前端架构
 
@@ -119,6 +120,7 @@ Webhook 鉴权（Project）：
 - 共享错误处理在 `web/lib/error-utils.ts`（`getErrorMessage`）
 - 共享分页逻辑在 `web/hooks/use-pagination.ts`（`usePagination` hook）
 - 跨页面项目选择同步在 `web/hooks/use-shared-project-selection.ts`
+- 路由切换过渡在 `web/components/route-transition.tsx`（`RouteTransition`）：由后台布局、文档布局与各独立页面分别包裹内容区，不放在根布局，避免整页淡入影响常驻侧栏
 - 统一弹窗模式基于 `@workspace/ui/components/dialog`：`DialogContent` 负责最大高度与自适应布局，`DialogBody` 负责内容滚动，`DialogFooter` 固定底部操作区
 
 版本管理组件拆分：

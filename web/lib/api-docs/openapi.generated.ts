@@ -4350,6 +4350,11 @@ export const openApiDocument: OpenApiDocument = {
             format: "uri",
             maxLength: 512,
           },
+          docs_url: {
+            type: "string",
+            format: "uri",
+            maxLength: 512,
+          },
           published_at: {
             type: "integer",
             format: "int64",
@@ -4381,6 +4386,7 @@ export const openApiDocument: OpenApiDocument = {
           author_homepage_url: "https://github.com/octocat",
           icon_url: "https://avatars.githubusercontent.com/u/1?v=4",
           website_url: "https://verhub.dev",
+          docs_url: "https://docs.verhub.dev",
           published_at: 1760000000,
         },
       },
@@ -4418,6 +4424,11 @@ export const openApiDocument: OpenApiDocument = {
             maxLength: 1024,
           },
           website_url: {
+            type: "string",
+            format: "uri",
+            maxLength: 512,
+          },
+          docs_url: {
             type: "string",
             format: "uri",
             maxLength: 512,
@@ -4462,6 +4473,7 @@ export const openApiDocument: OpenApiDocument = {
           "author_homepage_url",
           "icon_url",
           "website_url",
+          "docs_url",
           "published_at",
           "optional_update_min_comparable_version",
           "optional_update_max_comparable_version",
@@ -4497,6 +4509,9 @@ export const openApiDocument: OpenApiDocument = {
           website_url: {
             type: ["string", "null"],
           },
+          docs_url: {
+            type: ["string", "null"],
+          },
           published_at: {
             type: ["integer", "null"],
             format: "int64",
@@ -4530,6 +4545,7 @@ export const openApiDocument: OpenApiDocument = {
           author_homepage_url: "https://github.com/octocat",
           icon_url: "https://avatars.githubusercontent.com/u/1?v=4",
           website_url: "https://verhub.dev",
+          docs_url: "https://docs.verhub.dev",
           published_at: 1760000000,
           optional_update_min_comparable_version: "1.0.0",
           optional_update_max_comparable_version: "1.9.9",
@@ -5471,6 +5487,7 @@ export const openApiDocument: OpenApiDocument = {
           "author_homepage_url",
           "icon_url",
           "website_url",
+          "docs_url",
           "published_at",
         ],
         properties: {
@@ -5499,6 +5516,10 @@ export const openApiDocument: OpenApiDocument = {
             format: "uri",
           },
           website_url: {
+            type: ["string", "null"],
+            format: "uri",
+          },
+          docs_url: {
             type: ["string", "null"],
             format: "uri",
           },

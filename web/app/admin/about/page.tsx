@@ -84,6 +84,9 @@ function extractComparableFromVersion(version: string): string | null {
   return COMPARABLE_VERSION_PATTERN.test(candidate) ? candidate : coreMatch[0]
 }
 
+// 发布镜像里的版本号由 .github/workflows/release.yml 经 build arg 写入 build-info.json。
+// 读不到时退回 package.json 的版本号（与 scripts/version.mjs 同步的那一份），
+// 标成 -dev 以示这不是发布产物——绝不能凭空编一个版本号出来。
 async function readBuildInfo(): Promise<BuildInfo> {
   const candidatePaths = [
     path.join(process.cwd(), "build-info.json"),
@@ -106,8 +109,22 @@ async function readBuildInfo(): Promise<BuildInfo> {
     }
   }
 
+  for (const filePath of [
+    path.join(process.cwd(), "package.json"),
+    path.join(process.cwd(), "web", "package.json"),
+  ]) {
+    try {
+      const parsed = JSON.parse(await readFile(filePath, "utf8")) as { version?: string }
+      if (typeof parsed.version === "string") {
+        return { version: `${parsed.version}-dev`, published_at: "unknown" }
+      }
+    } catch {
+      // noop
+    }
+  }
+
   return {
-    version: "1.0.0",
+    version: "dev",
     published_at: "unknown",
   }
 }

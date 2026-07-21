@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { ApiError } from "@/lib/api-client"
 import {
   createProject,
+  getGithubWebhookSettings,
   listProjects,
   previewProjectFromGithubRepo,
   updateProject,
@@ -44,7 +45,16 @@ const mockedListProjects = vi.mocked(listProjects)
 const mockedPreviewProjectFromGithubRepo = vi.mocked(previewProjectFromGithubRepo)
 const mockedCreateProject = vi.mocked(createProject)
 const mockedUpdateProject = vi.mocked(updateProject)
+const mockedGetGithubWebhookSettings = vi.mocked(getGithubWebhookSettings)
 const mockedToastError = vi.mocked(toast.error)
+
+const WEBHOOK_SETTINGS = {
+  enabled: false,
+  payload_path: "/api/v1/webhooks/github/verhub",
+  content_type: "application/json" as const,
+  secret_hint: null,
+  secret_updated_at: null,
+}
 
 describe("ProjectsDashboard", () => {
   beforeEach(() => {
@@ -54,6 +64,9 @@ describe("ProjectsDashboard", () => {
     mockedCreateProject.mockReset()
     mockedUpdateProject.mockReset()
     mockedToastError.mockReset()
+    // reset 会清掉工厂里的默认实现，重新给上，否则面板会走错误分支。
+    mockedGetGithubWebhookSettings.mockReset()
+    mockedGetGithubWebhookSettings.mockResolvedValue(WEBHOOK_SETTINGS)
   })
 
   it("shows empty state after loading projects", async () => {
@@ -273,6 +286,54 @@ describe("ProjectsDashboard", () => {
           optional_update_min_comparable_version: null,
           optional_update_max_comparable_version: null,
         }),
+      )
+    })
+  })
+
+  /**
+   * 守住编辑弹窗与 webhook 面板的接线。
+   *
+   * 面板自身的单测独立渲染组件，dashboard 忘记挂载它也照样全绿——功能因此可能
+   * 整条链路可用但后台没有入口。这条断言是唯一能发现漏接线的地方。
+   */
+  it("renders the github webhook panel for the project being edited", async () => {
+    const user = userEvent.setup()
+    window.localStorage.setItem("verhub-admin-token", "valid-token")
+    mockedListProjects.mockResolvedValue({
+      total: 1,
+      data: [
+        {
+          id: "project-1",
+          project_key: "verhub",
+          name: "Verhub",
+          repo_url: "https://github.com/verhub/verhub",
+          description: null,
+          author: null,
+          author_homepage_url: null,
+          icon_url: null,
+          website_url: null,
+          docs_url: null,
+          optional_update_min_comparable_version: null,
+          optional_update_max_comparable_version: null,
+          published_at: null,
+          created_at: Math.floor(Date.parse("2026-03-20T00:00:00.000Z") / 1000),
+          updated_at: Math.floor(Date.parse("2026-03-20T00:00:00.000Z") / 1000),
+        },
+      ],
+    })
+
+    render(React.createElement(ProjectsDashboard))
+
+    await screen.findByText("ID: project-1")
+    await user.click(screen.getByRole("button", { name: "编辑" }))
+
+    const dialog = screen.getByRole("dialog")
+    expect(within(dialog).getByText("GitHub Release Webhook")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(mockedGetGithubWebhookSettings).toHaveBeenCalledWith(
+        "valid-token",
+        "verhub",
+        expect.any(AbortSignal),
       )
     })
   })

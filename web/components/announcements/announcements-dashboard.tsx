@@ -17,8 +17,7 @@ import {
 
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
-import { ProjectApiOverview } from "@/components/admin/project-api-overview"
-import { ProjectSelectorCard } from "@/components/admin/project-selector-card"
+import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import {
   createAnnouncement,
   deleteAnnouncement,
@@ -32,10 +31,8 @@ import { getErrorMessage } from "@/lib/error-utils"
 import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
-import { useSharedProjectSelection } from "@/hooks/use-shared-project-selection"
-import { listProjects, type ProjectItem } from "@/lib/projects-api"
+import { useAdminProjects } from "@/hooks/use-admin-projects"
 
-const PROJECT_PAGE_SIZE = 100
 const PAGE_SIZE = 10
 
 const platformOptions: Array<{
@@ -226,9 +223,7 @@ export function AnnouncementsDashboard() {
   const [token, setToken] = React.useState(() => getSessionToken().trim())
   const [authError, setAuthError] = React.useState<string | null>(null)
 
-  const [projects, setProjects] = React.useState<ProjectItem[]>([])
-  const [projectsLoading, setProjectsLoading] = React.useState(false)
-  const { selectedProjectKey, setSelectedProjectKey } = useSharedProjectSelection()
+  const { selectedProject, selectedProjectKey, error: projectsError } = useAdminProjects()
 
   const [announcements, setAnnouncements] = React.useState<AnnouncementItem[]>([])
   const {
@@ -255,47 +250,7 @@ export function AnnouncementsDashboard() {
   const [editForm, setEditForm] = React.useState<AnnouncementFormState>(emptyForm)
   const [savingEdit, setSavingEdit] = React.useState(false)
 
-  const selectedProject = React.useMemo(
-    () => projects.find((project) => project.project_key === selectedProjectKey) ?? null,
-    [projects, selectedProjectKey],
-  )
-
   const hasToken = token.trim().length > 0
-
-  const loadProjects = React.useCallback(async () => {
-    if (!token) {
-      setProjects([])
-      setSelectedProjectKey("")
-      return
-    }
-
-    setProjectsLoading(true)
-    try {
-      const response = await listProjects(token, { limit: PROJECT_PAGE_SIZE, offset: 0 })
-      setProjects(response.data)
-      const hasCurrent = response.data.some((project) => project.project_key === selectedProjectKey)
-      if (hasCurrent) {
-        return
-      }
-
-      const firstProject = response.data[0]
-      if (firstProject) {
-        setSelectedProjectKey(firstProject.project_key)
-      } else {
-        setSelectedProjectKey("")
-      }
-    } catch (loadError) {
-      if (isAuthError(loadError)) {
-        setToken("")
-        setAuthError("登录状态已过期，请重新登录。")
-      }
-      setAuthError(getErrorMessage(loadError))
-      setProjects([])
-      setSelectedProjectKey("")
-    } finally {
-      setProjectsLoading(false)
-    }
-  }, [selectedProjectKey, setSelectedProjectKey, token])
 
   const loadAnnouncements = React.useCallback(
     async (nextOffset: number, signal?: AbortSignal) => {
@@ -338,10 +293,6 @@ export function AnnouncementsDashboard() {
     },
     [selectedProjectKey, token, setTotal],
   )
-
-  React.useEffect(() => {
-    void loadProjects()
-  }, [loadProjects])
 
   React.useEffect(() => {
     const controller = new AbortController()
@@ -486,97 +437,40 @@ export function AnnouncementsDashboard() {
         title="公告发布中心"
         description="维护公告内容、置顶状态、隐藏状态和发布时间。"
         badge="Verhub Announcements"
+        actions={
+          <ApiReferenceDrawer
+            tag="Announcements"
+            title="公告接口文档"
+            projectKey={selectedProject?.project_key}
+          />
+        }
       />
 
-      <section className="grid gap-6 lg:grid-cols-[1.1fr_1.9fr]">
-        <div className="space-y-6">
-          <ProjectSelectorCard
-            selectId="announcement-project-select"
-            selectedProjectKey={selectedProjectKey}
-            projects={projects}
-            disabled={!hasToken || projectsLoading || projects.length === 0}
-            ringClassName="ring-amber-300"
-            onChange={setSelectedProjectKey}
-            warning={authError || undefined}
-          />
+      {authError || projectsError ? (
+        <AdminCard className="text-sm text-rose-500 dark:text-rose-300">
+          {authError ?? projectsError}
+        </AdminCard>
+      ) : null}
 
-          <ProjectApiOverview
-            title="接口示例 · 公告"
-            projectKey={selectedProject?.project_key}
-            groups={[
-              {
-                label: "公开接口",
-                endpoints: [
-                  {
-                    method: "GET",
-                    path: "/api/v1/public/{projectKey}/announcements",
-                    description: "获取公告列表（自动排除隐藏公告）",
-                    auth: { tokenRequired: false },
-                  },
-                  {
-                    method: "GET",
-                    path: "/api/v1/public/{projectKey}/announcements/latest",
-                    description: "获取最新公告（自动排除隐藏公告）",
-                    auth: { tokenRequired: false },
-                  },
-                ],
-              },
-              {
-                label: "管理接口",
-                endpoints: [
-                  {
-                    method: "POST",
-                    path: "/api/v1/admin/projects/{projectKey}/announcements",
-                    description: "创建公告",
-                    auth: { tokenRequired: true },
-                    requestBody: {
-                      title: "系统维护通知",
-                      content: "3 月 25 日晚 22:00-23:00 进行维护",
-                      is_pinned: false,
-                      is_hidden: false,
-                      platforms: ["ios", "android"],
-                      author: "ops-bot",
-                      published_at: 1774476000,
-                    },
-                  },
-                  {
-                    method: "PATCH",
-                    path: "/api/v1/admin/projects/{projectKey}/announcements/{id}",
-                    description: "更新公告",
-                    auth: { tokenRequired: true },
-                    requestBody: {
-                      title: "系统维护通知（延期）",
-                      content: "维护窗口改为 23:00-24:00",
-                      is_hidden: true,
-                      platforms: ["web"],
-                    },
-                  },
-                ],
-              },
-            ]}
-          />
+      <AdminCard className="space-y-6">
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold">发布公告</h2>
+          <p className="text-sm text-slate-200/90">支持按平台发布与隐藏公告。</p>
         </div>
 
-        <AdminCard className="space-y-6">
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold">发布公告</h2>
-            <p className="text-sm text-slate-200/90">支持按平台发布与隐藏公告。</p>
-          </div>
+        <form className="grid gap-3" onSubmit={handleCreate}>
+          <AnnouncementFormFields form={form} setForm={setForm} theme="dark" />
 
-          <form className="grid gap-3" onSubmit={handleCreate}>
-            <AnnouncementFormFields form={form} setForm={setForm} theme="dark" />
-
-            <Button type="submit" disabled={submitLoading || !selectedProjectKey}>
-              {submitLoading ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Plus className="size-4" />
-              )}
-              发布公告
-            </Button>
-          </form>
-        </AdminCard>
-      </section>
+          <Button type="submit" disabled={submitLoading || !selectedProjectKey}>
+            {submitLoading ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Plus className="size-4" />
+            )}
+            发布公告
+          </Button>
+        </form>
+      </AdminCard>
 
       <AdminCard as="section">
         <AdminListHeader title="公告列表" total={total} page={page} totalPages={totalPages} />
@@ -666,7 +560,7 @@ export function AnnouncementsDashboard() {
       </AdminCard>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>编辑公告</DialogTitle>
             <DialogDescription>通过弹窗编辑公告，不再占用主表单。</DialogDescription>

@@ -228,7 +228,7 @@ describe("ActionsService", () => {
     const result = await service.findAllByProject("my-app", { limit: 10, offset: 0 })
 
     expect(result.total).toBe(1)
-    expect(result.data[0].action_id).toBe("action-1")
+    expect(result.data[0]?.action_id).toBe("action-1")
   })
 
   it("findAllByProject throws when project not found", async () => {
@@ -261,7 +261,7 @@ describe("ActionsService", () => {
     const result = await service.findRecordsByAction("action-1", { limit: 10, offset: 0 })
 
     expect(result.total).toBe(1)
-    expect(result.data[0].action_record_id).toBe("record-1")
+    expect(result.data[0]?.action_record_id).toBe("record-1")
   })
 
   it("findRecordsByAction throws when action not found", async () => {

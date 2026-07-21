@@ -1,0 +1,5801 @@
+// 本文件由 scripts/generate-api-docs.mjs 自动生成，请勿手工编辑。
+// 数据源：verhub.openapi.yaml —— 修改接口契约后执行 `pnpm api:sync` 重新生成。
+
+import type { OpenApiDocument } from "./openapi-types"
+
+export const openApiDocument: OpenApiDocument = {
+  openapi: "3.1.0",
+  info: {
+    title: "Verhub API",
+    version: "1.2.0",
+    description:
+      "Verhub 后端接口契约（与当前 NestJS Controller + DTO 保持一致）。\n基础路径统一为 /api/v1。\n",
+  },
+  servers: [
+    {
+      url: "/api/v1",
+      description: "默认 API 前缀",
+    },
+  ],
+  tags: [
+    {
+      name: "Health",
+    },
+    {
+      name: "Auth",
+    },
+    {
+      name: "Projects",
+    },
+    {
+      name: "Versions",
+    },
+    {
+      name: "Announcements",
+    },
+    {
+      name: "Feedbacks",
+    },
+    {
+      name: "Logs",
+    },
+    {
+      name: "Actions",
+    },
+    {
+      name: "Statistics",
+    },
+  ],
+  paths: {
+    "/health": {
+      get: {
+        tags: ["Health"],
+        summary: "健康检查",
+        responses: {
+          "200": {
+            description: "服务可用",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/HealthResponse",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/auth/login": {
+      post: {
+        tags: ["Auth"],
+        summary: "管理员登录",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/LoginDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            description: "登录成功",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/LoginResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            description: "用户名或密码错误",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/auth/status": {
+      get: {
+        tags: ["Auth"],
+        summary: "Auth 模块状态",
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ModuleStatusResponse",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/auth/me": {
+      get: {
+        tags: ["Auth"],
+        summary: "获取当前管理员信息",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AdminProfileResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/auth/admin-profile": {
+      get: {
+        tags: ["Auth"],
+        summary: "获取管理员资料",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AdminProfileResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+      patch: {
+        tags: ["Auth"],
+        summary: "更新管理员资料",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateAdminProfileDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AdminProfileResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/auth/password": {
+      patch: {
+        tags: ["Auth"],
+        summary: "修改管理员密码",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/ChangePasswordDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DeleteSuccessResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/auth/account": {
+      patch: {
+        tags: ["Auth"],
+        summary: "修改管理员账号（用户名）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateAdminAccountDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DeleteSuccessResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "409": {
+            description: "用户名冲突",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/auth/api-scopes": {
+      get: {
+        tags: ["Auth"],
+        summary: "获取可用的 API 作用域列表",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            description: "获取可用作用域列表及默认值",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ListApiScopesResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/auth/tokens": {
+      get: {
+        tags: ["Auth"],
+        summary: "获取长期 Token 列表",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  type: "array",
+                  items: {
+                    $ref: "#/components/schemas/ApiTokenItem",
+                  },
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+      post: {
+        tags: ["Auth"],
+        summary: "创建长期 Token",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CreateApiTokenDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/CreateApiTokenResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/auth/api-keys": {
+      get: {
+        tags: ["Auth"],
+        summary: "获取长期 Token 列表（包装响应）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ApiTokenListResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+      post: {
+        tags: ["Auth"],
+        summary: "创建长期 Token（包装响应）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CreateApiTokenDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/CreateApiTokenResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/auth/tokens/{id}": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/EntityId",
+        },
+      ],
+      patch: {
+        tags: ["Auth"],
+        summary: "在线更新长期 Token（权限/范围/有效期，token 值不变）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateApiTokenDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/UpdateApiTokenResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      delete: {
+        tags: ["Auth"],
+        summary: "撤销长期 Token",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DeleteSuccessResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/auth/tokens/{id}/rotate": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/EntityId",
+        },
+      ],
+      post: {
+        tags: ["Auth"],
+        summary: "轮转长期 Token（支持旧 token 宽限期）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/RotateApiTokenDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/RotateApiTokenResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/auth/api-keys/{id}": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/EntityId",
+        },
+      ],
+      patch: {
+        tags: ["Auth"],
+        summary: "在线更新长期 Token（包装响应，token 值不变）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateApiTokenDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/UpdateApiTokenResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      delete: {
+        tags: ["Auth"],
+        summary: "撤销长期 Token（包装响应）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DeleteSuccessResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/auth/api-keys/{id}/rotate": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/EntityId",
+        },
+      ],
+      post: {
+        tags: ["Auth"],
+        summary: "轮转长期 Token（包装响应，支持旧 token 宽限期）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/RotateApiTokenDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/RotateApiTokenResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects": {
+      get: {
+        tags: ["Projects"],
+        summary: "获取项目列表",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/Limit",
+          },
+          {
+            $ref: "#/components/parameters/Offset",
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ProjectListResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+      post: {
+        tags: ["Projects"],
+        summary: "创建项目",
+        description: "创建新的项目元数据。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CreateProjectDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ProjectItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "409": {
+            description: "project_key 冲突",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/admin/projects/statistics": {
+      get: {
+        tags: ["Projects"],
+        summary: "获取项目统计信息",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["count"],
+                  properties: {
+                    count: {
+                      type: "integer",
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/github-repo-preview": {
+      get: {
+        tags: ["Projects"],
+        summary: "从 GitHub 仓库地址预览项目信息",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            name: "repo_url",
+            in: "query",
+            required: true,
+            schema: {
+              type: "string",
+              format: "uri",
+              maxLength: 512,
+            },
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/GithubRepoProjectPreview",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Projects"],
+        summary: "获取单个项目",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ProjectItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      patch: {
+        tags: ["Projects"],
+        summary: "更新项目",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateProjectDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ProjectItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+          "409": {
+            description: "project_key 冲突",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+        },
+      },
+      delete: {
+        tags: ["Projects"],
+        summary: "删除项目",
+        description: "删除项目及其关联管理数据。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DeleteSuccessResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/_status": {
+      get: {
+        tags: ["Projects"],
+        summary: "Projects 模块状态",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ModuleStatusResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/versions": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Versions"],
+        summary: "获取版本列表",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/Limit",
+          },
+          {
+            $ref: "#/components/parameters/Offset",
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/VersionListResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      post: {
+        tags: ["Versions"],
+        summary: "创建版本",
+        description: "为指定项目新增版本。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CreateVersionDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/VersionItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+          "409": {
+            description: "同项目 version 冲突",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/versions/github-release-preview": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Versions"],
+        summary: "从 GitHub Release 预填版本草稿",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            name: "tag",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              maxLength: 128,
+            },
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/GithubReleaseVersionPreview",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/versions/github-release-import": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      post: {
+        tags: ["Versions"],
+        summary: "从 GitHub Release 导入历史版本",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/VersionImportResult",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/versions/by-version/{version}": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          name: "version",
+          in: "path",
+          required: true,
+          description: "目标版本号，按 version 字段精确匹配",
+          schema: {
+            type: "string",
+            maxLength: 64,
+          },
+        },
+      ],
+      put: {
+        tags: ["Versions"],
+        summary: "按版本号创建或更新版本（支持管理员 JWT 或 API Key）",
+        description:
+          "幂等发布端点：项目下不存在该版本号时创建，已存在则就地更新， 调用方无需先查出版本 id。API Key 需要 `versions:write` scope。\n",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpsertVersionDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "已有版本被更新",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/VersionItem",
+                },
+              },
+            },
+          },
+          "201": {
+            description: "版本被创建",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/VersionItem",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/versions/{id}": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/EntityId",
+        },
+      ],
+      get: {
+        tags: ["Versions"],
+        summary: "获取单个版本",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/VersionItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      patch: {
+        tags: ["Versions"],
+        summary: "更新版本",
+        description: "修改版本字段，支持 latest/preview/published_at。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateVersionDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/VersionItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+          "409": {
+            description: "同项目 version 冲突",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+        },
+      },
+      delete: {
+        tags: ["Versions"],
+        summary: "删除版本",
+        description: "删除指定版本。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DeleteSuccessResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/versions/_status": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Versions"],
+        summary: "Versions 模块状态",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ModuleStatusResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/versions": {
+      post: {
+        tags: ["Versions"],
+        summary: "通过 project_key 创建版本（兼容路径）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CreateProjectVersionDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/VersionItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/versions/{version_id}": {
+      parameters: [
+        {
+          name: "version_id",
+          in: "path",
+          required: true,
+          schema: {
+            type: "string",
+          },
+        },
+      ],
+      get: {
+        tags: ["Versions"],
+        summary: "按版本ID获取版本（兼容路径）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/VersionItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      patch: {
+        tags: ["Versions"],
+        summary: "按版本ID更新版本（兼容路径）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateVersionDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/VersionItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+          "409": {
+            description: "同项目 version 冲突",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+        },
+      },
+      delete: {
+        tags: ["Versions"],
+        summary: "按版本ID删除版本（兼容路径）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DeleteSuccessResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/versions/statistics": {
+      get: {
+        tags: ["Versions"],
+        summary: "获取版本统计信息",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: [
+                    "total_versions",
+                    "total_projects",
+                    "forced_versions",
+                    "latest_version_time",
+                    "first_version_time",
+                  ],
+                  properties: {
+                    total_versions: {
+                      type: "integer",
+                    },
+                    total_projects: {
+                      type: "integer",
+                    },
+                    forced_versions: {
+                      type: "integer",
+                    },
+                    latest_version_time: {
+                      type: ["integer", "null"],
+                    },
+                    first_version_time: {
+                      type: ["integer", "null"],
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/announcements": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Announcements"],
+        summary: "获取公告列表",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/Limit",
+          },
+          {
+            $ref: "#/components/parameters/Offset",
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AnnouncementListResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      post: {
+        tags: ["Announcements"],
+        summary: "新增公告",
+        description: "创建对外公告。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CreateAnnouncementDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AnnouncementItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/announcements/{id}": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/EntityId",
+        },
+      ],
+      get: {
+        tags: ["Announcements"],
+        summary: "获取单条公告",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AnnouncementItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      patch: {
+        tags: ["Announcements"],
+        summary: "更新公告",
+        description: "编辑指定公告的标题、内容、置顶状态与发布时间。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateAnnouncementDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AnnouncementItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      delete: {
+        tags: ["Announcements"],
+        summary: "删除公告",
+        description: "删除公告记录。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DeleteSuccessResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/announcements/_status": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Announcements"],
+        summary: "Announcements 模块状态",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ModuleStatusResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/announcements": {
+      post: {
+        tags: ["Announcements"],
+        summary: "通过 project_key 创建公告（兼容路径）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CreateProjectAnnouncementDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AnnouncementItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/announcements/{announcement_id}": {
+      parameters: [
+        {
+          name: "announcement_id",
+          in: "path",
+          required: true,
+          schema: {
+            type: "string",
+          },
+        },
+      ],
+      patch: {
+        tags: ["Announcements"],
+        summary: "按公告ID更新公告（兼容路径）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateAnnouncementDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AnnouncementItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      delete: {
+        tags: ["Announcements"],
+        summary: "按公告ID删除公告（兼容路径）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DeleteSuccessResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/announcements/statistics": {
+      get: {
+        tags: ["Announcements"],
+        summary: "获取公告统计信息",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["count", "pinned_count"],
+                  properties: {
+                    count: {
+                      type: "integer",
+                    },
+                    pinned_count: {
+                      type: "integer",
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/feedbacks": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Feedbacks"],
+        summary: "查询反馈列表",
+        description: "按项目分页查询反馈。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/Limit",
+          },
+          {
+            $ref: "#/components/parameters/Offset",
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/FeedbackListResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/feedbacks/{id}": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/EntityId",
+        },
+      ],
+      get: {
+        tags: ["Feedbacks"],
+        summary: "获取单条反馈",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/FeedbackItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      patch: {
+        tags: ["Feedbacks"],
+        summary: "编辑反馈",
+        description: "编辑指定反馈内容与评分。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateFeedbackDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "更新后的反馈",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/FeedbackItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      delete: {
+        tags: ["Feedbacks"],
+        summary: "删除反馈",
+        description: "删除指定反馈记录。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            description: "删除成功",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DeleteSuccessResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/feedbacks/statistics": {
+      get: {
+        tags: ["Feedbacks"],
+        summary: "获取反馈统计信息",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["count", "rate_count", "rate_avg"],
+                  properties: {
+                    count: {
+                      type: "integer",
+                    },
+                    rate_count: {
+                      type: "integer",
+                    },
+                    rate_avg: {
+                      type: ["number", "null"],
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/feedbacks/{feedback_id}": {
+      parameters: [
+        {
+          name: "feedback_id",
+          in: "path",
+          required: true,
+          schema: {
+            type: "string",
+          },
+        },
+      ],
+      patch: {
+        tags: ["Feedbacks"],
+        summary: "按反馈ID更新反馈（兼容路径）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateFeedbackDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/FeedbackItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      delete: {
+        tags: ["Feedbacks"],
+        summary: "按反馈ID删除反馈（兼容路径）",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DeleteSuccessResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/feedbacks/_status": {
+      get: {
+        tags: ["Feedbacks"],
+        summary: "Feedbacks 模块状态",
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ModuleStatusResponse",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/public/{projectKey}": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformQuery",
+        },
+      ],
+      get: {
+        tags: ["Projects"],
+        summary: "获取项目公开信息",
+        description: "提供项目基础信息，通常用于客户端启动时初始化展示。",
+        "x-verhub-doc": true,
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ProjectItem",
+                },
+              },
+            },
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/public/{projectKey}/versions": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformQuery",
+        },
+      ],
+      get: {
+        tags: ["Versions"],
+        summary: "获取公开版本列表",
+        description: "面向客户端查询某项目全部公开版本，按发布时间从新到旧排序。",
+        "x-verhub-doc": true,
+        parameters: [
+          {
+            $ref: "#/components/parameters/Limit",
+          },
+          {
+            $ref: "#/components/parameters/Offset",
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/VersionListResponse",
+                },
+              },
+            },
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/public/{projectKey}/versions/latest": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformQuery",
+        },
+      ],
+      get: {
+        tags: ["Versions"],
+        summary: "获取最新公开版本",
+        description: "用于客户端启动时快速获取最新稳定版本。",
+        "x-verhub-doc": true,
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/VersionItem",
+                },
+              },
+            },
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/public/{projectKey}/versions/latest-preview": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformQuery",
+        },
+      ],
+      get: {
+        tags: ["Versions"],
+        summary: "获取最新 preview 版本",
+        description: "用于客户端测试通道获取最新预发布版本；没有预发布版本时返回 null。",
+        "x-verhub-doc": true,
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  oneOf: [
+                    {
+                      $ref: "#/components/schemas/VersionItem",
+                    },
+                    {
+                      type: "null",
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/public/{projectKey}/versions/by-version/{version}": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformQuery",
+        },
+        {
+          name: "version",
+          in: "path",
+          required: true,
+          schema: {
+            type: "string",
+          },
+          description: "语义化版本号或可比较版本号（可 URL 编码）",
+        },
+      ],
+      get: {
+        tags: ["Versions"],
+        summary: "按版本号获取指定版本信息",
+        description: "支持根据语义化版本号或可比较版本号读取单个版本详情。",
+        "x-verhub-doc": true,
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/VersionItem",
+                },
+              },
+            },
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/public/{projectKey}/versions/check-update": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+      ],
+      post: {
+        tags: ["Versions"],
+        summary: "提交当前版本并检查更新",
+        description: "返回是否有更新、是否必须更新、里程碑约束与目标版本。",
+        "x-verhub-doc": true,
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CheckVersionUpdateDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/CheckVersionUpdateResponse",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/public/{projectKey}/announcements": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformQuery",
+        },
+      ],
+      get: {
+        tags: ["Announcements"],
+        summary: "获取公开公告列表",
+        description: "获取可展示给终端用户的公告列表。",
+        "x-verhub-doc": true,
+        parameters: [
+          {
+            $ref: "#/components/parameters/Limit",
+          },
+          {
+            $ref: "#/components/parameters/Offset",
+          },
+          {
+            name: "platform",
+            in: "query",
+            required: false,
+            schema: {
+              $ref: "#/components/schemas/ClientPlatform",
+            },
+            description: "平台过滤（仅返回该平台或全平台公告）",
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AnnouncementListResponse",
+                },
+              },
+            },
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/public/{projectKey}/announcements/latest": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformQuery",
+        },
+      ],
+      get: {
+        tags: ["Announcements"],
+        summary: "获取最新公告",
+        description: "获取一条最新公告，常用于首页公告位。",
+        "x-verhub-doc": true,
+        parameters: [
+          {
+            name: "platform",
+            in: "query",
+            required: false,
+            schema: {
+              $ref: "#/components/schemas/ClientPlatform",
+            },
+            description: "平台过滤（仅返回该平台或全平台公告）",
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/AnnouncementItem",
+                },
+              },
+            },
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/public/{projectKey}/feedbacks": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+      ],
+      post: {
+        tags: ["Feedbacks"],
+        summary: "提交用户反馈",
+        description: "客户端提交评分与反馈内容。",
+        "x-verhub-doc": true,
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CreateFeedbackDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/FeedbackItem",
+                },
+              },
+            },
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/stats/requests/overview": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Statistics"],
+        summary: "查询接口请求统计概览",
+        description:
+          "按项目返回指定时间范围内的公开接口请求总数，以及按接口、平台、地区的分组汇总。未指定时间范围时默认统计最近 7 天。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/StartTime",
+          },
+          {
+            $ref: "#/components/parameters/EndTime",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "统计概览",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/RequestStatsOverview",
+                },
+              },
+            },
+          },
+          "400": {
+            description: "参数错误（如 start_time > end_time）",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/stats/requests/timeseries": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Statistics"],
+        summary: "查询接口请求时间序列",
+        description:
+          "按小时或按天返回请求数序列。统计始终以小时为最小粒度存储，granularity=day 时在查询阶段汇总；范围内无请求的时间桶以 0 返回，便于直接绘制曲线。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/StartTime",
+          },
+          {
+            $ref: "#/components/parameters/EndTime",
+          },
+          {
+            name: "granularity",
+            in: "query",
+            schema: {
+              type: "string",
+              enum: ["hour", "day"],
+              default: "hour",
+            },
+          },
+          {
+            name: "endpoint",
+            in: "query",
+            description: "仅统计指定接口，省略则统计全部接口",
+            schema: {
+              $ref: "#/components/schemas/PublicEndpoint",
+            },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "请求数时间序列",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/RequestStatsTimeseries",
+                },
+              },
+            },
+          },
+          "400": {
+            description: "参数错误（如 start_time > end_time）",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/stats/requests/client-versions": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Statistics"],
+        summary: "查询客户端版本分布",
+        description:
+          "统计客户端调用 check-update 时上报的 current_version，按上报次数降序返回，用于判断线上最主流的版本。版本号按客户端原文记录，未发布过的版本也会如实出现。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/StartTime",
+          },
+          {
+            $ref: "#/components/parameters/EndTime",
+          },
+          {
+            name: "limit",
+            in: "query",
+            description: "最多返回多少个版本，其余计入长尾",
+            schema: {
+              type: "integer",
+              minimum: 1,
+              maximum: 100,
+              default: 15,
+            },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "客户端版本分布",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ClientVersionStats",
+                },
+              },
+            },
+          },
+          "400": {
+            description: "参数错误（如 start_time > end_time）",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/stats/requests/heatmap": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Statistics"],
+        summary: "查询请求活跃度热力图",
+        description:
+          "把范围内的请求量折叠到「星期 × 小时」网格上，用于观察一周内的访问高峰时段。固定返回 168 个格子，无流量的格子为 0。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/StartTime",
+          },
+          {
+            $ref: "#/components/parameters/EndTime",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "活跃度热力图",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/RequestStatsHeatmap",
+                },
+              },
+            },
+          },
+          "400": {
+            description: "参数错误（如 start_time > end_time）",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/logs": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Logs"],
+        summary: "查询日志列表",
+        description: "按项目查询日志，支持级别与时间范围筛选。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/Limit",
+          },
+          {
+            $ref: "#/components/parameters/Offset",
+          },
+          {
+            $ref: "#/components/parameters/StartTime",
+          },
+          {
+            $ref: "#/components/parameters/EndTime",
+          },
+          {
+            $ref: "#/components/parameters/LogLevel",
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/LogListResponse",
+                },
+              },
+            },
+          },
+          "400": {
+            description: "参数错误（如 start_time > end_time）",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/logs/statistics": {
+      get: {
+        tags: ["Logs"],
+        summary: "获取日志统计信息",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["count", "debug_count", "info_count", "warning_count", "error_count"],
+                  properties: {
+                    count: {
+                      type: "integer",
+                    },
+                    debug_count: {
+                      type: "integer",
+                    },
+                    info_count: {
+                      type: "integer",
+                    },
+                    warning_count: {
+                      type: "integer",
+                    },
+                    error_count: {
+                      type: "integer",
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/public/{projectKey}/logs": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+      ],
+      post: {
+        tags: ["Logs"],
+        summary: "上报日志",
+        description: "客户端上报日志用于排障。",
+        "x-verhub-doc": true,
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UploadLogDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/LogItem",
+                },
+              },
+            },
+          },
+          "400": {
+            description: "参数错误（如非法日志级别）",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/logs/_status": {
+      get: {
+        tags: ["Logs"],
+        summary: "Logs 模块状态",
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ModuleStatusResponse",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/actions": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Actions"],
+        summary: "查询行为定义",
+        description: "按项目获取行为定义列表。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/Limit",
+          },
+          {
+            $ref: "#/components/parameters/Offset",
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ActionListResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/actions": {
+      post: {
+        tags: ["Actions"],
+        summary: "创建行为定义",
+        description: "新增行为埋点定义。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CreateActionDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ActionItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/actions/{action_id}": {
+      parameters: [
+        {
+          name: "action_id",
+          in: "path",
+          required: true,
+          schema: {
+            type: "string",
+          },
+        },
+      ],
+      get: {
+        tags: ["Actions"],
+        summary: "获取行为分类下的行为记录",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/Limit",
+          },
+          {
+            $ref: "#/components/parameters/Offset",
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ActionRecordListResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      patch: {
+        tags: ["Actions"],
+        summary: "编辑行为定义",
+        description: "更新行为定义名称、描述与扩展字段。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateActionDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ActionItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      delete: {
+        tags: ["Actions"],
+        summary: "删除行为定义",
+        description: "删除行为定义。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DeleteSuccessResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/actions/record/{action_record_id}": {
+      parameters: [
+        {
+          name: "action_record_id",
+          in: "path",
+          required: true,
+          schema: {
+            type: "string",
+          },
+        },
+      ],
+      get: {
+        tags: ["Actions"],
+        summary: "获取单条行为记录",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ActionRecordItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/actions/statistics": {
+      get: {
+        tags: ["Actions"],
+        summary: "获取行为分类统计",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["count"],
+                  properties: {
+                    count: {
+                      type: "integer",
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/actions/record/statistics": {
+      get: {
+        tags: ["Actions"],
+        summary: "获取行为记录统计",
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["count"],
+                  properties: {
+                    count: {
+                      type: "integer",
+                    },
+                  },
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/public/{projectKey}/actions": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+      ],
+      post: {
+        tags: ["Actions"],
+        summary: "上报行为记录",
+        description: "客户端上报行为埋点记录。",
+        "x-verhub-doc": true,
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CreateActionRecordDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ActionRecordItem",
+                },
+              },
+            },
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/actions/_status": {
+      get: {
+        tags: ["Actions"],
+        summary: "Actions 模块状态",
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ModuleStatusResponse",
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  components: {
+    securitySchemes: {
+      BearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
+        description:
+          "Authorization: Bearer <凭据>。管理员 JWT（POST /auth/login 获取，默认 2 小时过期） 与 API Key（vh_ 前缀，长期有效）在所有 /admin/* 接口上等价，任一有效即放行； 服务端按凭据形态自动识别。/auth/* 下的凭据管理接口只接受管理员 JWT。\n",
+      },
+      ApiKeyAuth: {
+        type: "apiKey",
+        in: "header",
+        name: "x-api-key",
+        description:
+          "传 API Key 的兼容别名，等价于把同一个 Key 放进 Authorization: Bearer； 新接入建议统一用 BearerAuth。API Key 按 scope 授权：读接口需要 <资源>:read， 写接口需要 <资源>:write，写权限不隐含读权限；资源为 projects / versions / announcements / feedbacks / logs / actions，另有 stats:read 用于请求统计接口。 scope 或项目范围不匹配返回 401。\n",
+      },
+    },
+    parameters: {
+      Limit: {
+        name: "limit",
+        in: "query",
+        required: false,
+        description: "分页大小",
+        example: 20,
+        schema: {
+          type: "integer",
+          minimum: 1,
+          maximum: 100,
+          default: 20,
+        },
+      },
+      Offset: {
+        name: "offset",
+        in: "query",
+        required: false,
+        description: "分页偏移",
+        example: 0,
+        schema: {
+          type: "integer",
+          minimum: 0,
+          default: 0,
+        },
+      },
+      ProjectKeyByPath: {
+        name: "projectKey",
+        in: "path",
+        required: true,
+        description: "项目主键 project_key（大小写不敏感）",
+        example: "verhub",
+        schema: {
+          type: "string",
+        },
+      },
+      ClientPlatformHeader: {
+        name: "x-verhub-platform",
+        in: "header",
+        required: false,
+        description:
+          "客户端平台声明，仅用于请求统计，不影响接口返回内容。\n识别优先级：本请求头 > query 参数 `platform` > 请求体 `platform` 字段 > User-Agent 推断。\n取值大小写不敏感，无法识别时统计为 UNKNOWN。\n建议 SDK 显式声明本请求头：服务端调用的 User-Agent 往往不可靠。\n",
+        example: "windows",
+        schema: {
+          type: "string",
+          enum: [
+            "ios",
+            "ipados",
+            "android",
+            "windows",
+            "win32",
+            "mac",
+            "macos",
+            "darwin",
+            "web",
+            "browser",
+          ],
+        },
+      },
+      ClientPlatformQuery: {
+        name: "platform",
+        in: "query",
+        required: false,
+        description:
+          "客户端平台声明（等价于 `x-verhub-platform` 请求头，优先级低于请求头）。\n仅用于请求统计，不影响接口返回内容。\n",
+        schema: {
+          type: "string",
+          enum: [
+            "ios",
+            "ipados",
+            "android",
+            "windows",
+            "win32",
+            "mac",
+            "macos",
+            "darwin",
+            "web",
+            "browser",
+          ],
+        },
+      },
+      EntityId: {
+        name: "id",
+        in: "path",
+        required: true,
+        description: "记录主键 id",
+        example: "ver-001",
+        schema: {
+          type: "string",
+        },
+      },
+      StartTime: {
+        name: "start_time",
+        in: "query",
+        required: false,
+        schema: {
+          type: "integer",
+          minimum: 0,
+        },
+        description: "Unix 时间戳（秒）",
+        example: 1760000000,
+      },
+      EndTime: {
+        name: "end_time",
+        in: "query",
+        required: false,
+        schema: {
+          type: "integer",
+          minimum: 0,
+        },
+        description: "Unix 时间戳（秒）",
+        example: 1762000000,
+      },
+      LogLevel: {
+        name: "level",
+        in: "query",
+        required: false,
+        schema: {
+          type: "integer",
+          minimum: 0,
+          maximum: 3,
+        },
+        description: "0=debug, 1=info, 2=warn, 3=error",
+      },
+    },
+    responses: {
+      Unauthorized: {
+        description: "未认证或令牌非法",
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/ErrorResponse",
+            },
+          },
+        },
+      },
+      NotFound: {
+        description: "资源不存在",
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/ErrorResponse",
+            },
+          },
+        },
+      },
+      BadRequest: {
+        description: "请求参数错误",
+        content: {
+          "application/json": {
+            schema: {
+              $ref: "#/components/schemas/ErrorResponse",
+            },
+          },
+        },
+      },
+    },
+    schemas: {
+      ModuleStatusResponse: {
+        type: "object",
+        required: ["module", "implemented"],
+        properties: {
+          module: {
+            type: "string",
+          },
+          implemented: {
+            type: "boolean",
+          },
+        },
+        example: {
+          module: "versions",
+          implemented: true,
+        },
+      },
+      DeleteSuccessResponse: {
+        type: "object",
+        required: ["success"],
+        properties: {
+          success: {
+            type: "boolean",
+          },
+        },
+        example: {
+          success: true,
+        },
+      },
+      HealthResponse: {
+        type: "object",
+        required: ["status", "timestamp"],
+        properties: {
+          status: {
+            type: "string",
+            example: "ok",
+          },
+          timestamp: {
+            type: "integer",
+            format: "int64",
+          },
+        },
+        example: {
+          status: "ok",
+          timestamp: 1760000000,
+        },
+      },
+      ErrorResponse: {
+        type: "object",
+        properties: {
+          statusCode: {
+            type: "integer",
+          },
+          message: {
+            oneOf: [
+              {
+                type: "string",
+              },
+              {
+                type: "array",
+                items: {
+                  type: "string",
+                },
+              },
+            ],
+          },
+          error: {
+            type: "string",
+          },
+        },
+      },
+      LoginDto: {
+        type: "object",
+        required: ["username", "password"],
+        properties: {
+          username: {
+            type: "string",
+            maxLength: 64,
+          },
+          password: {
+            type: "string",
+            minLength: 6,
+            maxLength: 128,
+          },
+        },
+      },
+      LoginResponse: {
+        type: "object",
+        required: ["access_token", "expires_in", "user"],
+        properties: {
+          access_token: {
+            type: "string",
+          },
+          expires_in: {
+            type: "integer",
+            description: "JWT 剩余秒数",
+          },
+          user: {
+            $ref: "#/components/schemas/AuthUser",
+          },
+        },
+      },
+      AuthUser: {
+        type: "object",
+        required: ["id", "username", "role", "must_change_password"],
+        properties: {
+          id: {
+            type: "string",
+          },
+          username: {
+            type: "string",
+            maxLength: 64,
+          },
+          role: {
+            type: "string",
+            enum: ["ADMIN"],
+          },
+          must_change_password: {
+            type: "boolean",
+          },
+        },
+      },
+      AdminProfileResponse: {
+        $ref: "#/components/schemas/AuthUser",
+      },
+      UpdateAdminProfileDto: {
+        type: "object",
+        required: ["current_password"],
+        properties: {
+          current_password: {
+            type: "string",
+            minLength: 6,
+            maxLength: 128,
+          },
+          username: {
+            type: "string",
+            maxLength: 64,
+          },
+          new_password: {
+            type: "string",
+            minLength: 6,
+            maxLength: 128,
+          },
+        },
+      },
+      ChangePasswordDto: {
+        type: "object",
+        required: ["current_password", "new_password"],
+        properties: {
+          current_password: {
+            type: "string",
+            minLength: 6,
+            maxLength: 128,
+          },
+          new_password: {
+            type: "string",
+            minLength: 6,
+            maxLength: 128,
+          },
+        },
+      },
+      UpdateAdminAccountDto: {
+        type: "object",
+        required: ["current_password", "username"],
+        properties: {
+          current_password: {
+            type: "string",
+            minLength: 6,
+            maxLength: 128,
+          },
+          username: {
+            type: "string",
+            maxLength: 64,
+          },
+        },
+      },
+      CreateApiTokenDto: {
+        type: "object",
+        required: ["name"],
+        properties: {
+          name: {
+            type: "string",
+            maxLength: 64,
+          },
+          scopes: {
+            type: "array",
+            items: {
+              type: "string",
+              maxLength: 64,
+            },
+          },
+          expires_in_days: {
+            type: "integer",
+            minimum: 1,
+            maximum: 365,
+          },
+          never_expires: {
+            type: "boolean",
+            default: false,
+          },
+          all_projects: {
+            type: "boolean",
+            default: true,
+          },
+          project_ids: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+        },
+      },
+      ApiTokenListResponse: {
+        type: "object",
+        required: ["data"],
+        properties: {
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/ApiTokenItem",
+            },
+          },
+        },
+      },
+      ApiTokenItem: {
+        type: "object",
+        required: [
+          "id",
+          "name",
+          "scopes",
+          "all_projects",
+          "project_ids",
+          "is_active",
+          "created_at",
+          "expires_at",
+          "revoked_at",
+          "last_used_at",
+        ],
+        properties: {
+          id: {
+            type: "string",
+          },
+          name: {
+            type: "string",
+          },
+          scopes: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+          all_projects: {
+            type: "boolean",
+          },
+          project_ids: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+          is_active: {
+            type: "boolean",
+          },
+          created_at: {
+            type: "integer",
+            format: "int64",
+          },
+          expires_at: {
+            type: ["integer", "null"],
+            format: "int64",
+          },
+          revoked_at: {
+            type: ["integer", "null"],
+            format: "int64",
+          },
+          last_used_at: {
+            type: ["integer", "null"],
+            format: "int64",
+          },
+          previous_key_expires_at: {
+            type: ["integer", "null"],
+            format: "int64",
+          },
+        },
+      },
+      CreateApiTokenResponse: {
+        type: "object",
+        required: [
+          "id",
+          "name",
+          "token",
+          "scopes",
+          "all_projects",
+          "project_ids",
+          "expires_at",
+          "created_at",
+        ],
+        properties: {
+          id: {
+            type: "string",
+          },
+          name: {
+            type: "string",
+          },
+          token: {
+            type: "string",
+          },
+          scopes: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+          all_projects: {
+            type: "boolean",
+          },
+          project_ids: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+          expires_at: {
+            type: ["integer", "null"],
+            format: "int64",
+          },
+          created_at: {
+            type: "integer",
+            format: "int64",
+          },
+        },
+      },
+      UpdateApiTokenDto: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            maxLength: 64,
+          },
+          scopes: {
+            type: "array",
+            items: {
+              type: "string",
+              maxLength: 64,
+            },
+          },
+          expires_in_days: {
+            type: "integer",
+            minimum: 1,
+            maximum: 365,
+          },
+          never_expires: {
+            type: "boolean",
+          },
+          all_projects: {
+            type: "boolean",
+          },
+          project_ids: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+        },
+      },
+      UpdateApiTokenResponse: {
+        type: "object",
+        required: [
+          "id",
+          "name",
+          "scopes",
+          "all_projects",
+          "project_ids",
+          "expires_at",
+          "created_at",
+        ],
+        properties: {
+          id: {
+            type: "string",
+          },
+          name: {
+            type: "string",
+          },
+          scopes: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+          all_projects: {
+            type: "boolean",
+          },
+          project_ids: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+          expires_at: {
+            type: ["integer", "null"],
+            format: "int64",
+          },
+          created_at: {
+            type: "integer",
+            format: "int64",
+          },
+        },
+      },
+      RotateApiTokenDto: {
+        type: "object",
+        properties: {
+          grace_period_minutes: {
+            type: "integer",
+            minimum: 0,
+            maximum: 10080,
+          },
+        },
+      },
+      RotateApiTokenResponse: {
+        type: "object",
+        required: ["id", "token", "grace_period_minutes", "previous_key_expires_at"],
+        properties: {
+          id: {
+            type: "string",
+          },
+          token: {
+            type: "string",
+          },
+          grace_period_minutes: {
+            type: "integer",
+          },
+          previous_key_expires_at: {
+            type: ["integer", "null"],
+            format: "int64",
+          },
+        },
+      },
+      ListApiScopesResponse: {
+        type: "object",
+        required: ["data", "default"],
+        properties: {
+          data: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+            description: "所有可用的 API 作用域列表",
+          },
+          default: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+            description: "创建 Token 时的默认作用域",
+          },
+        },
+      },
+      CreateProjectDto: {
+        type: "object",
+        required: ["project_key", "name"],
+        properties: {
+          project_key: {
+            type: "string",
+            maxLength: 64,
+          },
+          name: {
+            type: "string",
+            maxLength: 128,
+          },
+          repo_url: {
+            type: "string",
+            maxLength: 512,
+          },
+          description: {
+            type: "string",
+            maxLength: 2048,
+          },
+          author: {
+            type: "string",
+            maxLength: 128,
+          },
+          author_homepage_url: {
+            type: "string",
+            format: "uri",
+            maxLength: 512,
+          },
+          icon_url: {
+            type: "string",
+            format: "uri",
+            maxLength: 1024,
+          },
+          website_url: {
+            type: "string",
+            format: "uri",
+            maxLength: 512,
+          },
+          published_at: {
+            type: "integer",
+            format: "int64",
+          },
+          optional_update_min_comparable_version: {
+            type: "string",
+            maxLength: 64,
+            description: "项目级可选更新范围下限（可比较版本号）",
+          },
+          optional_update_max_comparable_version: {
+            type: "string",
+            maxLength: 64,
+            description: "项目级可选更新范围上限（可比较版本号）",
+          },
+          stats_retention_days: {
+            type: "integer",
+            minimum: 1,
+            maximum: 365,
+            default: 365,
+            description: "接口请求统计保留时长（天），超出部分每日自动清理",
+          },
+        },
+        example: {
+          project_key: "verhub",
+          name: "Verhub",
+          repo_url: "https://github.com/example/verhub",
+          description: "版本与公告管理",
+          author: "octocat",
+          author_homepage_url: "https://github.com/octocat",
+          icon_url: "https://avatars.githubusercontent.com/u/1?v=4",
+          website_url: "https://verhub.dev",
+          published_at: 1760000000,
+        },
+      },
+      UpdateProjectDto: {
+        type: "object",
+        properties: {
+          project_key: {
+            type: "string",
+            maxLength: 64,
+          },
+          name: {
+            type: "string",
+            maxLength: 128,
+          },
+          repo_url: {
+            type: "string",
+            maxLength: 512,
+          },
+          description: {
+            type: "string",
+            maxLength: 2048,
+          },
+          author: {
+            type: "string",
+            maxLength: 128,
+          },
+          author_homepage_url: {
+            type: "string",
+            format: "uri",
+            maxLength: 512,
+          },
+          icon_url: {
+            type: "string",
+            format: "uri",
+            maxLength: 1024,
+          },
+          website_url: {
+            type: "string",
+            format: "uri",
+            maxLength: 512,
+          },
+          published_at: {
+            type: "integer",
+            format: "int64",
+          },
+          optional_update_min_comparable_version: {
+            type: "string",
+            maxLength: 64,
+          },
+          optional_update_max_comparable_version: {
+            type: "string",
+            maxLength: 64,
+          },
+          stats_retention_days: {
+            type: "integer",
+            minimum: 1,
+            maximum: 365,
+            default: 365,
+            description: "接口请求统计保留时长（天），超出部分每日自动清理",
+          },
+        },
+        example: {
+          name: "Verhub",
+          description: "版本与公告管理",
+          optional_update_min_comparable_version: "1.0.0",
+          optional_update_max_comparable_version: "1.9.9",
+          stats_retention_days: 180,
+        },
+      },
+      ProjectItem: {
+        type: "object",
+        required: [
+          "id",
+          "project_key",
+          "name",
+          "repo_url",
+          "description",
+          "author",
+          "author_homepage_url",
+          "icon_url",
+          "website_url",
+          "published_at",
+          "optional_update_min_comparable_version",
+          "optional_update_max_comparable_version",
+          "stats_retention_days",
+          "created_at",
+          "updated_at",
+        ],
+        properties: {
+          id: {
+            type: "string",
+          },
+          project_key: {
+            type: "string",
+          },
+          name: {
+            type: "string",
+          },
+          repo_url: {
+            type: ["string", "null"],
+          },
+          description: {
+            type: ["string", "null"],
+          },
+          author: {
+            type: ["string", "null"],
+          },
+          author_homepage_url: {
+            type: ["string", "null"],
+          },
+          icon_url: {
+            type: ["string", "null"],
+          },
+          website_url: {
+            type: ["string", "null"],
+          },
+          published_at: {
+            type: ["integer", "null"],
+            format: "int64",
+          },
+          optional_update_min_comparable_version: {
+            type: ["string", "null"],
+          },
+          optional_update_max_comparable_version: {
+            type: ["string", "null"],
+          },
+          stats_retention_days: {
+            type: "integer",
+            description: "接口请求统计保留时长（天）",
+          },
+          created_at: {
+            type: "integer",
+            format: "int64",
+          },
+          updated_at: {
+            type: "integer",
+            format: "int64",
+          },
+        },
+        example: {
+          id: "verhub",
+          project_key: "verhub",
+          name: "Verhub",
+          description: "版本管理平台",
+          repo_url: "https://github.com/example/verhub",
+          author: "octocat",
+          author_homepage_url: "https://github.com/octocat",
+          icon_url: "https://avatars.githubusercontent.com/u/1?v=4",
+          website_url: "https://verhub.dev",
+          published_at: 1760000000,
+          optional_update_min_comparable_version: "1.0.0",
+          optional_update_max_comparable_version: "1.9.9",
+          stats_retention_days: 365,
+          created_at: 1760000000,
+          updated_at: 1760000000,
+        },
+      },
+      PublicEndpoint: {
+        type: "string",
+        description: "被统计的公开接口标识",
+        enum: [
+          "PROJECT_DETAIL",
+          "VERSION_LIST",
+          "VERSION_LATEST",
+          "VERSION_LATEST_PREVIEW",
+          "VERSION_BY_VERSION",
+          "VERSION_CHECK_UPDATE",
+          "ANNOUNCEMENT_LIST",
+          "ANNOUNCEMENT_LATEST",
+          "FEEDBACK_SUBMIT",
+          "LOG_UPLOAD",
+          "ACTION_RECORD",
+        ],
+      },
+      StatPlatform: {
+        type: "string",
+        description:
+          "请求来源平台。优先取 SDK 显式声明（`x-verhub-platform` 请求头、\nquery 或 body 的 platform 字段），否则由 User-Agent 推断，\n无法识别时为 UNKNOWN。\n",
+        enum: ["IOS", "ANDROID", "WINDOWS", "MAC", "WEB", "UNKNOWN"],
+      },
+      RequestStatsOverview: {
+        type: "object",
+        required: ["start_time", "end_time", "total", "by_endpoint", "by_platform", "by_region"],
+        properties: {
+          start_time: {
+            type: "integer",
+            format: "int64",
+          },
+          end_time: {
+            type: "integer",
+            format: "int64",
+          },
+          total: {
+            type: "integer",
+            description: "时间范围内的请求总数",
+          },
+          by_endpoint: {
+            type: "array",
+            description: "按接口汇总，按请求数降序",
+            items: {
+              type: "object",
+              required: ["endpoint", "count"],
+              properties: {
+                endpoint: {
+                  $ref: "#/components/schemas/PublicEndpoint",
+                },
+                count: {
+                  type: "integer",
+                },
+              },
+            },
+          },
+          by_platform: {
+            type: "array",
+            description: "按平台汇总，按请求数降序",
+            items: {
+              type: "object",
+              required: ["platform", "count"],
+              properties: {
+                platform: {
+                  $ref: "#/components/schemas/StatPlatform",
+                },
+                count: {
+                  type: "integer",
+                },
+              },
+            },
+          },
+          by_region: {
+            type: "array",
+            description: "按地区汇总。地区解析尚未实现，当前恒为单个 UNKNOWN 分组。",
+            items: {
+              type: "object",
+              required: ["region", "count"],
+              properties: {
+                region: {
+                  type: "string",
+                },
+                count: {
+                  type: "integer",
+                },
+              },
+            },
+          },
+        },
+        example: {
+          start_time: 1760000000,
+          end_time: 1762000000,
+          total: 12840,
+          by_endpoint: [
+            {
+              endpoint: "VERSION_CHECK_UPDATE",
+              count: 8210,
+            },
+            {
+              endpoint: "VERSION_LATEST",
+              count: 3120,
+            },
+          ],
+          by_platform: [
+            {
+              platform: "WINDOWS",
+              count: 9020,
+            },
+            {
+              platform: "MAC",
+              count: 2400,
+            },
+          ],
+          by_region: [
+            {
+              region: "UNKNOWN",
+              count: 12840,
+            },
+          ],
+        },
+      },
+      RequestStatsTimeseries: {
+        type: "object",
+        required: ["start_time", "end_time", "granularity", "endpoint", "data"],
+        properties: {
+          start_time: {
+            type: "integer",
+            format: "int64",
+          },
+          end_time: {
+            type: "integer",
+            format: "int64",
+          },
+          granularity: {
+            type: "string",
+            enum: ["hour", "day"],
+          },
+          endpoint: {
+            oneOf: [
+              {
+                $ref: "#/components/schemas/PublicEndpoint",
+              },
+              {
+                type: "null",
+              },
+            ],
+            description: "若查询时指定了接口则回显，否则为 null",
+          },
+          data: {
+            type: "array",
+            items: {
+              type: "object",
+              required: ["bucket", "count"],
+              properties: {
+                bucket: {
+                  type: "integer",
+                  format: "int64",
+                  description: "时间桶起点（Unix 秒，UTC 对齐到整点或整天）",
+                },
+                count: {
+                  type: "integer",
+                },
+              },
+            },
+          },
+        },
+        example: {
+          start_time: 1760000000,
+          end_time: 1760086400,
+          granularity: "hour",
+          endpoint: "VERSION_CHECK_UPDATE",
+          data: [
+            {
+              bucket: 1760000000,
+              count: 320,
+            },
+            {
+              bucket: 1760003600,
+              count: 287,
+            },
+          ],
+        },
+      },
+      ClientVersionStats: {
+        type: "object",
+        required: ["start_time", "end_time", "total", "data"],
+        properties: {
+          start_time: {
+            type: "integer",
+            format: "int64",
+          },
+          end_time: {
+            type: "integer",
+            format: "int64",
+          },
+          total: {
+            type: "integer",
+            description: "范围内全部版本的上报总数（不受 limit 截断影响），用于计算占比",
+          },
+          data: {
+            type: "array",
+            description: "按上报数降序，最多返回 limit 条",
+            items: {
+              type: "object",
+              required: ["version", "count"],
+              properties: {
+                version: {
+                  type: "string",
+                  description: "客户端自报的版本号原文",
+                },
+                count: {
+                  type: "integer",
+                },
+              },
+            },
+          },
+        },
+        example: {
+          start_time: 1760000000,
+          end_time: 1762000000,
+          total: 8210,
+          data: [
+            {
+              version: "2.3.0",
+              count: 5120,
+            },
+            {
+              version: "2.2.1",
+              count: 2380,
+            },
+          ],
+        },
+      },
+      RequestStatsHeatmap: {
+        type: "object",
+        required: ["start_time", "end_time", "data"],
+        properties: {
+          start_time: {
+            type: "integer",
+            format: "int64",
+          },
+          end_time: {
+            type: "integer",
+            format: "int64",
+          },
+          data: {
+            type: "array",
+            description: "固定 168 个格子（7 天 × 24 小时），无流量的格子以 0 返回",
+            items: {
+              type: "object",
+              required: ["weekday", "hour", "count"],
+              properties: {
+                weekday: {
+                  type: "integer",
+                  minimum: 0,
+                  maximum: 6,
+                  description: "0=周日 … 6=周六（UTC）",
+                },
+                hour: {
+                  type: "integer",
+                  minimum: 0,
+                  maximum: 23,
+                  description: "UTC 小时",
+                },
+                count: {
+                  type: "integer",
+                },
+              },
+            },
+          },
+        },
+        example: {
+          start_time: 1760000000,
+          end_time: 1762000000,
+          data: [
+            {
+              weekday: 1,
+              hour: 9,
+              count: 412,
+            },
+            {
+              weekday: 1,
+              hour: 10,
+              count: 508,
+            },
+          ],
+        },
+      },
+      ProjectListResponse: {
+        type: "object",
+        required: ["total", "data"],
+        properties: {
+          total: {
+            type: "integer",
+            example: 1,
+          },
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/ProjectItem",
+            },
+          },
+        },
+      },
+      ClientPlatform: {
+        type: "string",
+        enum: ["ios", "android", "windows", "mac", "web"],
+      },
+      VersionDownloadLink: {
+        type: "object",
+        required: ["url"],
+        properties: {
+          url: {
+            type: "string",
+            maxLength: 2048,
+            format: "uri",
+          },
+          name: {
+            type: "string",
+            maxLength: 128,
+          },
+          platform: {
+            type: "string",
+            maxLength: 64,
+          },
+        },
+        example: {
+          url: "https://example.com/download/verhub-1.0.0.zip",
+          name: "Windows 包",
+          platform: "windows",
+        },
+      },
+      CreateVersionDto: {
+        type: "object",
+        required: ["version", "comparable_version"],
+        properties: {
+          version: {
+            type: "string",
+            maxLength: 64,
+          },
+          comparable_version: {
+            type: "string",
+            maxLength: 64,
+            description: "可比较版本号，格式如 1.2.3、1.2.3-alpha 或 1.2.3-rc.2",
+          },
+          title: {
+            type: "string",
+            maxLength: 128,
+          },
+          content: {
+            type: "string",
+            maxLength: 4096,
+          },
+          download_url: {
+            type: ["string", "null"],
+            maxLength: 2048,
+          },
+          download_links: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/VersionDownloadLink",
+            },
+          },
+          is_latest: {
+            type: "boolean",
+          },
+          is_preview: {
+            type: "boolean",
+          },
+          is_milestone: {
+            type: "boolean",
+          },
+          is_deprecated: {
+            type: "boolean",
+          },
+          published_at: {
+            type: "integer",
+            format: "int64",
+          },
+          platform: {
+            $ref: "#/components/schemas/ClientPlatform",
+          },
+          platforms: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/ClientPlatform",
+            },
+          },
+          custom_data: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+        example: {
+          version: "1.2.0",
+          comparable_version: "1.2.0",
+          title: "稳定版",
+          content: "修复若干问题并优化更新检查。",
+          download_links: [
+            {
+              url: "https://example.com/download/verhub-1.2.0.zip",
+              name: "Windows 包",
+              platform: "windows",
+            },
+          ],
+          is_latest: true,
+          is_preview: false,
+          is_milestone: false,
+          is_deprecated: false,
+          published_at: 1760000000,
+          platforms: ["windows", "mac"],
+        },
+      },
+      CreateProjectVersionDto: {
+        allOf: [
+          {
+            $ref: "#/components/schemas/CreateVersionDto",
+          },
+          {
+            type: "object",
+            required: ["project_key"],
+            properties: {
+              project_key: {
+                type: "string",
+                maxLength: 64,
+              },
+            },
+          },
+        ],
+      },
+      UpdateVersionDto: {
+        type: "object",
+        properties: {
+          version: {
+            type: "string",
+            maxLength: 64,
+          },
+          comparable_version: {
+            type: "string",
+            maxLength: 64,
+          },
+          title: {
+            type: "string",
+            maxLength: 128,
+          },
+          content: {
+            type: "string",
+            maxLength: 4096,
+          },
+          download_url: {
+            type: ["string", "null"],
+            maxLength: 2048,
+            description: "传 null 清空下载地址；省略该字段则保持原值",
+          },
+          download_links: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/VersionDownloadLink",
+            },
+          },
+          is_latest: {
+            type: "boolean",
+          },
+          is_preview: {
+            type: "boolean",
+          },
+          is_milestone: {
+            type: "boolean",
+          },
+          is_deprecated: {
+            type: "boolean",
+          },
+          published_at: {
+            type: "integer",
+            format: "int64",
+          },
+          platform: {
+            $ref: "#/components/schemas/ClientPlatform",
+          },
+          platforms: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/ClientPlatform",
+            },
+          },
+          custom_data: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+        example: {
+          title: "稳定版-修订",
+          content: "补充发布说明。",
+          is_latest: true,
+          is_deprecated: false,
+        },
+      },
+      UpsertVersionDto: {
+        allOf: [
+          {
+            $ref: "#/components/schemas/UpdateVersionDto",
+          },
+        ],
+        description:
+          "全部字段可选。目标版本号取自路径，`version` 可以省略；若提交则必须与路径一致。 更新已有版本时，省略的字段保持原值，显式提交 null 的字段被置空。 新建时 `comparable_version` 省略则由版本号推导（去掉前导 v）。\n",
+      },
+      VersionItem: {
+        type: "object",
+        required: [
+          "id",
+          "version",
+          "comparable_version",
+          "title",
+          "content",
+          "download_url",
+          "download_links",
+          "forced",
+          "is_latest",
+          "is_preview",
+          "is_milestone",
+          "is_deprecated",
+          "platform",
+          "platforms",
+          "custom_data",
+          "published_at",
+          "created_at",
+        ],
+        properties: {
+          id: {
+            type: "string",
+          },
+          version: {
+            type: "string",
+          },
+          comparable_version: {
+            type: "string",
+          },
+          title: {
+            type: ["string", "null"],
+          },
+          content: {
+            type: ["string", "null"],
+          },
+          download_url: {
+            type: ["string", "null"],
+          },
+          download_links: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/VersionDownloadLink",
+            },
+          },
+          forced: {
+            type: "boolean",
+          },
+          is_latest: {
+            type: "boolean",
+          },
+          is_preview: {
+            type: "boolean",
+          },
+          is_milestone: {
+            type: "boolean",
+          },
+          is_deprecated: {
+            type: "boolean",
+          },
+          platform: {
+            oneOf: [
+              {
+                $ref: "#/components/schemas/ClientPlatform",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          platforms: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/ClientPlatform",
+            },
+          },
+          custom_data: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: true,
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          created_at: {
+            type: "integer",
+            format: "int64",
+          },
+          published_at: {
+            type: "integer",
+            format: "int64",
+          },
+        },
+        example: {
+          id: "ver-001",
+          version: "1.0.0",
+          comparable_version: "1.0.0",
+          title: "首发版本",
+          content: "首个正式版本，支持版本发布与公告推送。",
+          download_url: "https://example.com/download/verhub-1.0.0.zip",
+          download_links: [
+            {
+              url: "https://example.com/download/verhub-1.0.0.zip",
+              name: "Windows 包",
+              platform: "windows",
+            },
+          ],
+          forced: false,
+          is_latest: true,
+          is_preview: false,
+          is_milestone: true,
+          is_deprecated: false,
+          platform: "windows",
+          platforms: ["windows", "mac"],
+          custom_data: {
+            channel: "stable",
+          },
+          created_at: 1760000000,
+          published_at: 1760000000,
+        },
+      },
+      GithubReleaseVersionPreview: {
+        type: "object",
+        required: [
+          "version",
+          "comparable_version",
+          "forced",
+          "is_latest",
+          "is_preview",
+          "is_deprecated",
+          "published_at",
+          "platforms",
+          "custom_data",
+        ],
+        properties: {
+          version: {
+            type: "string",
+          },
+          comparable_version: {
+            type: "string",
+          },
+          title: {
+            type: "string",
+          },
+          content: {
+            type: "string",
+          },
+          download_url: {
+            type: "string",
+          },
+          download_links: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/VersionDownloadLink",
+            },
+          },
+          forced: {
+            type: "boolean",
+          },
+          is_latest: {
+            type: "boolean",
+          },
+          is_preview: {
+            type: "boolean",
+          },
+          is_milestone: {
+            type: "boolean",
+          },
+          is_deprecated: {
+            type: "boolean",
+          },
+          platform: {
+            oneOf: [
+              {
+                $ref: "#/components/schemas/ClientPlatform",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          platforms: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/ClientPlatform",
+            },
+          },
+          published_at: {
+            type: "integer",
+            format: "int64",
+          },
+          custom_data: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+      },
+      GithubRepoProjectPreview: {
+        type: "object",
+        required: [
+          "project_key",
+          "name",
+          "repo_url",
+          "description",
+          "author",
+          "author_homepage_url",
+          "icon_url",
+          "website_url",
+          "published_at",
+        ],
+        properties: {
+          project_key: {
+            type: "string",
+          },
+          name: {
+            type: "string",
+          },
+          repo_url: {
+            type: "string",
+            format: "uri",
+          },
+          description: {
+            type: ["string", "null"],
+          },
+          author: {
+            type: ["string", "null"],
+          },
+          author_homepage_url: {
+            type: ["string", "null"],
+            format: "uri",
+          },
+          icon_url: {
+            type: ["string", "null"],
+            format: "uri",
+          },
+          website_url: {
+            type: ["string", "null"],
+            format: "uri",
+          },
+          published_at: {
+            type: ["integer", "null"],
+            format: "int64",
+          },
+        },
+      },
+      VersionImportResult: {
+        type: "object",
+        required: ["imported", "skipped", "scanned"],
+        properties: {
+          imported: {
+            type: "integer",
+          },
+          skipped: {
+            type: "integer",
+          },
+          scanned: {
+            type: "integer",
+          },
+        },
+      },
+      VersionListResponse: {
+        type: "object",
+        required: ["total", "data"],
+        properties: {
+          total: {
+            type: "integer",
+            example: 1,
+          },
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/VersionItem",
+            },
+          },
+        },
+      },
+      CheckVersionUpdateDto: {
+        type: "object",
+        properties: {
+          current_version: {
+            type: "string",
+            maxLength: 64,
+            description: "当前语义化版本号（可选，与 current_comparable_version 二选一）",
+          },
+          current_comparable_version: {
+            type: "string",
+            maxLength: 64,
+            description: "当前可比较版本号（可选；当两者同时提交时优先使用该字段）",
+          },
+          include_preview: {
+            type: "boolean",
+            description: "是否将 preview 版本纳入“是否有更新”的比较候选",
+          },
+        },
+        example: {
+          current_version: "v1.20.326",
+          current_comparable_version: "1.20.326",
+          include_preview: false,
+        },
+      },
+      CheckVersionUpdateResponse: {
+        type: "object",
+        required: [
+          "should_update",
+          "required",
+          "reason_codes",
+          "current_version",
+          "current_comparable_version",
+          "latest_version",
+          "latest_preview_version",
+          "target_version",
+          "milestone",
+        ],
+        properties: {
+          should_update: {
+            type: "boolean",
+          },
+          required: {
+            type: "boolean",
+          },
+          reason_codes: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+          current_version: {
+            type: ["string", "null"],
+          },
+          current_comparable_version: {
+            type: "string",
+          },
+          latest_version: {
+            $ref: "#/components/schemas/VersionItem",
+          },
+          latest_preview_version: {
+            oneOf: [
+              {
+                $ref: "#/components/schemas/VersionItem",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          target_version: {
+            oneOf: [
+              {
+                $ref: "#/components/schemas/VersionItem",
+              },
+              {
+                type: "null",
+              },
+            ],
+            description: "建议升级到的目标版本；无可升级目标时为 null",
+          },
+          milestone: {
+            type: "object",
+            required: ["current", "latest", "target_is_milestone"],
+            properties: {
+              current: {
+                type: "boolean",
+                description: "当前版本是否为里程碑版本",
+              },
+              latest: {
+                type: "boolean",
+                description: "最新版本是否为里程碑版本",
+              },
+              target_is_milestone: {
+                type: "boolean",
+                description:
+                  "目标版本是否因里程碑拦截而被下调（命中时 reason_codes 含 milestone_guard）",
+              },
+            },
+          },
+        },
+      },
+      CreateAnnouncementDto: {
+        type: "object",
+        required: ["title", "content"],
+        properties: {
+          title: {
+            type: "string",
+            maxLength: 128,
+          },
+          content: {
+            type: "string",
+            maxLength: 4096,
+          },
+          is_pinned: {
+            type: "boolean",
+          },
+          is_hidden: {
+            type: "boolean",
+          },
+          platforms: {
+            type: "array",
+            maxItems: 8,
+            items: {
+              $ref: "#/components/schemas/ClientPlatform",
+            },
+          },
+          author: {
+            type: "string",
+            maxLength: 64,
+          },
+          published_at: {
+            type: "integer",
+            format: "int64",
+          },
+        },
+        example: {
+          title: "系统维护通知",
+          content: "平台将于本周六 02:00-04:00 停机维护。",
+          is_pinned: true,
+          is_hidden: false,
+          platforms: ["windows", "web"],
+          author: "运维团队",
+          published_at: 1760000000,
+        },
+      },
+      CreateProjectAnnouncementDto: {
+        allOf: [
+          {
+            $ref: "#/components/schemas/CreateAnnouncementDto",
+          },
+          {
+            type: "object",
+            required: ["project_key"],
+            properties: {
+              project_key: {
+                type: "string",
+                maxLength: 64,
+              },
+            },
+          },
+        ],
+      },
+      UpdateAnnouncementDto: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            maxLength: 128,
+          },
+          content: {
+            type: "string",
+            maxLength: 4096,
+          },
+          is_pinned: {
+            type: "boolean",
+          },
+          is_hidden: {
+            type: "boolean",
+          },
+          platforms: {
+            type: "array",
+            maxItems: 8,
+            items: {
+              $ref: "#/components/schemas/ClientPlatform",
+            },
+          },
+          author: {
+            type: "string",
+            maxLength: 64,
+          },
+          published_at: {
+            type: "integer",
+            format: "int64",
+          },
+        },
+        example: {
+          title: "系统维护通知（延期）",
+          content: "维护时间调整为下周六 02:00-04:00。",
+          is_pinned: false,
+        },
+      },
+      AnnouncementItem: {
+        type: "object",
+        required: [
+          "id",
+          "title",
+          "content",
+          "is_pinned",
+          "is_hidden",
+          "platforms",
+          "published_at",
+          "created_at",
+          "updated_at",
+        ],
+        properties: {
+          id: {
+            type: "string",
+          },
+          title: {
+            type: "string",
+          },
+          content: {
+            type: "string",
+          },
+          is_pinned: {
+            type: "boolean",
+          },
+          is_hidden: {
+            type: "boolean",
+          },
+          platforms: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/ClientPlatform",
+            },
+          },
+          author: {
+            type: ["string", "null"],
+          },
+          published_at: {
+            type: "integer",
+            format: "int64",
+          },
+          created_at: {
+            type: "integer",
+            format: "int64",
+          },
+          updated_at: {
+            type: "integer",
+            format: "int64",
+          },
+        },
+        example: {
+          id: "ann-001",
+          title: "系统维护通知",
+          content: "平台将于本周六 02:00-04:00 停机维护。",
+          is_pinned: true,
+          is_hidden: false,
+          platforms: ["windows", "web"],
+          author: "运维团队",
+          published_at: 1760000000,
+          created_at: 1760000000,
+          updated_at: 1760000000,
+        },
+      },
+      AnnouncementListResponse: {
+        type: "object",
+        required: ["total", "data"],
+        properties: {
+          total: {
+            type: "integer",
+            example: 1,
+          },
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/AnnouncementItem",
+            },
+          },
+        },
+      },
+      CreateFeedbackDto: {
+        type: "object",
+        required: ["content"],
+        properties: {
+          user_id: {
+            type: "string",
+            maxLength: 64,
+          },
+          rating: {
+            type: "integer",
+            minimum: 1,
+            maximum: 5,
+          },
+          content: {
+            type: "string",
+            maxLength: 4096,
+          },
+          platform: {
+            $ref: "#/components/schemas/ClientPlatform",
+          },
+          custom_data: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+        example: {
+          user_id: "user-001",
+          rating: 5,
+          content: "更新检查很好用。",
+          platform: "windows",
+          custom_data: {
+            app_version: "1.2.0",
+          },
+        },
+      },
+      UpdateFeedbackDto: {
+        type: "object",
+        properties: {
+          user_id: {
+            type: "string",
+            maxLength: 64,
+          },
+          rating: {
+            type: "integer",
+            minimum: 1,
+            maximum: 5,
+          },
+          content: {
+            type: "string",
+            maxLength: 4096,
+          },
+          platform: {
+            $ref: "#/components/schemas/ClientPlatform",
+          },
+          custom_data: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+        example: {
+          rating: 4,
+          content: "补充说明：偶发网络超时。",
+        },
+      },
+      FeedbackItem: {
+        type: "object",
+        required: ["id", "user_id", "rating", "content", "platform", "custom_data", "created_at"],
+        properties: {
+          id: {
+            type: "string",
+          },
+          user_id: {
+            type: ["string", "null"],
+          },
+          rating: {
+            type: ["integer", "null"],
+          },
+          content: {
+            type: "string",
+          },
+          platform: {
+            oneOf: [
+              {
+                $ref: "#/components/schemas/ClientPlatform",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          custom_data: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: true,
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          created_at: {
+            type: "integer",
+            format: "int64",
+          },
+        },
+        example: {
+          id: "fb-001",
+          user_id: "user-001",
+          rating: 5,
+          content: "更新检查很好用。",
+          platform: "windows",
+          custom_data: {
+            app_version: "1.2.0",
+          },
+          created_at: 1760000000,
+        },
+      },
+      FeedbackListResponse: {
+        type: "object",
+        required: ["total", "data"],
+        properties: {
+          total: {
+            type: "integer",
+            example: 1,
+          },
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/FeedbackItem",
+            },
+          },
+        },
+      },
+      UploadLogDto: {
+        type: "object",
+        required: ["level", "content"],
+        properties: {
+          level: {
+            type: "integer",
+            minimum: 0,
+            maximum: 3,
+          },
+          content: {
+            type: "string",
+            maxLength: 4096,
+          },
+          device_info: {
+            type: "object",
+            additionalProperties: true,
+          },
+          custom_data: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+        example: {
+          level: 2,
+          content: "更新检查请求超时，已重试。",
+          device_info: {
+            os: "Windows 11",
+            arch: "x64",
+          },
+          custom_data: {
+            app_version: "1.2.0",
+          },
+        },
+      },
+      LogItem: {
+        type: "object",
+        required: ["id", "level", "content", "device_info", "custom_data", "created_at"],
+        properties: {
+          id: {
+            type: "string",
+          },
+          level: {
+            type: "integer",
+            minimum: 0,
+            maximum: 3,
+          },
+          content: {
+            type: "string",
+          },
+          device_info: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: true,
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          custom_data: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: true,
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          created_at: {
+            type: "integer",
+            format: "int64",
+          },
+        },
+        example: {
+          id: "log-001",
+          level: 2,
+          content: "更新检查请求超时，已重试。",
+          device_info: {
+            os: "Windows 11",
+            arch: "x64",
+          },
+          custom_data: {
+            app_version: "1.2.0",
+          },
+          created_at: 1760000000,
+        },
+      },
+      LogListResponse: {
+        type: "object",
+        required: ["total", "data"],
+        properties: {
+          total: {
+            type: "integer",
+            example: 1,
+          },
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/LogItem",
+            },
+          },
+        },
+      },
+      CreateActionDto: {
+        type: "object",
+        required: ["project_key", "name", "description"],
+        properties: {
+          project_key: {
+            type: "string",
+            maxLength: 64,
+          },
+          name: {
+            type: "string",
+            maxLength: 128,
+          },
+          description: {
+            type: "string",
+            maxLength: 512,
+          },
+          custom_data: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+        example: {
+          project_key: "verhub",
+          name: "点击更新按钮",
+          description: "用户在更新弹窗点击立即更新。",
+          custom_data: {
+            category: "update",
+          },
+        },
+      },
+      UpdateActionDto: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            maxLength: 128,
+          },
+          description: {
+            type: "string",
+            maxLength: 512,
+          },
+          custom_data: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+        example: {
+          name: "点击更新按钮（新版）",
+          description: "用户在新版更新弹窗点击立即更新。",
+        },
+      },
+      ActionItem: {
+        type: "object",
+        required: [
+          "action_id",
+          "project_key",
+          "name",
+          "description",
+          "custom_data",
+          "created_time",
+        ],
+        properties: {
+          action_id: {
+            type: "string",
+          },
+          project_key: {
+            type: "string",
+          },
+          name: {
+            type: "string",
+          },
+          description: {
+            type: "string",
+          },
+          custom_data: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: true,
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          created_time: {
+            type: "integer",
+          },
+        },
+        example: {
+          action_id: "act-001",
+          project_key: "verhub",
+          name: "点击更新按钮",
+          description: "用户在更新弹窗点击立即更新。",
+          custom_data: {
+            category: "update",
+          },
+          created_time: 1760000000,
+        },
+      },
+      ActionListResponse: {
+        type: "object",
+        required: ["total", "data"],
+        properties: {
+          total: {
+            type: "integer",
+            example: 1,
+          },
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/ActionItem",
+            },
+          },
+        },
+      },
+      CreateActionRecordDto: {
+        type: "object",
+        required: ["action_id"],
+        properties: {
+          action_id: {
+            type: "string",
+            maxLength: 64,
+          },
+          custom_data: {
+            type: "object",
+            additionalProperties: true,
+          },
+        },
+        example: {
+          action_id: "act-001",
+          custom_data: {
+            app_version: "1.2.0",
+          },
+        },
+      },
+      ActionRecordItem: {
+        type: "object",
+        required: ["action_record_id", "action_id", "created_time", "http", "custom_data"],
+        properties: {
+          action_record_id: {
+            type: "string",
+          },
+          action_id: {
+            type: "string",
+          },
+          created_time: {
+            type: "integer",
+          },
+          http: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: true,
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          custom_data: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: true,
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+        },
+        example: {
+          action_record_id: "rec-001",
+          action_id: "act-001",
+          created_time: 1760000000,
+          http: {
+            ip: "203.0.113.7",
+            user_agent: "Verhub-SDK/1.2.0",
+          },
+          custom_data: {
+            app_version: "1.2.0",
+          },
+        },
+      },
+      ActionRecordListResponse: {
+        type: "object",
+        required: ["total", "data"],
+        properties: {
+          total: {
+            type: "integer",
+            example: 1,
+          },
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/ActionRecordItem",
+            },
+          },
+        },
+      },
+    },
+  },
+}

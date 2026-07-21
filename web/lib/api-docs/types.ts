@@ -35,4 +35,6 @@ export type ApiEndpointDoc = {
   requestBody?: ApiExampleDoc
   responseBody: ApiExampleDoc
   errorResponses?: ApiExampleDoc[]
+  /** OpenAPI 原始 tag，管理端按业务域筛选接口时使用。 */
+  tags: string[]
 }

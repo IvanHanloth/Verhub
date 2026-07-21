@@ -215,7 +215,7 @@ export default async function AdminAboutPage() {
         actions={<ThemeLogo imgClassName="h-10 w-auto" alt="Verhub" />}
       />
 
-      <div className="grid gap-4 lg:grid-cols-[1.1fr_1.4fr]">
+      <div className="grid gap-4">
         <AdminCard className="relative overflow-hidden">
           <div className="pointer-events-none absolute -top-16 -right-10 size-40 rounded-full bg-cyan-500/15 blur-2xl" />
           <div className="pointer-events-none absolute -bottom-16 -left-10 size-40 rounded-full bg-emerald-500/15 blur-2xl" />
@@ -228,7 +228,7 @@ export default async function AdminAboutPage() {
             {currentVersion}
           </p>
 
-          <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+          <div className="mt-4 grid gap-3 text-sm">
             <div className="rounded-xl border border-slate-900/10 bg-white/70 p-3 dark:border-white/10 dark:bg-white/5">
               <p className="text-xs text-slate-500 dark:text-slate-400">版本标题</p>
               <p className="mt-1 font-medium text-slate-800 dark:text-slate-100">
@@ -288,7 +288,7 @@ export default async function AdminAboutPage() {
             )}
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3">
             <div className="rounded-xl border border-slate-900/10 bg-white/60 p-3 dark:border-white/10 dark:bg-white/5">
               <p className="text-xs text-slate-500 dark:text-slate-400">最新目标版本</p>
               <p className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">
@@ -327,7 +327,7 @@ export default async function AdminAboutPage() {
 
       <AdminCard>
         <h2 className="text-lg font-semibold">项目固有信息</h2>
-        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        <dl className="mt-4 grid gap-3 text-sm lg:grid-cols-3">
           <div>
             <dt className="text-slate-500 dark:text-slate-400">Project Key</dt>
             <dd className="mt-1 font-medium">{ABOUT_CONFIG.projectKey}</dd>

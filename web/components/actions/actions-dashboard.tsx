@@ -18,9 +18,8 @@ import {
 import { getErrorMessage } from "@/lib/error-utils"
 import { AdminCard, AdminItemCard } from "@/components/admin/admin-card"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
-import { ProjectApiOverview } from "@/components/admin/project-api-overview"
-import { ProjectSelectorCard } from "@/components/admin/project-selector-card"
-import { useSharedProjectSelection } from "@/hooks/use-shared-project-selection"
+import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
+import { useAdminProjects } from "@/hooks/use-admin-projects"
 import {
   createAction,
   deleteAction,
@@ -30,8 +29,6 @@ import {
   type ActionItem,
   type ActionRecordItem,
 } from "@/lib/actions-api"
-import { listProjects, type ProjectItem } from "@/lib/projects-api"
-import { getSessionToken } from "@/lib/auth-session"
 
 const PAGE_SIZE = 10
 
@@ -43,8 +40,7 @@ type EditFormState = {
 }
 
 export function ActionsDashboard() {
-  const [projects, setProjects] = React.useState<ProjectItem[]>([])
-  const { selectedProjectKey, setSelectedProjectKey } = useSharedProjectSelection()
+  const { selectedProject, selectedProjectKey } = useAdminProjects()
   const [actions, setActions] = React.useState<ActionItem[]>([])
   const [records, setRecords] = React.useState<ActionRecordItem[]>([])
   const [selectedActionId, setSelectedActionId] = React.useState("")
@@ -58,31 +54,6 @@ export function ActionsDashboard() {
 
   const [loading, setLoading] = React.useState(false)
   const [savingEdit, setSavingEdit] = React.useState(false)
-
-  const selectedProject = React.useMemo(
-    () => projects.find((project) => project.project_key === selectedProjectKey) ?? null,
-    [projects, selectedProjectKey],
-  )
-
-  const loadProjects = React.useCallback(async () => {
-    const token = getSessionToken()
-    if (!token) {
-      return
-    }
-
-    const response = await listProjects(token, { limit: 100, offset: 0 })
-    setProjects(response.data)
-
-    const hasCurrent = response.data.some((project) => project.project_key === selectedProjectKey)
-    if (hasCurrent) {
-      return
-    }
-
-    const firstProject = response.data[0]
-    if (firstProject) {
-      setSelectedProjectKey(firstProject.project_key)
-    }
-  }, [selectedProjectKey, setSelectedProjectKey])
 
   const loadActions = React.useCallback(async () => {
     if (!selectedProjectKey) {
@@ -105,10 +76,6 @@ export function ActionsDashboard() {
   }, [selectedActionId])
 
   React.useEffect(() => {
-    void loadProjects().catch((error) => toast.error(getErrorMessage(error)))
-  }, [loadProjects])
-
-  React.useEffect(() => {
     void loadActions().catch((error) => toast.error(getErrorMessage(error)))
   }, [loadActions])
 
@@ -129,8 +96,7 @@ export function ActionsDashboard() {
   async function handleCreate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    const project = projects.find((item) => item.project_key === selectedProjectKey)
-    if (!project) {
+    if (!selectedProject) {
       toast.error("请先选择项目")
       return
     }
@@ -149,7 +115,7 @@ export function ActionsDashboard() {
     setLoading(true)
     try {
       await createAction({
-        project_key: project.project_key,
+        project_key: selectedProject.project_key,
         name: name.trim(),
         description: description.trim(),
         custom_data: customDataObject,
@@ -239,122 +205,61 @@ export function ActionsDashboard() {
         title="行为事件管理"
         description="维护行为定义并查看最新上报记录。"
         badge="Verhub Actions"
+        actions={
+          <ApiReferenceDrawer
+            tag="Actions"
+            title="行为埋点接口文档"
+            projectKey={selectedProject?.project_key}
+          />
+        }
       />
 
-      <section className="grid gap-6 lg:grid-cols-[1.1fr_1.9fr]">
-        <div className="space-y-6">
-          <ProjectSelectorCard
-            selectId="actions-project-select"
-            selectedProjectKey={selectedProjectKey}
-            projects={projects}
-            ringClassName="ring-cyan-300"
-            onChange={setSelectedProjectKey}
-          />
-
-          <ProjectApiOverview
-            title="接口示例 · 行为"
-            projectKey={selectedProject?.project_key}
-            groups={[
-              {
-                label: "公开接口",
-                endpoints: [
-                  {
-                    method: "POST",
-                    path: "/api/v1/public/{projectKey}/actions",
-                    description: "客户端上报行为记录",
-                    auth: { tokenRequired: false },
-                    requestBody: {
-                      name: "open_settings",
-                      custom_data: { platform: "web", from: "header" },
-                    },
-                  },
-                ],
-              },
-              {
-                label: "管理接口",
-                endpoints: [
-                  {
-                    method: "GET",
-                    path: "/api/v1/admin/projects/{projectKey}/actions",
-                    description: "查询行为定义",
-                    auth: { tokenRequired: true },
-                  },
-                  {
-                    method: "POST",
-                    path: "/api/v1/admin/projects/actions",
-                    description: "创建行为定义",
-                    auth: { tokenRequired: true },
-                    requestBody: {
-                      project_key: "{projectKey}",
-                      name: "open_settings",
-                      description: "用户打开设置页",
-                      custom_data: { module: "settings" },
-                    },
-                  },
-                  {
-                    method: "PATCH",
-                    path: "/api/v1/admin/actions/{action_id}",
-                    description: "编辑行为定义",
-                    auth: { tokenRequired: true },
-                    requestBody: {
-                      name: "open_settings_v2",
-                      description: "用户打开设置页（新版）",
-                      custom_data: { module: "settings-v2" },
-                    },
-                  },
-                ],
-              },
-            ]}
-          />
+      <AdminCard>
+        <div className="mb-4 space-y-1">
+          <h2 className="text-lg font-semibold">新增行为</h2>
+          <p className="text-sm text-slate-700 dark:text-slate-300">
+            名称与描述为必填项，custom_data 需为 JSON 对象。
+          </p>
         </div>
-
-        <AdminCard>
-          <div className="mb-4 space-y-1">
-            <h2 className="text-lg font-semibold">新增行为</h2>
-            <p className="text-sm text-slate-700 dark:text-slate-300">
-              名称与描述为必填项，custom_data 需为 JSON 对象。
-            </p>
+        <form className="grid gap-3" onSubmit={handleCreate}>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-300">行为名称</span>
+            <input
+              required
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm"
+              placeholder="例如：打开设置页"
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-300">行为描述</span>
+            <input
+              required
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm"
+              placeholder="说明该行为会记录什么"
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-300">扩展数据 JSON</span>
+            <textarea
+              value={customData}
+              onChange={(event) => setCustomData(event.target.value)}
+              className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-xs"
+              rows={4}
+              placeholder='例如：{"channel":"release"}'
+            />
+          </label>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={loading}>
+              <Plus className="size-4" />
+              新增行为
+            </Button>
           </div>
-          <form className="grid gap-3" onSubmit={handleCreate}>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-300">行为名称</span>
-              <input
-                required
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm"
-                placeholder="例如：打开设置页"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-300">行为描述</span>
-              <input
-                required
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm"
-                placeholder="说明该行为会记录什么"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-300">扩展数据 JSON</span>
-              <textarea
-                value={customData}
-                onChange={(event) => setCustomData(event.target.value)}
-                className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-xs"
-                rows={4}
-                placeholder='例如：{"channel":"release"}'
-              />
-            </label>
-            <div className="flex gap-2">
-              <Button type="submit" disabled={loading}>
-                <Plus className="size-4" />
-                新增行为
-              </Button>
-            </div>
-          </form>
-        </AdminCard>
-      </section>
+        </form>
+      </AdminCard>
 
       <AdminCard>
         <h3 className="mb-3 font-medium">行为列表</h3>
@@ -439,7 +344,7 @@ export function ActionsDashboard() {
       </AdminCard>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>编辑行为</DialogTitle>
             <DialogDescription>修改行为名称、描述与扩展数据。</DialogDescription>

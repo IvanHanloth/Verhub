@@ -38,6 +38,17 @@
 - [ ] 地区维度：`region` 字段已预留，GeoIP 解析待实现（当前恒为 UNKNOWN）
 - [ ] 大屏可视化增强：地区地图、按接口下钻的时间序列切换
 
+## 接口文档单一数据源（2026-07）
+
+- [x] 新增 `scripts/generate-api-docs.mjs`（`pnpm api:sync`）：yaml → `web/lib/api-docs/openapi.generated.ts`
+- [x] 新增 OpenAPI → `ApiEndpointDoc` 转换层（`openapi-schema.ts` / `openapi-to-docs.ts`），示例值按 schema 递归拼装
+- [x] `registry.ts` 由 1327 行手写 seed 改为消费生成结果，`/doc/<slug>` 地址全部保持不变
+- [x] yaml 补齐 26 个 schema 的 `example`、29 个操作的 `description` 与 `x-verhub-doc` 标记
+- [x] 管理端 5 个页面移除左栏内联硬编码接口卡片，改为页头右侧覆盖抽屉（接口列表 + 完整文档 + playground，自动带入 projectKey 与会话令牌）
+- [x] 新增 `packages/ui/src/components/sheet.tsx` 侧向抽屉（复用 Radix Dialog 的无障碍语义）
+- [x] 一致性门禁：NestJS 路由 ↔ yaml（后端 spec）、生成物 ↔ yaml（web 单测）、已发布 slug 可达性（web 单测）
+- [ ] 剩余 55 个未标记 `x-verhub-doc` 的接口：按需补 `description` 与 `example` 后开放进文档站
+
 ## 开发体验（2026-07）
 
 - [x] `docker-compose.dev.yml` 改为热重载模式：新增 `backend-dev` / `frontend-dev` 镜像 stage，仅挂载源码目录

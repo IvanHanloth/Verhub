@@ -36,6 +36,21 @@ export type RequestStatsTimeseries = {
   data: { bucket: number; count: number }[]
 }
 
+export type ClientVersionStats = {
+  start_time: number
+  end_time: number
+  /** Across every version in range, not just the returned rows — the share denominator. */
+  total: number
+  data: { version: string; count: number }[]
+}
+
+export type RequestStatsHeatmap = {
+  start_time: number
+  end_time: number
+  /** Always 168 cells: weekday 0=Sunday..6, hour 0..23, both UTC. */
+  data: { weekday: number; hour: number; count: number }[]
+}
+
 /** Human-readable endpoint names, keyed by the backend enum. */
 export const ENDPOINT_LABELS: Record<PublicEndpoint, string> = {
   PROJECT_DETAIL: "项目详情",
@@ -87,6 +102,34 @@ export async function getRequestStatsOverview(
 ): Promise<RequestStatsOverview> {
   return requestJson<RequestStatsOverview>(
     `/admin/projects/${encodeURIComponent(projectKey)}/stats/requests/overview${toSearchParams(range)}`,
+    { token, signal },
+  )
+}
+
+export async function getClientVersionStats(
+  token: string,
+  projectKey: string,
+  range: RangeParams = {},
+  limit?: number,
+  signal?: AbortSignal,
+): Promise<ClientVersionStats> {
+  return requestJson<ClientVersionStats>(
+    `/admin/projects/${encodeURIComponent(projectKey)}/stats/requests/client-versions${toSearchParams(
+      range,
+      { limit: limit === undefined ? undefined : String(limit) },
+    )}`,
+    { token, signal },
+  )
+}
+
+export async function getRequestStatsHeatmap(
+  token: string,
+  projectKey: string,
+  range: RangeParams = {},
+  signal?: AbortSignal,
+): Promise<RequestStatsHeatmap> {
+  return requestJson<RequestStatsHeatmap>(
+    `/admin/projects/${encodeURIComponent(projectKey)}/stats/requests/heatmap${toSearchParams(range)}`,
     { token, signal },
   )
 }

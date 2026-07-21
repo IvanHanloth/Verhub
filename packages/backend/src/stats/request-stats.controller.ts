@@ -3,7 +3,11 @@ import { BadRequestException, Controller, Get, Param, Query, UseGuards } from "@
 import { AdminOrApiKeyGuard } from "../auth/guards/admin-or-api-key.guard"
 import { RequireApiScope } from "../auth/guards/api-scope.decorator"
 import { nowSeconds } from "../common/utils"
-import { QueryRequestStatsDto, QueryRequestTimeseriesDto } from "./dto/query-request-stats.dto"
+import {
+  QueryClientVersionStatsDto,
+  QueryRequestStatsDto,
+  QueryRequestTimeseriesDto,
+} from "./dto/query-request-stats.dto"
 import { DAY_SECONDS, RequestStatsService, StatsRange } from "./request-stats.service"
 
 /** Default window when the caller does not specify one: the last 7 days. */
@@ -57,6 +61,47 @@ export class RequestStatsController {
       granularity: query.granularity,
       endpoint: query.endpoint ?? null,
       data: points.map((point) => ({ bucket: point.bucket, count: point.count })),
+    }
+  }
+
+  /**
+   * Which versions clients actually report to check-update, most common first.
+   *
+   * `total` counts every version in the range, not just the returned rows, so
+   * a share computed against it stays truthful once `limit` cuts the tail.
+   */
+  @Get("client-versions")
+  @RequireApiScope("stats:read")
+  async getClientVersions(
+    @Param("projectKey") projectKey: string,
+    @Query() query: QueryClientVersionStatsDto,
+  ) {
+    const range = this.resolveRange(query)
+    const { total, buckets } = await this.requestStatsService.getClientVersionBreakdown(
+      projectKey,
+      range,
+      query.limit,
+    )
+
+    return {
+      start_time: range.startTime,
+      end_time: range.endTime,
+      total,
+      data: buckets.map((item) => ({ version: item.version, count: item.count })),
+    }
+  }
+
+  /** Request volume folded onto a weekday × hour grid; always 168 cells. */
+  @Get("heatmap")
+  @RequireApiScope("stats:read")
+  async getHeatmap(@Param("projectKey") projectKey: string, @Query() query: QueryRequestStatsDto) {
+    const range = this.resolveRange(query)
+    const cells = await this.requestStatsService.getHeatmap(projectKey, range)
+
+    return {
+      start_time: range.startTime,
+      end_time: range.endTime,
+      data: cells.map((cell) => ({ weekday: cell.weekday, hour: cell.hour, count: cell.count })),
     }
   }
 

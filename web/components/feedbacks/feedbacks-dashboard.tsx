@@ -22,9 +22,8 @@ import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
-import { ProjectApiOverview } from "@/components/admin/project-api-overview"
-import { ProjectSelectorCard } from "@/components/admin/project-selector-card"
-import { useSharedProjectSelection } from "@/hooks/use-shared-project-selection"
+import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
+import { useAdminProjects } from "@/hooks/use-admin-projects"
 import {
   deleteFeedback,
   listFeedbacks,
@@ -33,10 +32,8 @@ import {
   type FeedbackItem,
   type FeedbackMutationInput,
 } from "@/lib/feedbacks-api"
-import { listProjects, type ProjectItem } from "@/lib/projects-api"
 import { scrollToPageTop } from "@/lib/scroll"
 
-const PROJECT_PAGE_SIZE = 100
 const PAGE_SIZE = 10
 
 const platformOptions: Array<{ label: string; value: ClientPlatform }> = [
@@ -105,9 +102,7 @@ export function FeedbacksDashboard() {
   const [token, setToken] = React.useState(() => getSessionToken().trim())
   const [authError, setAuthError] = React.useState<string | null>(null)
 
-  const [projects, setProjects] = React.useState<ProjectItem[]>([])
-  const [projectsLoading, setProjectsLoading] = React.useState(false)
-  const { selectedProjectKey, setSelectedProjectKey } = useSharedProjectSelection()
+  const { selectedProject, selectedProjectKey, error: projectsError } = useAdminProjects()
 
   const [feedbacks, setFeedbacks] = React.useState<FeedbackItem[]>([])
   const {
@@ -131,47 +126,7 @@ export function FeedbacksDashboard() {
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
   const [submitLoading, setSubmitLoading] = React.useState(false)
 
-  const selectedProject = React.useMemo(
-    () => projects.find((project) => project.project_key === selectedProjectKey) ?? null,
-    [projects, selectedProjectKey],
-  )
-
   const hasToken = token.trim().length > 0
-
-  const loadProjects = React.useCallback(async () => {
-    if (!token) {
-      setProjects([])
-      setSelectedProjectKey("")
-      return
-    }
-
-    setProjectsLoading(true)
-    try {
-      const response = await listProjects(token, { limit: PROJECT_PAGE_SIZE, offset: 0 })
-      setProjects(response.data)
-      const hasCurrent = response.data.some((project) => project.project_key === selectedProjectKey)
-      if (hasCurrent) {
-        return
-      }
-
-      const firstProject = response.data[0]
-      if (firstProject) {
-        setSelectedProjectKey(firstProject.project_key)
-      } else {
-        setSelectedProjectKey("")
-      }
-    } catch (loadError) {
-      if (isAuthError(loadError)) {
-        setToken("")
-        setAuthError("登录状态已过期，请重新登录。")
-      }
-      setAuthError(getErrorMessage(loadError))
-      setProjects([])
-      setSelectedProjectKey("")
-    } finally {
-      setProjectsLoading(false)
-    }
-  }, [selectedProjectKey, setSelectedProjectKey, token])
 
   const loadFeedbacks = React.useCallback(
     async (nextOffset: number, signal?: AbortSignal) => {
@@ -214,10 +169,6 @@ export function FeedbacksDashboard() {
     },
     [selectedProjectKey, token, setTotal],
   )
-
-  React.useEffect(() => {
-    void loadProjects()
-  }, [loadProjects])
 
   React.useEffect(() => {
     const controller = new AbortController()
@@ -351,173 +302,114 @@ export function FeedbacksDashboard() {
         title="用户反馈管理"
         description="查看并维护反馈内容、评分、平台信息与扩展数据。"
         badge="Verhub Feedbacks"
+        actions={
+          <ApiReferenceDrawer
+            tag="Feedbacks"
+            title="反馈接口文档"
+            projectKey={selectedProject?.project_key}
+          />
+        }
       />
 
-      <section className="grid gap-6 lg:grid-cols-[1.1fr_1.9fr]">
-        <div className="space-y-6">
-          <ProjectSelectorCard
-            selectId="feedback-project-select"
-            selectedProjectKey={selectedProjectKey}
-            projects={projects}
-            disabled={!hasToken || projectsLoading || projects.length === 0}
-            ringClassName="ring-rose-300"
-            onChange={setSelectedProjectKey}
-            warning={
-              authError ? (
-                <span className="inline-flex items-center gap-2">
-                  <AlertTriangle className="size-4" />
-                  {authError}
-                </span>
-              ) : undefined
-            }
-          />
+      {authError || projectsError ? (
+        <AdminCard className="flex items-center gap-2 text-sm text-rose-500 dark:text-rose-300">
+          <AlertTriangle className="size-4" />
+          {authError ?? projectsError}
+        </AdminCard>
+      ) : null}
 
-          <ProjectApiOverview
-            title="接口示例 · 反馈"
-            projectKey={selectedProject?.project_key}
-            groups={[
-              {
-                label: "公开接口",
-                endpoints: [
-                  {
-                    method: "POST",
-                    path: "/api/v1/public/{projectKey}/feedbacks",
-                    description: "客户端提交反馈",
-                    auth: { tokenRequired: false },
-                    requestBody: {
-                      content: "希望增加批量导出功能",
-                      rating: 4,
-                      platform: "web",
-                      user_id: "u_1024",
-                      custom_data: { page: "settings", locale: "zh-CN" },
-                    },
-                  },
-                ],
-              },
-              {
-                label: "管理接口",
-                endpoints: [
-                  {
-                    method: "GET",
-                    path: "/api/v1/admin/projects/{projectKey}/feedbacks",
-                    description: "分页获取反馈",
-                    auth: { tokenRequired: true },
-                  },
-                  {
-                    method: "PATCH",
-                    path: "/api/v1/admin/projects/{projectKey}/feedbacks/{id}",
-                    description: "编辑反馈",
-                    auth: { tokenRequired: true },
-                    requestBody: {
-                      content: "已复现并记录需求，计划下个版本支持",
-                      rating: 5,
-                    },
-                  },
-                  {
-                    method: "DELETE",
-                    path: "/api/v1/admin/projects/{projectKey}/feedbacks/{id}",
-                    description: "删除反馈",
-                    auth: { tokenRequired: true },
-                  },
-                ],
-              },
-            ]}
-          />
+      <AdminCard className="space-y-6">
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold">反馈编辑</h2>
+          <p className="text-sm text-slate-200/90">从列表点击编辑后，在弹窗中保存修改。</p>
         </div>
 
-        <AdminCard className="space-y-6">
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold">反馈编辑</h2>
-            <p className="text-sm text-slate-200/90">从列表点击编辑后，在弹窗中保存修改。</p>
+        <form className="grid gap-3" onSubmit={handleSubmit}>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">用户 ID</span>
+            <input
+              type="text"
+              placeholder="例如：u_1024"
+              value={form.user_id}
+              onChange={(event) => setForm((prev) => ({ ...prev, user_id: event.target.value }))}
+              className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-rose-300 transition outline-none focus:ring-2"
+              maxLength={64}
+              disabled
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">评分（1-5）</span>
+            <input
+              type="number"
+              min={1}
+              max={5}
+              placeholder="1 到 5"
+              value={form.rating}
+              onChange={(event) => setForm((prev) => ({ ...prev, rating: event.target.value }))}
+              className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-rose-300 transition outline-none focus:ring-2"
+              disabled
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">平台</span>
+            <select
+              aria-label="反馈平台"
+              value={form.platform}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  platform: event.target.value as "" | ClientPlatform,
+                }))
+              }
+              className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-rose-300 transition outline-none focus:ring-2"
+              disabled
+            >
+              <option value="">未指定平台</option>
+              {platformOptions.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">反馈内容</span>
+            <textarea
+              placeholder="请保持原始语义并只修正必要内容"
+              value={form.content}
+              onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))}
+              rows={5}
+              className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-rose-300 transition outline-none focus:ring-2"
+              maxLength={4096}
+              disabled
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
+            <textarea
+              placeholder='例如：{"channel":"beta"}'
+              value={form.custom_data}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, custom_data: event.target.value }))
+              }
+              rows={4}
+              className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 font-mono text-xs ring-rose-300 transition outline-none focus:ring-2"
+              disabled
+            />
+          </label>
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="submit"
+              className="bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
+              disabled
+            >
+              <Save className="size-4" />
+              请在列表点击“编辑”打开弹窗
+            </Button>
           </div>
-
-          <form className="grid gap-3" onSubmit={handleSubmit}>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">用户 ID</span>
-              <input
-                type="text"
-                placeholder="例如：u_1024"
-                value={form.user_id}
-                onChange={(event) => setForm((prev) => ({ ...prev, user_id: event.target.value }))}
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-rose-300 transition outline-none focus:ring-2"
-                maxLength={64}
-                disabled
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">评分（1-5）</span>
-              <input
-                type="number"
-                min={1}
-                max={5}
-                placeholder="1 到 5"
-                value={form.rating}
-                onChange={(event) => setForm((prev) => ({ ...prev, rating: event.target.value }))}
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-rose-300 transition outline-none focus:ring-2"
-                disabled
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">平台</span>
-              <select
-                aria-label="反馈平台"
-                value={form.platform}
-                onChange={(event) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    platform: event.target.value as "" | ClientPlatform,
-                  }))
-                }
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-rose-300 transition outline-none focus:ring-2"
-                disabled
-              >
-                <option value="">未指定平台</option>
-                {platformOptions.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">反馈内容</span>
-              <textarea
-                placeholder="请保持原始语义并只修正必要内容"
-                value={form.content}
-                onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))}
-                rows={5}
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-rose-300 transition outline-none focus:ring-2"
-                maxLength={4096}
-                disabled
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
-              <textarea
-                placeholder='例如：{"channel":"beta"}'
-                value={form.custom_data}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, custom_data: event.target.value }))
-                }
-                rows={4}
-                className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 font-mono text-xs ring-rose-300 transition outline-none focus:ring-2"
-                disabled
-              />
-            </label>
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="submit"
-                className="bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
-                disabled
-              >
-                <Save className="size-4" />
-                请在列表点击“编辑”打开弹窗
-              </Button>
-            </div>
-          </form>
-        </AdminCard>
-      </section>
+        </form>
+      </AdminCard>
 
       <AdminCard as="section">
         <AdminListHeader title="反馈列表" total={total} page={page} totalPages={totalPages} />
@@ -618,7 +510,7 @@ export function FeedbacksDashboard() {
       </AdminCard>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>编辑反馈</DialogTitle>
             <DialogDescription>修改反馈内容、评分、平台与扩展数据。</DialogDescription>

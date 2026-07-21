@@ -167,7 +167,7 @@ describe("VersionsDashboard", () => {
       milestone: {
         current: false,
         latest: false,
-        latest_in_current: null,
+        target_is_milestone: false,
       },
     })
     mockedImportVersionsFromGithubReleases.mockResolvedValue({
@@ -240,7 +240,9 @@ describe("VersionsDashboard", () => {
     expect(scrollSpy).not.toHaveBeenCalled()
 
     const dialog = screen.getByRole("dialog")
-    expect(dialog.className).toContain("max-h-[calc(100vh-2rem)]")
+    // 窄屏铺满整屏，sm 起才回到限高的居中卡片。
+    expect(dialog.className).toContain("h-dvh")
+    expect(dialog.className).toContain("sm:max-h-[calc(100dvh-2rem)]")
 
     const dialogBody = dialog.querySelector('[data-slot="dialog-body"]')
     expect(dialogBody).not.toBeNull()
@@ -307,11 +309,16 @@ describe("VersionsDashboard", () => {
       ],
     })
 
+    // 项目选择器已移到侧边栏，这里验证共享选中值仍然决定加载哪个项目的版本。
     render(React.createElement(VersionsDashboard))
 
-    const select = await screen.findByLabelText("目标项目")
     await waitFor(() => {
-      expect(select).toHaveValue("client")
+      expect(mockedListVersions).toHaveBeenCalledWith(
+        "valid-token",
+        "client",
+        expect.anything(),
+        expect.anything(),
+      )
     })
     expect(window.localStorage.getItem("verhub.admin.selectedProjectKey")).toBe("client")
   })

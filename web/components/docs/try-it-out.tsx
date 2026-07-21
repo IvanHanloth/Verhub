@@ -1,69 +1,75 @@
 "use client"
 
 import * as React from "react"
-import { useSearchParams } from "next/navigation"
 
 import type { ApiEndpointDoc } from "@/lib/api-docs/types"
 import { buildTryItOutUrl } from "@/lib/api-docs/utils"
 
 import { ApiMethodBadge } from "./api-method-badge"
 
-type Props = {
-  doc: ApiEndpointDoc
+/** 调用方预填的初始值，缺省时回落到 OpenAPI 里声明的 example。 */
+export type TryItOutInitialValues = {
+  pathParams?: Record<string, string>
+  queryParams?: Record<string, string>
+  token?: string
+  body?: string
 }
 
-function initializeRecord(items: { name: string; example?: string }[]) {
+type Props = {
+  doc: ApiEndpointDoc
+  initialValues?: TryItOutInitialValues
+  className?: string
+}
+
+function initializeRecord(
+  items: { name: string; example?: string }[],
+  overrides: Record<string, string> = {},
+) {
   return items.reduce<Record<string, string>>((acc, item) => {
-    acc[item.name] = item.example ?? ""
+    acc[item.name] = overrides[item.name] ?? item.example ?? ""
     return acc
   }, {})
 }
 
-export function TryItOut({ doc }: Props) {
-  const searchParams = useSearchParams()
+export function TryItOut({ doc, initialValues, className }: Props) {
   const [pathValues, setPathValues] = React.useState<Record<string, string>>(() =>
-    initializeRecord(doc.pathParams),
+    initializeRecord(doc.pathParams, initialValues?.pathParams),
   )
   const [queryValues, setQueryValues] = React.useState<Record<string, string>>(() =>
-    initializeRecord(doc.queryParams),
+    initializeRecord(doc.queryParams, initialValues?.queryParams),
   )
-  const [token, setToken] = React.useState("")
-  const [bodyText, setBodyText] = React.useState(doc.requestBody?.content ?? "")
+  const [token, setToken] = React.useState(initialValues?.token ?? "")
+  const [bodyText, setBodyText] = React.useState(
+    initialValues?.body ?? doc.requestBody?.content ?? "",
+  )
   const [submitting, setSubmitting] = React.useState(false)
   const [result, setResult] = React.useState<{ status: number; body: string } | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
+  const initialPathParams = initialValues?.pathParams
+  const initialQueryParams = initialValues?.queryParams
+  const initialToken = initialValues?.token
+  const initialBody = initialValues?.body
+
+  // 切换接口或外部预填变化时重置表单，避免沿用上一个接口的输入。
   React.useEffect(() => {
-    const nextPathValues = initializeRecord(doc.pathParams)
-    const nextQueryValues = initializeRecord(doc.queryParams)
-
-    for (const param of doc.pathParams) {
-      const value = searchParams.get(`path.${param.name}`)
-      if (value !== null) {
-        nextPathValues[param.name] = value
-      }
-    }
-
-    for (const param of doc.queryParams) {
-      const value = searchParams.get(`query.${param.name}`)
-      if (value !== null) {
-        nextQueryValues[param.name] = value
-      }
-    }
-
-    const tokenFromUrl = searchParams.get("token")
-    const bodyFromUrl = searchParams.get("body")
-
-    setPathValues(nextPathValues)
-    setQueryValues(nextQueryValues)
-    setToken(doc.auth.mode === "none" ? "" : (tokenFromUrl ?? ""))
-
-    if (doc.requestBody) {
-      setBodyText(bodyFromUrl ?? doc.requestBody.content)
-    } else {
-      setBodyText("")
-    }
-  }, [doc.auth.mode, doc.path, doc.pathParams, doc.queryParams, doc.requestBody, searchParams])
+    setPathValues(initializeRecord(doc.pathParams, initialPathParams))
+    setQueryValues(initializeRecord(doc.queryParams, initialQueryParams))
+    setToken(doc.auth.mode === "none" ? "" : (initialToken ?? ""))
+    setBodyText(doc.requestBody ? (initialBody ?? doc.requestBody.content) : "")
+    setResult(null)
+    setError(null)
+  }, [
+    doc.auth.mode,
+    doc.id,
+    doc.pathParams,
+    doc.queryParams,
+    doc.requestBody,
+    initialBody,
+    initialPathParams,
+    initialQueryParams,
+    initialToken,
+  ])
 
   const previewUrl = React.useMemo(
     () => buildTryItOutUrl(doc.path, pathValues, queryValues),
@@ -127,7 +133,9 @@ export function TryItOut({ doc }: Props) {
   }
 
   return (
-    <section className="space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4 dark:border-white/10 dark:bg-black/25">
+    <section
+      className={`space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4 dark:border-white/10 dark:bg-black/25 ${className ?? ""}`}
+    >
       <div className="flex items-center gap-2">
         <ApiMethodBadge method={doc.method} />
         <h3 className="text-base font-semibold">Try It Out</h3>
@@ -135,7 +143,7 @@ export function TryItOut({ doc }: Props) {
 
       <form className="space-y-4" onSubmit={submitRequest}>
         {doc.pathParams.length ? (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3">
             {doc.pathParams.map((param) => (
               <label key={param.name} className="space-y-1 text-sm">
                 <span className="font-medium text-slate-700 dark:text-slate-200">{`Path: ${param.name}`}</span>
@@ -152,7 +160,7 @@ export function TryItOut({ doc }: Props) {
         ) : null}
 
         {doc.queryParams.length ? (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3">
             {doc.queryParams.map((param) => (
               <label key={param.name} className="space-y-1 text-sm">
                 <span className="font-medium text-slate-700 dark:text-slate-200">{`Query: ${param.name}`}</span>

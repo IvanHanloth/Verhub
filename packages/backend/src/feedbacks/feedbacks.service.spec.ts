@@ -108,7 +108,7 @@ describe("FeedbacksService", () => {
     const result = await service.findAll("proj", { limit: 10, offset: 0 })
 
     expect(result.total).toBe(1)
-    expect(result.data[0].platform).toBe("web")
+    expect(result.data[0]?.platform).toBe("web")
   })
 
   it("findAll throws when project does not exist", async () => {

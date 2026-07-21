@@ -11,6 +11,7 @@
     "docs:build": "pnpm --filter verhub-docs docs:build",
     "docs:preview": "pnpm --filter verhub-docs docs:preview",
     "admin:reset": "pnpm --filter @workspace/backend run admin:reset",
+    "api:sync": "node scripts/generate-api-docs.mjs",
     "version:show": "node scripts/version.mjs show",
     "version:check": "node scripts/version.mjs check",
     "lint-staged": "lint-staged",
@@ -28,7 +29,8 @@
     "prettier": "^3.8.1",
     "prettier-plugin-tailwindcss": "^0.7.2",
     "turbo": "^2.8.18",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "yaml": "^2.9.0"
   },
   "lint-staged": {
     "packages/backend/**/*.{js,cjs,mjs,ts,tsx,jsx}": [
@@ -43,8 +45,13 @@
       "pnpm --filter @workspace/ui exec eslint --fix --max-warnings=0",
       "pnpm --filter @workspace/ui exec prettier --write"
     ],
-    "*.{json,md,css,scss,yaml,yml}": [
+    "!(verhub.openapi).{json,md,css,scss,yaml,yml}": [
       "prettier --write"
+    ],
+    "verhub.openapi.yaml": [
+      "prettier --write",
+      "node scripts/generate-api-docs.mjs",
+      "git add web/lib/api-docs/openapi.generated.ts"
     ]
   }
 }

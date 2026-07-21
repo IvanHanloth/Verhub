@@ -108,6 +108,7 @@ model Project {
   logs          Log[]
   actions       Action[]
   requestStats  ApiRequestStat[]
+  clientVersionStats ClientVersionStat[]
 }
 
 /// Hourly rollup of public API requests, one row per
@@ -133,6 +134,34 @@ model ApiRequestStat {
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
   @@unique([projectKey, endpoint, hourBucket, platform, region])
+  @@index([projectKey, hourBucket])
+  @@index([hourBucket])
+}
+
+/// Hourly rollup of the version each client reports when it calls check-update,
+/// one row per (project, version, hour, platform).
+///
+/// This is what "which version is actually in the field" is answered from:
+/// `Version` only says what has been published, never what is installed. The
+/// value is the client's own `current_version` string, stored verbatim rather
+/// than normalized — a version the server has never published is exactly the
+/// signal an operator wants to see, so coercing it into a known release would
+/// destroy the finding. Shares the retention sweep with `ApiRequestStat`.
+model ClientVersionStat {
+  id         String       @id @default(cuid())
+  projectKey String
+  /// Client-reported version string, trimmed. Never null; unreported calls are not recorded.
+  version    String
+  /// Unix seconds truncated to the start of the hour (UTC).
+  hourBucket Int
+  platform   StatPlatform @default(UNKNOWN)
+  count      Int          @default(0)
+  createdAt  Int          @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt  Int          @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
+
+  @@unique([projectKey, version, hourBucket, platform])
   @@index([projectKey, hourBucket])
   @@index([hourBucket])
 }

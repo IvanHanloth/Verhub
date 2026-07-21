@@ -18,6 +18,19 @@ export type RecordRequestInput = {
   occurredAt?: number
 }
 
+export type RecordClientVersionInput = {
+  projectKey: string
+  version: string
+  platform: StatPlatform
+  occurredAt?: number
+}
+
+/**
+ * Longest client version string we will store, matching the `current_version`
+ * DTO limit. Anything longer is junk or an attempt to bloat the table.
+ */
+export const MAX_CLIENT_VERSION_LENGTH = 64
+
 export type StatsRange = {
   startTime: number
   endTime: number
@@ -27,6 +40,9 @@ export type EndpointBucket = { endpoint: PublicEndpoint; count: number }
 export type PlatformBucket = { platform: StatPlatform; count: number }
 export type RegionBucket = { region: string; count: number }
 export type TimeseriesPoint = { bucket: number; count: number }
+export type ClientVersionBucket = { version: string; count: number }
+/** `weekday` is 0=Sunday..6=Saturday, `hour` is 0..23, both in UTC. */
+export type HeatmapCell = { weekday: number; hour: number; count: number }
 
 /** Truncate a Unix-seconds timestamp to the start of its UTC hour. */
 export function toHourBucket(timestamp: number): number {
@@ -80,6 +96,51 @@ export class RequestStatsService {
     this.recordRequest(input).catch((error: unknown) => {
       this.logger.warn(
         `Failed to record request stat for ${input.projectKey}/${input.endpoint}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    })
+  }
+
+  /**
+   * Increment the hourly counter for one client-reported version.
+   *
+   * Same atomic upsert-increment as `recordRequest`, for the same reason.
+   * Returns without writing when the client reported nothing usable — an empty
+   * or oversized string is not a version, and recording it as one would put a
+   * junk bucket into the distribution chart.
+   */
+  async recordClientVersion(input: RecordClientVersionInput): Promise<void> {
+    const version = input.version.trim()
+    if (!version || version.length > MAX_CLIENT_VERSION_LENGTH) {
+      return
+    }
+
+    const projectKey = normalizeProjectKey(input.projectKey)
+    const hourBucket = toHourBucket(input.occurredAt ?? nowSeconds())
+
+    await this.prisma.$executeRaw`
+      INSERT INTO "ClientVersionStat" ("id", "projectKey", "version", "hourBucket", "platform", "count")
+      VALUES (
+        gen_random_uuid()::text,
+        ${projectKey},
+        ${version},
+        ${hourBucket},
+        ${input.platform}::"StatPlatform",
+        1
+      )
+      ON CONFLICT ("projectKey", "version", "hourBucket", "platform")
+      DO UPDATE SET
+        "count" = "ClientVersionStat"."count" + 1,
+        "updatedAt" = CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)
+    `
+  }
+
+  /** Best-effort counterpart to `recordClientVersion`; never fails the caller. */
+  recordClientVersionSafely(input: RecordClientVersionInput): void {
+    this.recordClientVersion(input).catch((error: unknown) => {
+      this.logger.warn(
+        `Failed to record client version stat for ${input.projectKey}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       )
@@ -172,6 +233,67 @@ export class RequestStatsService {
     }
 
     return points
+  }
+
+  /**
+   * Client-reported version totals, descending. Drives the "which version is
+   * actually in the field" chart.
+   *
+   * `total` is the count across *every* version, not just the returned page, so
+   * the caller can still compute a truthful share for each returned row after
+   * `limit` truncates the tail.
+   */
+  async getClientVersionBreakdown(
+    projectKey: string,
+    range: StatsRange,
+    limit: number,
+  ): Promise<{ total: number; buckets: ClientVersionBucket[] }> {
+    const rows = await this.prisma.clientVersionStat.groupBy({
+      by: ["version"],
+      _sum: { count: true },
+      where: {
+        projectKey: normalizeProjectKey(projectKey),
+        hourBucket: { gte: toHourBucket(range.startTime), lte: range.endTime },
+      },
+    })
+
+    const buckets = rows
+      .map((row) => ({ version: row.version, count: row._sum.count ?? 0 }))
+      .sort((a, b) => b.count - a.count || a.version.localeCompare(b.version))
+
+    const total = buckets.reduce((sum, bucket) => sum + bucket.count, 0)
+
+    return { total, buckets: buckets.slice(0, limit) }
+  }
+
+  /**
+   * Request counts folded onto a weekday × hour grid, for the activity heatmap.
+   *
+   * All 168 cells are materialized, including empty ones: the grid is a fixed
+   * shape and a missing cell would render as a hole rather than a quiet hour.
+   */
+  async getHeatmap(projectKey: string, range: StatsRange): Promise<HeatmapCell[]> {
+    const rows = await this.prisma.apiRequestStat.groupBy({
+      by: ["hourBucket"],
+      _sum: { count: true },
+      where: this.rangeWhere(projectKey, range),
+    })
+
+    const totals = new Map<string, number>()
+    for (const row of rows) {
+      const date = new Date(row.hourBucket * 1000)
+      const key = `${date.getUTCDay()}:${date.getUTCHours()}`
+      totals.set(key, (totals.get(key) ?? 0) + (row._sum.count ?? 0))
+    }
+
+    const cells: HeatmapCell[] = []
+    for (let weekday = 0; weekday < 7; weekday += 1) {
+      for (let hour = 0; hour < 24; hour += 1) {
+        cells.push({ weekday, hour, count: totals.get(`${weekday}:${hour}`) ?? 0 })
+      }
+    }
+
+    return cells
   }
 
   private rangeWhere(projectKey: string, range: StatsRange): Prisma.ApiRequestStatWhereInput {

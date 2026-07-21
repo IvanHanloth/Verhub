@@ -402,7 +402,9 @@ paths:
           $ref: "#/components/responses/Unauthorized"
     post:
       tags: [Projects]
-      summary: 创建项目
+      summary: "创建项目"
+      description: "创建新的项目元数据。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -522,7 +524,9 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
     delete:
       tags: [Projects]
-      summary: 删除项目
+      summary: "删除项目"
+      description: "删除项目及其关联管理数据。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -577,7 +581,9 @@ paths:
           $ref: "#/components/responses/NotFound"
     post:
       tags: [Versions]
-      summary: 创建版本（支持管理员 JWT 或 API Key）
+      summary: "创建版本"
+      description: "为指定项目新增版本。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -722,7 +728,9 @@ paths:
           $ref: "#/components/responses/NotFound"
     patch:
       tags: [Versions]
-      summary: 更新版本
+      summary: "更新版本"
+      description: "修改版本字段，支持 latest/preview/published_at。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -750,7 +758,9 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
     delete:
       tags: [Versions]
-      summary: 删除版本
+      summary: "删除版本"
+      description: "删除指定版本。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -934,7 +944,9 @@ paths:
           $ref: "#/components/responses/NotFound"
     post:
       tags: [Announcements]
-      summary: 创建公告
+      summary: "新增公告"
+      description: "创建对外公告。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -977,7 +989,9 @@ paths:
           $ref: "#/components/responses/NotFound"
     patch:
       tags: [Announcements]
-      summary: 更新公告
+      summary: "更新公告"
+      description: "编辑指定公告的标题、内容、置顶状态与发布时间。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -999,7 +1013,9 @@ paths:
           $ref: "#/components/responses/NotFound"
     delete:
       tags: [Announcements]
-      summary: 删除公告
+      summary: "删除公告"
+      description: "删除公告记录。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -1129,7 +1145,9 @@ paths:
       - $ref: "#/components/parameters/ProjectKeyByPath"
     get:
       tags: [Feedbacks]
-      summary: 获取反馈列表
+      summary: "查询反馈列表"
+      description: "按项目分页查询反馈。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -1169,7 +1187,9 @@ paths:
           $ref: "#/components/responses/NotFound"
     patch:
       tags: [Feedbacks]
-      summary: 更新反馈
+      summary: "编辑反馈"
+      description: "编辑指定反馈内容与评分。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -1192,7 +1212,9 @@ paths:
           $ref: "#/components/responses/NotFound"
     delete:
       tags: [Feedbacks]
-      summary: 删除反馈
+      summary: "删除反馈"
+      description: "删除指定反馈记录。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -1291,12 +1313,14 @@ paths:
 
   /public/{projectKey}:
     parameters:
-      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
       - $ref: "#/components/parameters/ClientPlatformHeader"
       - $ref: "#/components/parameters/ClientPlatformQuery"
     get:
       tags: [Projects]
-      summary: 按 project_key 获取项目信息
+      summary: "获取项目公开信息"
+      description: "提供项目基础信息，通常用于客户端启动时初始化展示。"
+      x-verhub-doc: true
       responses:
         "200":
           content:
@@ -1308,12 +1332,14 @@ paths:
 
   /public/{projectKey}/versions:
     parameters:
-      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
       - $ref: "#/components/parameters/ClientPlatformHeader"
       - $ref: "#/components/parameters/ClientPlatformQuery"
     get:
       tags: [Versions]
-      summary: 按 project_key 获取所有版本（从新到旧）
+      summary: "获取公开版本列表"
+      description: "面向客户端查询某项目全部公开版本，按发布时间从新到旧排序。"
+      x-verhub-doc: true
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
@@ -1328,12 +1354,14 @@ paths:
 
   /public/{projectKey}/versions/latest:
     parameters:
-      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
       - $ref: "#/components/parameters/ClientPlatformHeader"
       - $ref: "#/components/parameters/ClientPlatformQuery"
     get:
       tags: [Versions]
-      summary: 按 project_key 获取最新稳定版本
+      summary: "获取最新公开版本"
+      description: "用于客户端启动时快速获取最新稳定版本。"
+      x-verhub-doc: true
       responses:
         "200":
           content:
@@ -1345,12 +1373,14 @@ paths:
 
   /public/{projectKey}/versions/latest-preview:
     parameters:
-      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
       - $ref: "#/components/parameters/ClientPlatformHeader"
       - $ref: "#/components/parameters/ClientPlatformQuery"
     get:
       tags: [Versions]
-      summary: 按 project_key 获取最新 preview 版本
+      summary: "获取最新 preview 版本"
+      description: "用于客户端测试通道获取最新预发布版本；没有预发布版本时返回 null。"
+      x-verhub-doc: true
       responses:
         "200":
           content:
@@ -1364,7 +1394,7 @@ paths:
 
   /public/{projectKey}/versions/by-version/{version}:
     parameters:
-      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
       - $ref: "#/components/parameters/ClientPlatformHeader"
       - $ref: "#/components/parameters/ClientPlatformQuery"
       - name: version
@@ -1375,7 +1405,9 @@ paths:
         description: 语义化版本号或可比较版本号（可 URL 编码）
     get:
       tags: [Versions]
-      summary: 按版本号获取指定版本信息（语义化/可比较）
+      summary: "按版本号获取指定版本信息"
+      description: "支持根据语义化版本号或可比较版本号读取单个版本详情。"
+      x-verhub-doc: true
       responses:
         "200":
           content:
@@ -1387,11 +1419,13 @@ paths:
 
   /public/{projectKey}/versions/check-update:
     parameters:
-      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
       - $ref: "#/components/parameters/ClientPlatformHeader"
     post:
       tags: [Versions]
-      summary: 提交当前版本并自动检查是否需要更新
+      summary: "提交当前版本并检查更新"
+      description: "返回是否有更新、是否必须更新、里程碑约束与目标版本。"
+      x-verhub-doc: true
       requestBody:
         required: true
         content:
@@ -1411,12 +1445,14 @@ paths:
 
   /public/{projectKey}/announcements:
     parameters:
-      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
       - $ref: "#/components/parameters/ClientPlatformHeader"
       - $ref: "#/components/parameters/ClientPlatformQuery"
     get:
       tags: [Announcements]
-      summary: 按 project_key 获取公告列表
+      summary: "获取公开公告列表"
+      description: "获取可展示给终端用户的公告列表。"
+      x-verhub-doc: true
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
@@ -1437,12 +1473,14 @@ paths:
 
   /public/{projectKey}/announcements/latest:
     parameters:
-      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
       - $ref: "#/components/parameters/ClientPlatformHeader"
       - $ref: "#/components/parameters/ClientPlatformQuery"
     get:
       tags: [Announcements]
-      summary: 按 project_key 获取最新公告
+      summary: "获取最新公告"
+      description: "获取一条最新公告，常用于首页公告位。"
+      x-verhub-doc: true
       parameters:
         - name: platform
           in: query
@@ -1461,11 +1499,13 @@ paths:
 
   /public/{projectKey}/feedbacks:
     parameters:
-      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
       - $ref: "#/components/parameters/ClientPlatformHeader"
     post:
       tags: [Feedbacks]
-      summary: 客户端上报反馈
+      summary: "提交用户反馈"
+      description: "客户端提交评分与反馈内容。"
+      x-verhub-doc: true
       requestBody:
         required: true
         content:
@@ -1486,10 +1526,9 @@ paths:
       - $ref: "#/components/parameters/ProjectKeyByPath"
     get:
       tags: [Statistics]
-      summary: 查询项目公开接口请求统计概览
-      description: |
-        返回指定时间范围内的总请求数，以及按接口、平台、地区的分组汇总。
-        未指定时间范围时默认统计最近 7 天。
+      summary: "查询接口请求统计概览"
+      description: "按项目返回指定时间范围内的公开接口请求总数，以及按接口、平台、地区的分组汇总。未指定时间范围时默认统计最近 7 天。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -1517,10 +1556,9 @@ paths:
       - $ref: "#/components/parameters/ProjectKeyByPath"
     get:
       tags: [Statistics]
-      summary: 查询项目公开接口请求时间序列
-      description: |
-        按小时或按天返回请求数序列。统计始终以小时为最小粒度存储，
-        granularity=day 时在查询阶段汇总。范围内没有请求的时间桶以 0 返回。
+      summary: "查询接口请求时间序列"
+      description: "按小时或按天返回请求数序列。统计始终以小时为最小粒度存储，granularity=day 时在查询阶段汇总；范围内无请求的时间桶以 0 返回，便于直接绘制曲线。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -1554,12 +1592,82 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /admin/projects/{projectKey}/stats/requests/client-versions:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+    get:
+      tags: [Statistics]
+      summary: "查询客户端版本分布"
+      description: "统计客户端调用 check-update 时上报的 current_version，按上报次数降序返回，用于判断线上最主流的版本。版本号按客户端原文记录，未发布过的版本也会如实出现。"
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StartTime"
+        - $ref: "#/components/parameters/EndTime"
+        - name: limit
+          in: query
+          description: 最多返回多少个版本，其余计入长尾
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 15
+      responses:
+        "200":
+          description: 客户端版本分布
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientVersionStats"
+        "400":
+          description: 参数错误（如 start_time > end_time）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/projects/{projectKey}/stats/requests/heatmap:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+    get:
+      tags: [Statistics]
+      summary: "查询请求活跃度热力图"
+      description: "把范围内的请求量折叠到「星期 × 小时」网格上，用于观察一周内的访问高峰时段。固定返回 168 个格子，无流量的格子为 0。"
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/StartTime"
+        - $ref: "#/components/parameters/EndTime"
+      responses:
+        "200":
+          description: 活跃度热力图
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestStatsHeatmap"
+        "400":
+          description: 参数错误（如 start_time > end_time）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /admin/projects/{projectKey}/logs:
     parameters:
       - $ref: "#/components/parameters/ProjectKeyByPath"
     get:
       tags: [Logs]
-      summary: 查询日志
+      summary: "查询日志列表"
+      description: "按项目查询日志，支持级别与时间范围筛选。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -1616,11 +1724,13 @@ paths:
 
   /public/{projectKey}/logs:
     parameters:
-      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
       - $ref: "#/components/parameters/ClientPlatformHeader"
     post:
       tags: [Logs]
-      summary: 客户端上报日志
+      summary: "上报日志"
+      description: "客户端上报日志用于排障。"
+      x-verhub-doc: true
       requestBody:
         required: true
         content:
@@ -1658,7 +1768,9 @@ paths:
       - $ref: "#/components/parameters/ProjectKeyByPath"
     get:
       tags: [Actions]
-      summary: 获取项目行为分类列表
+      summary: "查询行为定义"
+      description: "按项目获取行为定义列表。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -1679,7 +1791,9 @@ paths:
   /admin/projects/actions:
     post:
       tags: [Actions]
-      summary: 创建项目行为分类
+      summary: "创建行为定义"
+      description: "新增行为埋点定义。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -1728,7 +1842,9 @@ paths:
           $ref: "#/components/responses/NotFound"
     patch:
       tags: [Actions]
-      summary: 更新行为分类
+      summary: "编辑行为定义"
+      description: "更新行为定义名称、描述与扩展字段。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -1750,7 +1866,9 @@ paths:
           $ref: "#/components/responses/NotFound"
     delete:
       tags: [Actions]
-      summary: 删除行为分类
+      summary: "删除行为定义"
+      description: "删除行为定义。"
+      x-verhub-doc: true
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -1831,11 +1949,13 @@ paths:
 
   /public/{projectKey}/actions:
     parameters:
-      - $ref: "#/components/parameters/ProjectKey"
+      - $ref: "#/components/parameters/ProjectKeyByPath"
       - $ref: "#/components/parameters/ClientPlatformHeader"
     post:
       tags: [Actions]
-      summary: 上报行为记录
+      summary: "上报行为记录"
+      description: "客户端上报行为埋点记录。"
+      x-verhub-doc: true
       requestBody:
         required: true
         content:
@@ -1888,6 +2008,8 @@ components:
       name: limit
       in: query
       required: false
+      description: 分页大小
+      example: 20
       schema:
         type: integer
         minimum: 1
@@ -1897,6 +2019,8 @@ components:
       name: offset
       in: query
       required: false
+      description: 分页偏移
+      example: 0
       schema:
         type: integer
         minimum: 0
@@ -1906,6 +2030,7 @@ components:
       in: path
       required: true
       description: 项目主键 project_key（大小写不敏感）
+      example: verhub
       schema:
         type: string
     ClientPlatformHeader:
@@ -1917,6 +2042,7 @@ components:
         识别优先级：本请求头 > query 参数 `platform` > 请求体 `platform` 字段 > User-Agent 推断。
         取值大小写不敏感，无法识别时统计为 UNKNOWN。
         建议 SDK 显式声明本请求头：服务端调用的 User-Agent 往往不可靠。
+      example: windows
       schema:
         type: string
         enum: [ios, ipados, android, windows, win32, mac, macos, darwin, web, browser]
@@ -1934,12 +2060,8 @@ components:
       name: id
       in: path
       required: true
-      schema:
-        type: string
-    ProjectKey:
-      name: projectKey
-      in: path
-      required: true
+      description: 记录主键 id
+      example: ver-001
       schema:
         type: string
     StartTime:
@@ -1950,6 +2072,7 @@ components:
         type: integer
         minimum: 0
       description: Unix 时间戳（秒）
+      example: 1760000000
     EndTime:
       name: end_time
       in: query
@@ -1958,6 +2081,7 @@ components:
         type: integer
         minimum: 0
       description: Unix 时间戳（秒）
+      example: 1762000000
     LogLevel:
       name: level
       in: query
@@ -1997,6 +2121,9 @@ components:
           type: string
         implemented:
           type: boolean
+      example:
+        module: versions
+        implemented: true
 
     DeleteSuccessResponse:
       type: object
@@ -2004,6 +2131,8 @@ components:
       properties:
         success:
           type: boolean
+      example:
+        success: true
 
     HealthResponse:
       type: object
@@ -2015,6 +2144,9 @@ components:
         timestamp:
           type: integer
           format: int64
+      example:
+        status: ok
+        timestamp: 1760000000
 
     ErrorResponse:
       type: object
@@ -2358,6 +2490,16 @@ components:
           maximum: 365
           default: 365
           description: 接口请求统计保留时长（天），超出部分每日自动清理
+      example:
+        project_key: verhub
+        name: Verhub
+        repo_url: https://github.com/example/verhub
+        description: 版本与公告管理
+        author: octocat
+        author_homepage_url: https://github.com/octocat
+        icon_url: https://avatars.githubusercontent.com/u/1?v=4
+        website_url: https://verhub.dev
+        published_at: 1760000000
 
     UpdateProjectDto:
       type: object
@@ -2404,6 +2546,12 @@ components:
           maximum: 365
           default: 365
           description: 接口请求统计保留时长（天），超出部分每日自动清理
+      example:
+        name: Verhub
+        description: 版本与公告管理
+        optional_update_min_comparable_version: 1.0.0
+        optional_update_max_comparable_version: 1.9.9
+        stats_retention_days: 180
 
     ProjectItem:
       type: object
@@ -2460,6 +2608,22 @@ components:
         updated_at:
           type: integer
           format: int64
+      example:
+        id: verhub
+        project_key: verhub
+        name: Verhub
+        description: 版本管理平台
+        repo_url: https://github.com/example/verhub
+        author: octocat
+        author_homepage_url: https://github.com/octocat
+        icon_url: https://avatars.githubusercontent.com/u/1?v=4
+        website_url: https://verhub.dev
+        published_at: 1760000000
+        optional_update_min_comparable_version: 1.0.0
+        optional_update_max_comparable_version: 1.9.9
+        stats_retention_days: 365
+        created_at: 1760000000
+        updated_at: 1760000000
 
     PublicEndpoint:
       type: string
@@ -2531,6 +2695,23 @@ components:
                 type: string
               count:
                 type: integer
+      example:
+        start_time: 1760000000
+        end_time: 1762000000
+        total: 12840
+        by_endpoint:
+          - endpoint: VERSION_CHECK_UPDATE
+            count: 8210
+          - endpoint: VERSION_LATEST
+            count: 3120
+        by_platform:
+          - platform: WINDOWS
+            count: 9020
+          - platform: MAC
+            count: 2400
+        by_region:
+          - region: UNKNOWN
+            count: 12840
 
     RequestStatsTimeseries:
       type: object
@@ -2562,6 +2743,91 @@ components:
                 description: 时间桶起点（Unix 秒，UTC 对齐到整点或整天）
               count:
                 type: integer
+      example:
+        start_time: 1760000000
+        end_time: 1760086400
+        granularity: hour
+        endpoint: VERSION_CHECK_UPDATE
+        data:
+          - bucket: 1760000000
+            count: 320
+          - bucket: 1760003600
+            count: 287
+
+    ClientVersionStats:
+      type: object
+      required: [start_time, end_time, total, data]
+      properties:
+        start_time:
+          type: integer
+          format: int64
+        end_time:
+          type: integer
+          format: int64
+        total:
+          type: integer
+          description: 范围内全部版本的上报总数（不受 limit 截断影响），用于计算占比
+        data:
+          type: array
+          description: 按上报数降序，最多返回 limit 条
+          items:
+            type: object
+            required: [version, count]
+            properties:
+              version:
+                type: string
+                description: 客户端自报的版本号原文
+              count:
+                type: integer
+      example:
+        start_time: 1760000000
+        end_time: 1762000000
+        total: 8210
+        data:
+          - version: "2.3.0"
+            count: 5120
+          - version: "2.2.1"
+            count: 2380
+
+    RequestStatsHeatmap:
+      type: object
+      required: [start_time, end_time, data]
+      properties:
+        start_time:
+          type: integer
+          format: int64
+        end_time:
+          type: integer
+          format: int64
+        data:
+          type: array
+          description: 固定 168 个格子（7 天 × 24 小时），无流量的格子以 0 返回
+          items:
+            type: object
+            required: [weekday, hour, count]
+            properties:
+              weekday:
+                type: integer
+                minimum: 0
+                maximum: 6
+                description: 0=周日 … 6=周六（UTC）
+              hour:
+                type: integer
+                minimum: 0
+                maximum: 23
+                description: UTC 小时
+              count:
+                type: integer
+      example:
+        start_time: 1760000000
+        end_time: 1762000000
+        data:
+          - weekday: 1
+            hour: 9
+            count: 412
+          - weekday: 1
+            hour: 10
+            count: 508
 
     ProjectListResponse:
       type: object
@@ -2569,6 +2835,7 @@ components:
       properties:
         total:
           type: integer
+          example: 1
         data:
           type: array
           items:
@@ -2592,6 +2859,10 @@ components:
         platform:
           type: string
           maxLength: 64
+      example:
+        url: https://example.com/download/verhub-1.0.0.zip
+        name: Windows 包
+        platform: windows
 
     CreateVersionDto:
       type: object
@@ -2637,6 +2908,23 @@ components:
         custom_data:
           type: object
           additionalProperties: true
+      example:
+        version: 1.2.0
+        comparable_version: 1.2.0
+        title: 稳定版
+        content: 修复若干问题并优化更新检查。
+        download_links:
+          - url: https://example.com/download/verhub-1.2.0.zip
+            name: Windows 包
+            platform: windows
+        is_latest: true
+        is_preview: false
+        is_milestone: false
+        is_deprecated: false
+        published_at: 1760000000
+        platforms:
+          - windows
+          - mac
 
     CreateProjectVersionDto:
       allOf:
@@ -2691,6 +2979,11 @@ components:
         custom_data:
           type: object
           additionalProperties: true
+      example:
+        title: 稳定版-修订
+        content: 补充发布说明。
+        is_latest: true
+        is_deprecated: false
 
     UpsertVersionDto:
       allOf:
@@ -2768,6 +3061,30 @@ components:
         published_at:
           type: integer
           format: int64
+      example:
+        id: ver-001
+        version: 1.0.0
+        comparable_version: 1.0.0
+        title: 首发版本
+        content: 首个正式版本，支持版本发布与公告推送。
+        download_url: https://example.com/download/verhub-1.0.0.zip
+        download_links:
+          - url: https://example.com/download/verhub-1.0.0.zip
+            name: Windows 包
+            platform: windows
+        forced: false
+        is_latest: true
+        is_preview: false
+        is_milestone: true
+        is_deprecated: false
+        platform: windows
+        platforms:
+          - windows
+          - mac
+        custom_data:
+          channel: stable
+        created_at: 1760000000
+        published_at: 1760000000
 
     GithubReleaseVersionPreview:
       type: object
@@ -2879,6 +3196,7 @@ components:
       properties:
         total:
           type: integer
+          example: 1
         data:
           type: array
           items:
@@ -2898,6 +3216,10 @@ components:
         include_preview:
           type: boolean
           description: 是否将 preview 版本纳入“是否有更新”的比较候选
+      example:
+        current_version: v1.20.326
+        current_comparable_version: 1.20.326
+        include_preview: false
 
     CheckVersionUpdateResponse:
       type: object
@@ -2933,19 +3255,23 @@ components:
             - $ref: "#/components/schemas/VersionItem"
             - type: "null"
         target_version:
-          $ref: "#/components/schemas/VersionItem"
+          oneOf:
+            - $ref: "#/components/schemas/VersionItem"
+            - type: "null"
+          description: 建议升级到的目标版本；无可升级目标时为 null
         milestone:
           type: object
-          required: [current, latest, latest_in_current]
+          required: [current, latest, target_is_milestone]
           properties:
             current:
               type: boolean
+              description: 当前版本是否为里程碑版本
             latest:
               type: boolean
-            latest_in_current:
-              oneOf:
-                - $ref: "#/components/schemas/VersionItem"
-                - type: "null"
+              description: 最新版本是否为里程碑版本
+            target_is_milestone:
+              type: boolean
+              description: 目标版本是否因里程碑拦截而被下调（命中时 reason_codes 含 milestone_guard）
 
     CreateAnnouncementDto:
       type: object
@@ -2972,6 +3298,16 @@ components:
         published_at:
           type: integer
           format: int64
+      example:
+        title: 系统维护通知
+        content: 平台将于本周六 02:00-04:00 停机维护。
+        is_pinned: true
+        is_hidden: false
+        platforms:
+          - windows
+          - web
+        author: 运维团队
+        published_at: 1760000000
 
     CreateProjectAnnouncementDto:
       allOf:
@@ -3007,6 +3343,10 @@ components:
         published_at:
           type: integer
           format: int64
+      example:
+        title: 系统维护通知（延期）
+        content: 维护时间调整为下周六 02:00-04:00。
+        is_pinned: false
 
     AnnouncementItem:
       type: object
@@ -3038,6 +3378,19 @@ components:
         updated_at:
           type: integer
           format: int64
+      example:
+        id: ann-001
+        title: 系统维护通知
+        content: 平台将于本周六 02:00-04:00 停机维护。
+        is_pinned: true
+        is_hidden: false
+        platforms:
+          - windows
+          - web
+        author: 运维团队
+        published_at: 1760000000
+        created_at: 1760000000
+        updated_at: 1760000000
 
     AnnouncementListResponse:
       type: object
@@ -3045,6 +3398,7 @@ components:
       properties:
         total:
           type: integer
+          example: 1
         data:
           type: array
           items:
@@ -3069,6 +3423,13 @@ components:
         custom_data:
           type: object
           additionalProperties: true
+      example:
+        user_id: user-001
+        rating: 5
+        content: 更新检查很好用。
+        platform: windows
+        custom_data:
+          app_version: 1.2.0
 
     UpdateFeedbackDto:
       type: object
@@ -3088,6 +3449,9 @@ components:
         custom_data:
           type: object
           additionalProperties: true
+      example:
+        rating: 4
+        content: 补充说明：偶发网络超时。
 
     FeedbackItem:
       type: object
@@ -3113,6 +3477,15 @@ components:
         created_at:
           type: integer
           format: int64
+      example:
+        id: fb-001
+        user_id: user-001
+        rating: 5
+        content: 更新检查很好用。
+        platform: windows
+        custom_data:
+          app_version: 1.2.0
+        created_at: 1760000000
 
     FeedbackListResponse:
       type: object
@@ -3120,6 +3493,7 @@ components:
       properties:
         total:
           type: integer
+          example: 1
         data:
           type: array
           items:
@@ -3142,6 +3516,14 @@ components:
         custom_data:
           type: object
           additionalProperties: true
+      example:
+        level: 2
+        content: 更新检查请求超时，已重试。
+        device_info:
+          os: Windows 11
+          arch: x64
+        custom_data:
+          app_version: 1.2.0
 
     LogItem:
       type: object
@@ -3168,6 +3550,16 @@ components:
         created_at:
           type: integer
           format: int64
+      example:
+        id: log-001
+        level: 2
+        content: 更新检查请求超时，已重试。
+        device_info:
+          os: Windows 11
+          arch: x64
+        custom_data:
+          app_version: 1.2.0
+        created_at: 1760000000
 
     LogListResponse:
       type: object
@@ -3175,6 +3567,7 @@ components:
       properties:
         total:
           type: integer
+          example: 1
         data:
           type: array
           items:
@@ -3196,6 +3589,12 @@ components:
         custom_data:
           type: object
           additionalProperties: true
+      example:
+        project_key: verhub
+        name: 点击更新按钮
+        description: 用户在更新弹窗点击立即更新。
+        custom_data:
+          category: update
 
     UpdateActionDto:
       type: object
@@ -3209,6 +3608,9 @@ components:
         custom_data:
           type: object
           additionalProperties: true
+      example:
+        name: 点击更新按钮（新版）
+        description: 用户在新版更新弹窗点击立即更新。
 
     ActionItem:
       type: object
@@ -3229,6 +3631,14 @@ components:
             - type: "null"
         created_time:
           type: integer
+      example:
+        action_id: act-001
+        project_key: verhub
+        name: 点击更新按钮
+        description: 用户在更新弹窗点击立即更新。
+        custom_data:
+          category: update
+        created_time: 1760000000
 
     ActionListResponse:
       type: object
@@ -3236,6 +3646,7 @@ components:
       properties:
         total:
           type: integer
+          example: 1
         data:
           type: array
           items:
@@ -3251,6 +3662,10 @@ components:
         custom_data:
           type: object
           additionalProperties: true
+      example:
+        action_id: act-001
+        custom_data:
+          app_version: 1.2.0
 
     ActionRecordItem:
       type: object
@@ -3272,6 +3687,15 @@ components:
             - type: object
               additionalProperties: true
             - type: "null"
+      example:
+        action_record_id: rec-001
+        action_id: act-001
+        created_time: 1760000000
+        http:
+          ip: 203.0.113.7
+          user_agent: Verhub-SDK/1.2.0
+        custom_data:
+          app_version: 1.2.0
 
     ActionRecordListResponse:
       type: object
@@ -3279,6 +3703,7 @@ components:
       properties:
         total:
           type: integer
+          example: 1
         data:
           type: array
           items:

@@ -35,7 +35,7 @@ export function VersionEditDialog({
 }: VersionEditDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>编辑版本</DialogTitle>
           <DialogDescription>在弹窗中更新版本字段并保存。</DialogDescription>

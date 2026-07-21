@@ -9,6 +9,9 @@ function createPrismaMock() {
       aggregate: jest.fn(),
       groupBy: jest.fn(),
     },
+    clientVersionStat: {
+      groupBy: jest.fn(),
+    },
   }
 }
 
@@ -146,5 +149,107 @@ describe("RequestStatsService.getTimeseries", () => {
 
     const call = prisma.apiRequestStat.groupBy.mock.calls[0]![0] as { where: { endpoint?: string } }
     expect(call.where.endpoint).toBe(PublicEndpoint.LOG_UPLOAD)
+  })
+})
+
+describe("RequestStatsService.recordClientVersion", () => {
+  it("normalizes the project key and buckets the timestamp by hour", async () => {
+    const prisma = createPrismaMock()
+    const service = new RequestStatsService(prisma as never)
+
+    await service.recordClientVersion({
+      projectKey: "  VerHub ",
+      version: " 2.3.0 ",
+      platform: StatPlatform.MAC,
+      occurredAt: 1784191655,
+    })
+
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1)
+    const values = prisma.$executeRaw.mock.calls[0]!.slice(1)
+    expect(values).toEqual(["verhub", "2.3.0", 1784188800, StatPlatform.MAC])
+  })
+
+  it("skips a blank version rather than creating an empty bucket", async () => {
+    const prisma = createPrismaMock()
+    const service = new RequestStatsService(prisma as never)
+
+    await service.recordClientVersion({
+      projectKey: "verhub",
+      version: "   ",
+      platform: StatPlatform.WEB,
+    })
+
+    expect(prisma.$executeRaw).not.toHaveBeenCalled()
+  })
+
+  it("skips a version longer than the DTO allows", async () => {
+    const prisma = createPrismaMock()
+    const service = new RequestStatsService(prisma as never)
+
+    await service.recordClientVersion({
+      projectKey: "verhub",
+      version: "9".repeat(65),
+      platform: StatPlatform.WEB,
+    })
+
+    expect(prisma.$executeRaw).not.toHaveBeenCalled()
+  })
+})
+
+describe("RequestStatsService.getClientVersionBreakdown", () => {
+  it("sorts by count and totals every version, not just the returned page", async () => {
+    const prisma = createPrismaMock()
+    prisma.clientVersionStat.groupBy.mockResolvedValue([
+      { version: "2.2.1", _sum: { count: 30 } },
+      { version: "2.3.0", _sum: { count: 50 } },
+      { version: "2.1.0", _sum: { count: 20 } },
+    ])
+    const service = new RequestStatsService(prisma as never)
+
+    const result = await service.getClientVersionBreakdown(
+      "verhub",
+      { startTime: 0, endTime: 100 },
+      2,
+    )
+
+    expect(result.total).toBe(100)
+    expect(result.buckets).toEqual([
+      { version: "2.3.0", count: 50 },
+      { version: "2.2.1", count: 30 },
+    ])
+  })
+
+  it("returns an empty distribution when nothing has been reported", async () => {
+    const prisma = createPrismaMock()
+    prisma.clientVersionStat.groupBy.mockResolvedValue([])
+    const service = new RequestStatsService(prisma as never)
+
+    await expect(
+      service.getClientVersionBreakdown("verhub", { startTime: 0, endTime: 100 }, 15),
+    ).resolves.toEqual({ total: 0, buckets: [] })
+  })
+})
+
+describe("RequestStatsService.getHeatmap", () => {
+  const DAY = 86400
+
+  it("folds hourly buckets onto a full 7x24 grid", async () => {
+    const prisma = createPrismaMock()
+    // 1784188800 = 2026-07-16T08:00:00Z, a Thursday (weekday 4).
+    prisma.apiRequestStat.groupBy.mockResolvedValue([
+      { hourBucket: 1784188800, _sum: { count: 5 } },
+      { hourBucket: 1784188800 + 7 * DAY, _sum: { count: 3 } },
+    ])
+    const service = new RequestStatsService(prisma as never)
+
+    const cells = await service.getHeatmap("verhub", {
+      startTime: 0,
+      endTime: 1784188800 + 7 * DAY,
+    })
+
+    expect(cells).toHaveLength(7 * 24)
+    // Same weekday and hour one week apart collapse into one cell.
+    expect(cells).toContainEqual({ weekday: 4, hour: 8, count: 8 })
+    expect(cells).toContainEqual({ weekday: 0, hour: 0, count: 0 })
   })
 })

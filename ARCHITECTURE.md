@@ -96,6 +96,7 @@ Token 范围模型（ApiKey）：
 - 页面路由在 `web/app/*`
 - 业务看板组件在 `web/components/*`
 - API 客户端在 `web/lib/*-api.ts`
+- 接口文档数据在 `web/lib/api-docs/*`（由 OpenAPI 契约生成，见第 5 节）
 - 通用请求封装在 `web/lib/api-client.ts`
 - 共享错误处理在 `web/lib/error-utils.ts`（`getErrorMessage`）
 - 共享分页逻辑在 `web/hooks/use-pagination.ts`（`usePagination` hook）
@@ -117,7 +118,43 @@ Token 范围模型（ApiKey）：
 - 管理员会话通过 localStorage + cookie 双写（便于前端请求与路由守卫）
 - 需要项目上下文的页面统一使用 `useSharedProjectSelection`，通过 localStorage 与窗口事件跨页面同步默认项目
 
-## 5. 扩展策略
+## 5. 接口文档单一数据源
+
+`verhub.openapi.yaml` 是接口契约的唯一数据源，应用内文档站与管理端接口弹窗都由它生成，不再手写接口清单。
+
+生成链路：
+
+```
+verhub.openapi.yaml
+  └─ scripts/generate-api-docs.mjs  (pnpm api:sync)
+       └─ web/lib/api-docs/openapi.generated.ts   # 生成物，勿手改
+            └─ openapi-to-docs.ts → ApiEndpointDoc[]
+                 ├─ /doc 文档站（web/app/doc/*）
+                 └─ 管理端接口弹窗（ApiReferenceDrawer）
+```
+
+契约约定：
+
+- `x-verhub-doc: true` 标记进入应用内文档站与管理端弹窗的接口；未标记的接口仍在契约中，但不进文档。
+- `x-verhub-module` 可覆盖文档分组名；缺省时公开接口归 `Public`，管理接口按 `tags[0]` 分组。
+- 文档展示的示例值全部取自契约里的 `example`（schema 级或参数级）；组合型 schema（列表响应等）由生成器按 properties 自动拼装。
+- 鉴权信息由 `security` 推导：无声明即公开接口，`BearerAuth` 推导为管理员 JWT / API Key，`/auth/*` 下的凭据管理接口只接受 JWT。
+- `Authorization` 请求头在 OpenAPI 里由 `security` 表达，文档的 Header 参数表由生成器按鉴权模式补出。
+
+生成物 `openapi.generated.ts` 随仓库提交，因此 `pnpm dev` / `pnpm build` / Docker 构建都不需要额外步骤（Docker 前端构建上下文不含根目录的 yaml 与 `scripts/`，刻意没有把生成挂进构建）。**只有修改 `verhub.openapi.yaml` 后需要重新生成**，且有两道自动兜底：
+
+- 提交时：lint-staged 检测到暂存了 `verhub.openapi.yaml`，自动跑生成器并把生成物一并 `git add`。
+- CI：`.github/workflows/test.yml` 的 `web` job 跑前端单测，生成物过期即失败。
+
+生成器输出会先过 prettier，保证与仓库格式一致，避免 lint-staged 的 prettier 与生成器反复互相改写。
+
+一致性门禁：
+
+- `packages/backend/src/openapi-contract.spec.ts`：断言 NestJS 注册路由与契约的 path+method 集合完全一致，任一侧漏写即失败。
+- `web/lib/api-docs/openapi-generated.test.ts`：断言生成物与 yaml 同步，过期时提示执行 `pnpm api:sync`。
+- `web/lib/api-docs/registry.test.ts`：断言已发布的 `/doc/<slug>` 地址全部可达，避免改契约时打断外链。
+
+## 6. 扩展策略
 
 可演进方向：
 
@@ -132,7 +169,7 @@ Token 范围模型（ApiKey）：
 - 不在 Controller 中堆叠复杂逻辑
 - 在 Service 层明确输入输出与异常语义
 
-## 6. 部署说明
+## 7. 部署说明
 
 本地开发：
 
@@ -145,6 +182,7 @@ Token 范围模型（ApiKey）：
 - 后端通过环境变量注入 `DATABASE_URL`、`JWT_SECRET` 等关键配置
 - 部署前执行 `lint + typecheck + test` 作为门禁
 
-CI 基线：
+CI 基线（`.github/workflows/test.yml`，两个 job 并行）：
 
-- 仓库已提供 GitHub Actions 工作流，执行 lint、typecheck、backend test
+- `web`：`@workspace/ui` 与 `web` 的 lint、typecheck，以及 web 单测（含接口契约的生成物同步与 `/doc` 链接守卫）
+- `test`：Prisma client 生成后跑 backend 的 lint、typecheck、单测（带覆盖率）与 e2e

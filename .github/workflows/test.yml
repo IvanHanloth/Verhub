@@ -10,6 +10,37 @@ permissions:
   contents: read
 
 jobs:
+  # 前端单测不需要数据库，独立成 job 与后端并行。
+  # 其中包含接口契约的两道守卫：openapi.generated.ts 是否与 verhub.openapi.yaml
+  # 同步（过期会提示跑 pnpm api:sync），以及已发布的 /doc/<slug> 是否全部可达。
+  web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --filter @workspace/ui run lint && pnpm --filter web run lint
+
+      - name: Typecheck
+        run: pnpm --filter @workspace/ui run typecheck && pnpm --filter web run typecheck
+
+      - name: Run web unit tests
+        run: pnpm --filter web run test
+
   test:
     runs-on: ubuntu-latest
 
@@ -49,6 +80,13 @@ jobs:
 
       - name: Generate Prisma client
         run: pnpm --filter @workspace/backend run prisma:generate
+
+      - name: Lint
+        run: pnpm --filter @workspace/backend run lint
+
+      # Prisma client 生成后才有类型，必须排在 prisma:generate 之后。
+      - name: Typecheck
+        run: pnpm --filter @workspace/backend run typecheck
 
       - name: Run unit tests with coverage
         run: pnpm --filter @workspace/backend run test -- --coverage --coverageReporters=text-summary --coverageReporters=text

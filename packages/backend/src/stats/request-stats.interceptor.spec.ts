@@ -25,7 +25,7 @@ function createHandler(result: unknown = { ok: true }): CallHandler {
 
 function createInterceptor(endpoint: PublicEndpoint | undefined) {
   const reflector = { get: jest.fn().mockReturnValue(endpoint) } as unknown as Reflector
-  const statsService = { recordRequestSafely: jest.fn() }
+  const statsService = { recordRequestSafely: jest.fn(), recordClientVersionSafely: jest.fn() }
   const interceptor = new RequestStatsInterceptor(reflector, statsService as never)
   return { interceptor, statsService }
 }
@@ -106,5 +106,64 @@ describe("RequestStatsInterceptor", () => {
       "not found",
     )
     expect(statsService.recordRequestSafely).not.toHaveBeenCalled()
+  })
+
+  it("records the version a check-update client reports", async () => {
+    const { interceptor, statsService } = createInterceptor(PublicEndpoint.VERSION_CHECK_UPDATE)
+    const context = createContext({
+      params: { projectKey: "verhub" },
+      headers: { "x-verhub-platform": "mac" },
+      body: { current_version: "2.3.0" },
+    })
+
+    await lastValueFrom(interceptor.intercept(context, createHandler()))
+
+    expect(statsService.recordClientVersionSafely).toHaveBeenCalledWith({
+      projectKey: "verhub",
+      version: "2.3.0",
+      platform: StatPlatform.MAC,
+    })
+  })
+
+  it("falls back to the comparable version when no display version is sent", async () => {
+    const { interceptor, statsService } = createInterceptor(PublicEndpoint.VERSION_CHECK_UPDATE)
+    const context = createContext({
+      params: { projectKey: "verhub" },
+      headers: {},
+      body: { current_comparable_version: "2.3.0-rc.1" },
+    })
+
+    await lastValueFrom(interceptor.intercept(context, createHandler()))
+
+    expect(statsService.recordClientVersionSafely).toHaveBeenCalledWith(
+      expect.objectContaining({ version: "2.3.0-rc.1" }),
+    )
+  })
+
+  it("does not record a version bucket when the client reports none", async () => {
+    const { interceptor, statsService } = createInterceptor(PublicEndpoint.VERSION_CHECK_UPDATE)
+    const context = createContext({
+      params: { projectKey: "verhub" },
+      headers: {},
+      body: { current_version: "   " },
+    })
+
+    await lastValueFrom(interceptor.intercept(context, createHandler()))
+
+    expect(statsService.recordRequestSafely).toHaveBeenCalled()
+    expect(statsService.recordClientVersionSafely).not.toHaveBeenCalled()
+  })
+
+  it("only reads a reported version on check-update", async () => {
+    const { interceptor, statsService } = createInterceptor(PublicEndpoint.VERSION_LATEST)
+    const context = createContext({
+      params: { projectKey: "verhub" },
+      headers: {},
+      body: { current_version: "2.3.0" },
+    })
+
+    await lastValueFrom(interceptor.intercept(context, createHandler()))
+
+    expect(statsService.recordClientVersionSafely).not.toHaveBeenCalled()
   })
 })

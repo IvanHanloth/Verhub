@@ -271,8 +271,8 @@ describe("ApiKeyManagementService", () => {
     const result = await service.listApiKeys()
 
     expect(result.data).toHaveLength(1)
-    expect(result.data[0].id).toBe("k1")
-    expect(result.data[0].is_active).toBe(true)
+    expect(result.data[0]?.id).toBe("k1")
+    expect(result.data[0]?.is_active).toBe(true)
   })
 
   it("getApiScopes returns available and default scopes", () => {

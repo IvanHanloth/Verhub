@@ -46,6 +46,16 @@
   --series-6: #e34948;
   --series-7: #e87ba4;
   --series-8: #eb6834;
+
+  /* Sequential ramp for the density grids (activity calendar, hour heatmap).
+     Magnitude, not identity: one hue, monotonically increasing lightness
+     distance from the surface. --heat-0 is the empty cell and stays neutral so
+     "no traffic" never reads as the low end of the hue. */
+  --heat-0: oklch(0.94 0 0);
+  --heat-1: oklch(0.885 0.055 251.8);
+  --heat-2: oklch(0.785 0.105 254);
+  --heat-3: oklch(0.655 0.165 258);
+  --heat-4: oklch(0.52 0.2 263);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -91,6 +101,14 @@
   --series-6: #e66767;
   --series-7: #d55181;
   --series-8: #d95926;
+
+  /* Re-stepped for the dark surface, not flipped: on dark, magnitude reads as
+     *brighter*, so the ramp runs dim -> luminous rather than light -> dark. */
+  --heat-0: oklch(0.27 0 0);
+  --heat-1: oklch(0.33 0.06 258);
+  --heat-2: oklch(0.45 0.12 259);
+  --heat-3: oklch(0.58 0.17 260);
+  --heat-4: oklch(0.74 0.14 253);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -133,6 +151,11 @@
   --color-series-6: var(--series-6);
   --color-series-7: var(--series-7);
   --color-series-8: var(--series-8);
+  --color-heat-0: var(--heat-0);
+  --color-heat-1: var(--heat-1);
+  --color-heat-2: var(--heat-2);
+  --color-heat-3: var(--heat-3);
+  --color-heat-4: var(--heat-4);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);

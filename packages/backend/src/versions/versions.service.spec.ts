@@ -325,7 +325,7 @@ describe("VersionsService", () => {
     const result = await service.findAll("proj", { limit: 10, offset: 0 })
 
     expect(result.total).toBe(1)
-    expect(result.data[0].version).toBe("1.0.0")
+    expect(result.data[0]?.version).toBe("1.0.0")
   })
 
   // ── findOneById ──

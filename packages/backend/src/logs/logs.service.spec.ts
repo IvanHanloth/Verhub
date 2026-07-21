@@ -113,7 +113,7 @@ describe("LogsService", () => {
     const result = await service.findAll("proj", { limit: 10, offset: 0 })
 
     expect(result.total).toBe(1)
-    expect(result.data[0].level).toBe(1)
+    expect(result.data[0]?.level).toBe(1)
   })
 
   it("findAll throws when project not found", async () => {

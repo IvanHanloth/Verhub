@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import {
+  Check,
   Copy,
   ExternalLink,
   Loader2,
@@ -27,6 +28,7 @@ import {
 
 import { isAuthError } from "@/lib/api-client"
 import { getErrorMessage } from "@/lib/error-utils"
+import { notifyAdminProjectsChanged, useAdminProjects } from "@/hooks/use-admin-projects"
 import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
@@ -326,6 +328,7 @@ function ProjectFormFields({
 }
 
 export function ProjectsDashboard() {
+  const { selectedProjectKey, setSelectedProjectKey } = useAdminProjects()
   const [projects, setProjects] = React.useState<ProjectItem[]>([])
   const {
     offset,
@@ -493,6 +496,7 @@ export function ProjectsDashboard() {
     try {
       await createProject(token, payload)
       toast.success("项目已创建。")
+      notifyAdminProjectsChanged()
 
       resetForm()
       resetOffset()
@@ -528,6 +532,11 @@ export function ProjectsDashboard() {
         }),
       )
       toast.success("项目已更新。")
+      // project_key 可能被改写，选中项跟着迁移，避免侧边栏落到一个已不存在的 key 上。
+      if (selectedProjectKey === editingProjectKey) {
+        setSelectedProjectKey(toMutationInput(editForm).project_key)
+      }
+      notifyAdminProjectsChanged()
       setEditDialogOpen(false)
       setEditingProjectKey(null)
       await loadProjects(offset)
@@ -552,6 +561,7 @@ export function ProjectsDashboard() {
     try {
       await deleteProject(token, projectKey)
       toast.success("项目已删除。")
+      notifyAdminProjectsChanged()
       adjustAfterDelete(projects.length - 1)
       const nextOffset =
         projects.length === 1 && offset > 0 ? Math.max(0, offset - PAGE_SIZE) : offset
@@ -729,7 +739,9 @@ export function ProjectsDashboard() {
                   {projects.map((project) => (
                     <tr
                       key={project.id}
-                      className="border-t border-slate-900/10 dark:border-white/10"
+                      className={`border-t border-slate-900/10 dark:border-white/10 ${
+                        project.project_key === selectedProjectKey ? "bg-sky-500/10" : ""
+                      }`}
                     >
                       <td className="px-3 py-2 align-top">
                         <p className="font-medium text-slate-900 dark:text-slate-100">
@@ -771,6 +783,18 @@ export function ProjectsDashboard() {
                       </td>
                       <td className="px-3 py-2 align-top">
                         <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="border-white/20 bg-white/5"
+                            disabled={project.project_key === selectedProjectKey}
+                            onClick={() => setSelectedProjectKey(project.project_key)}
+                          >
+                            <Check className="size-4" />
+                            {project.project_key === selectedProjectKey
+                              ? "当前项目"
+                              : "设为当前项目"}
+                          </Button>
                           <Button
                             asChild
                             type="button"
@@ -826,7 +850,7 @@ export function ProjectsDashboard() {
       </AdminCard>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>编辑项目</DialogTitle>
             <DialogDescription>在弹窗中修改项目信息并保存。</DialogDescription>

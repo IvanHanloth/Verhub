@@ -22,15 +22,13 @@ import { getErrorMessage } from "@/lib/error-utils"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
-import { ProjectApiOverview } from "@/components/admin/project-api-overview"
-import { ProjectSelectorCard } from "@/components/admin/project-selector-card"
-import { useSharedProjectSelection } from "@/hooks/use-shared-project-selection"
+import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
+import { useAdminProjects } from "@/hooks/use-admin-projects"
 import { usePagination } from "@/hooks/use-pagination"
 import {
   extractComparableVersionFromVersion,
   validateComparableVersion,
 } from "@/lib/comparable-version"
-import { listProjects, type ProjectItem } from "@/lib/projects-api"
 import {
   checkVersionUpdate,
   createVersion,
@@ -52,16 +50,13 @@ import {
 } from "./version-form-utils"
 import { VersionEditDialog } from "./version-edit-dialog"
 
-const PROJECT_PAGE_SIZE = 100
 const VERSION_PAGE_SIZE = 10
 
 export function VersionsDashboard() {
   const [token, setToken] = React.useState(() => getSessionToken().trim())
   const [authError, setAuthError] = React.useState<string | null>(null)
 
-  const [projects, setProjects] = React.useState<ProjectItem[]>([])
-  const [projectsLoading, setProjectsLoading] = React.useState(false)
-  const { selectedProjectKey, setSelectedProjectKey } = useSharedProjectSelection()
+  const { selectedProject, selectedProjectKey, error: projectsError } = useAdminProjects()
 
   const [versions, setVersions] = React.useState<VersionItem[]>([])
   const {
@@ -97,48 +92,8 @@ export function VersionsDashboard() {
   )
   const [simulationError, setSimulationError] = React.useState<string | null>(null)
 
-  const selectedProject = React.useMemo(
-    () => projects.find((project) => project.project_key === selectedProjectKey) ?? null,
-    [projects, selectedProjectKey],
-  )
-
   const hasToken = token.trim().length > 0
   const comparableVersionError = validateComparableVersion(form.comparable_version)
-
-  const loadProjects = React.useCallback(async () => {
-    if (!token) {
-      setProjects([])
-      setSelectedProjectKey("")
-      return
-    }
-
-    setProjectsLoading(true)
-    try {
-      const response = await listProjects(token, { limit: PROJECT_PAGE_SIZE, offset: 0 })
-      setProjects(response.data)
-      const hasCurrent = response.data.some((project) => project.project_key === selectedProjectKey)
-      if (hasCurrent) {
-        return
-      }
-
-      const firstProject = response.data[0]
-      if (firstProject) {
-        setSelectedProjectKey(firstProject.project_key)
-      } else {
-        setSelectedProjectKey("")
-      }
-    } catch (error) {
-      if (isAuthError(error)) {
-        setToken("")
-        setAuthError("登录状态已过期，请重新登录。")
-      }
-      setAuthError(getErrorMessage(error))
-      setProjects([])
-      setSelectedProjectKey("")
-    } finally {
-      setProjectsLoading(false)
-    }
-  }, [selectedProjectKey, setSelectedProjectKey, token])
 
   const loadVersions = React.useCallback(
     async (nextOffset: number, signal?: AbortSignal) => {
@@ -179,10 +134,6 @@ export function VersionsDashboard() {
     },
     [selectedProjectKey, token, setTotalVersions],
   )
-
-  React.useEffect(() => {
-    void loadProjects()
-  }, [loadProjects])
 
   React.useEffect(() => {
     const controller = new AbortController()
@@ -494,375 +445,271 @@ export function VersionsDashboard() {
         title="版本发布管理"
         description="发布和维护项目版本，统一管理平台范围、更新策略和下载信息。"
         badge="Verhub Versions"
+        actions={
+          <ApiReferenceDrawer
+            tag="Versions"
+            title="版本接口文档"
+            projectKey={selectedProject?.project_key}
+          />
+        }
       />
 
-      <section className="grid gap-6 lg:grid-cols-[1.1fr_1.9fr]">
-        <div className="space-y-6">
-          <ProjectSelectorCard
-            selectId="project-select"
-            selectedProjectKey={selectedProjectKey}
-            projects={projects}
-            disabled={!hasToken || projectsLoading || projects.length === 0}
-            ringClassName="ring-cyan-300"
-            onChange={setSelectedProjectKey}
-            warning={
-              authError ? (
-                <span className="inline-flex items-center gap-2">
-                  <AlertTriangle className="size-4" />
-                  {authError}
-                </span>
-              ) : undefined
-            }
-          />
+      {authError || projectsError ? (
+        <AdminCard className="flex items-center gap-2 text-sm text-rose-500 dark:text-rose-300">
+          <AlertTriangle className="size-4" />
+          {authError ?? projectsError}
+        </AdminCard>
+      ) : null}
 
-          <ProjectApiOverview
-            title="接口示例 · 版本"
-            projectKey={selectedProject?.project_key}
-            groups={[
-              {
-                label: "公开接口",
-                endpoints: [
-                  {
-                    method: "GET",
-                    path: "/api/v1/public/{projectKey}/versions",
-                    description: "查询项目所有版本（客户端可直接调用）",
-                    auth: { tokenRequired: false },
-                  },
-                  {
-                    method: "GET",
-                    path: "/api/v1/public/{projectKey}/versions/latest",
-                    description: "查询项目最新版本",
-                    auth: { tokenRequired: false },
-                  },
-                  {
-                    method: "GET",
-                    path: "/api/v1/public/{projectKey}/versions/latest-preview",
-                    description: "查询项目最新预发布版本",
-                    auth: { tokenRequired: false },
-                  },
-                  {
-                    method: "GET",
-                    path: "/api/v1/public/{projectKey}/versions/by-version/{version}",
-                    description: "按语义化版本号查询指定版本",
-                    auth: { tokenRequired: false },
-                  },
-                  {
-                    method: "POST",
-                    path: "/api/v1/public/{projectKey}/versions/check-update",
-                    description: "提交当前版本并返回更新判定（可选/必更）",
-                    auth: { tokenRequired: false },
-                    requestBody: {
-                      current_version: "v1.20.326",
-                      current_comparable_version: "1.20.326",
-                      include_preview: false,
-                    },
-                  },
-                ],
-              },
-              {
-                label: "管理接口",
-                endpoints: [
-                  {
-                    method: "POST",
-                    path: "/api/v1/admin/projects/{projectKey}/versions",
-                    description: "创建版本（支持 API Key）",
-                    auth: { tokenRequired: true },
-                    requestBody: {
-                      version: "2.1.0",
-                      comparable_version: "2.1.0",
-                      title: "稳定版",
-                      content: "修复已知问题",
-                      download_url: "https://example.com/download/2.1.0",
-                      download_links: [
-                        {
-                          url: "https://example.com/download/2.1.0",
-                          name: "web.zip",
-                          platform: "web",
-                        },
-                      ],
-                      is_latest: true,
-                      is_preview: false,
-                      is_milestone: true,
-                      is_deprecated: false,
-                      published_at: 1774050000,
-                      platform: "web",
-                      custom_data: { channel: "stable", project_key: "{projectKey}" },
-                    },
-                  },
-                  {
-                    method: "PATCH",
-                    path: "/api/v1/admin/projects/{projectKey}/versions/{id}",
-                    description: "编辑版本",
-                    auth: { tokenRequired: true },
-                    requestBody: {
-                      title: "稳定版-修订",
-                      is_milestone: true,
-                      is_deprecated: true,
-                      custom_data: { release_note: "hotfix" },
-                    },
-                  },
-                  {
-                    method: "DELETE",
-                    path: "/api/v1/admin/projects/{projectKey}/versions/{id}",
-                    description: "删除版本",
-                    auth: { tokenRequired: true },
-                  },
-                ],
-              },
-            ]}
-          />
+      <AdminCard className="space-y-6">
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold">发布新版本</h2>
+          <p className="text-sm text-slate-700 dark:text-slate-300">
+            填写版本号和发布信息，可从 GitHub Release 导入已有内容。
+          </p>
+          {selectedProject?.repo_url ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="border-cyan-300/40 bg-cyan-200/10 text-cyan-900 hover:bg-cyan-200/20 dark:text-cyan-100"
+                disabled={githubLoading}
+                onClick={() => void handlePrefillFromGithubRelease()}
+              >
+                {githubLoading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <DownloadCloud className="size-4" />
+                )}
+                从 GitHub Release 获取
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-cyan-300/40 bg-cyan-200/10 text-cyan-900 hover:bg-cyan-200/20 dark:text-cyan-100"
+                disabled={githubLoading}
+                onClick={() => void handleImportFromGithubReleaseHistory()}
+              >
+                {githubLoading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <DownloadCloud className="size-4" />
+                )}
+                从 GitHub 导入历史版本
+              </Button>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              当前项目未配置 GitHub 仓库地址，无法自动拉取 Release。
+            </p>
+          )}
         </div>
 
-        <AdminCard className="space-y-6">
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold">发布新版本</h2>
-            <p className="text-sm text-slate-700 dark:text-slate-300">
-              填写版本号和发布信息，可从 GitHub Release 导入已有内容。
-            </p>
-            {selectedProject?.repo_url ? (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-cyan-300/40 bg-cyan-200/10 text-cyan-900 hover:bg-cyan-200/20 dark:text-cyan-100"
-                  disabled={githubLoading}
-                  onClick={() => void handlePrefillFromGithubRelease()}
-                >
-                  {githubLoading ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <DownloadCloud className="size-4" />
-                  )}
-                  从 GitHub Release 获取
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-cyan-300/40 bg-cyan-200/10 text-cyan-900 hover:bg-cyan-200/20 dark:text-cyan-100"
-                  disabled={githubLoading}
-                  onClick={() => void handleImportFromGithubReleaseHistory()}
-                >
-                  {githubLoading ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <DownloadCloud className="size-4" />
-                  )}
-                  从 GitHub 导入历史版本
-                </Button>
-              </div>
-            ) : (
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                当前项目未配置 GitHub 仓库地址，无法自动拉取 Release。
-              </p>
-            )}
-          </div>
-
-          <form className="grid gap-3" onSubmit={handleCreateVersion}>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">版本号</span>
+        <form className="grid gap-3" onSubmit={handleCreateVersion}>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">版本号</span>
+            <input
+              type="text"
+              placeholder="例如：2.3.0"
+              value={form.version}
+              onChange={(event) => setForm((prev) => ({ ...prev, version: event.target.value }))}
+              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
+              required
+              maxLength={64}
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">可比较版本号</span>
+            <div className="flex gap-2">
               <input
                 type="text"
-                placeholder="例如：2.3.0"
-                value={form.version}
-                onChange={(event) => setForm((prev) => ({ ...prev, version: event.target.value }))}
+                placeholder="例如：2.3.0-rc.1"
+                value={form.comparable_version}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, comparable_version: event.target.value }))
+                }
                 className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
                 required
                 maxLength={64}
               />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">可比较版本号</span>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="例如：2.3.0-rc.1"
-                  value={form.comparable_version}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, comparable_version: event.target.value }))
-                  }
-                  className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-                  required
-                  maxLength={64}
-                />
-                <Button type="button" variant="outline" onClick={handleExtractComparableVersion}>
-                  提取
-                </Button>
+              <Button type="button" variant="outline" onClick={handleExtractComparableVersion}>
+                提取
+              </Button>
+            </div>
+            {comparableVersionError ? (
+              <p className="text-xs text-rose-500">{comparableVersionError}</p>
+            ) : (
+              <p className="text-xs text-emerald-600 dark:text-emerald-300">格式校验通过</p>
+            )}
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">下载地址</span>
+            <input
+              type="url"
+              placeholder="https://example.com/download"
+              value={form.download_url}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, download_url: event.target.value }))
+              }
+              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
+              maxLength={2048}
+            />
+          </label>
+          <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={form.is_milestone}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, is_milestone: event.target.checked }))
+              }
+              className="size-4 rounded border-white/30 bg-white/10"
+            />
+            标记为里程碑版本
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">版本标题（创建）</span>
+            <input
+              type="text"
+              placeholder="例如：稳定版更新"
+              value={form.title}
+              onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
+              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
+              maxLength={128}
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">下载链接列表 JSON</span>
+            <textarea
+              placeholder='例如：[{"url":"https://example.com/app.zip","name":"Windows 包","platform":"windows"}]'
+              value={form.download_links_json}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, download_links_json: event.target.value }))
+              }
+              rows={4}
+              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
+            />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">更新内容</span>
+            <textarea
+              placeholder="描述本次版本的主要变化"
+              value={form.content}
+              onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))}
+              rows={4}
+              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
+              maxLength={4096}
+            />
+          </label>
+
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">发布时间</span>
+            <input
+              type="datetime-local"
+              value={form.published_at}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, published_at: event.target.value }))
+              }
+              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
+              aria-label="发布时间"
+            />
+          </label>
+
+          <div className="grid gap-3 sm:grid-cols-2 sm:items-center">
+            <div className="rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10">
+              <p className="mb-2 text-slate-700 dark:text-slate-300">
+                平台范围（多选，空表示全部）
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {platformOptions.map((item) => (
+                  <label
+                    key={item.value}
+                    className="inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={form.platforms.includes(item.value)}
+                      onChange={() =>
+                        setForm((prev) => ({
+                          ...prev,
+                          platforms: prev.platforms.includes(item.value)
+                            ? prev.platforms.filter((platform) => platform !== item.value)
+                            : [...prev.platforms, item.value],
+                        }))
+                      }
+                      className="size-4"
+                    />
+                    {item.label}
+                  </label>
+                ))}
               </div>
-              {comparableVersionError ? (
-                <p className="text-xs text-rose-500">{comparableVersionError}</p>
-              ) : (
-                <p className="text-xs text-emerald-600 dark:text-emerald-300">格式校验通过</p>
-              )}
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">下载地址</span>
+            </div>
+            <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
               <input
-                type="url"
-                placeholder="https://example.com/download"
-                value={form.download_url}
+                type="checkbox"
+                checked={form.is_deprecated}
                 onChange={(event) =>
-                  setForm((prev) => ({ ...prev, download_url: event.target.value }))
+                  setForm((prev) => ({ ...prev, is_deprecated: event.target.checked }))
                 }
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-                maxLength={2048}
+                className="size-4 rounded border-white/30 bg-white/10"
               />
+              标记为废弃版本（客户端必更）
+            </label>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+              <input
+                type="checkbox"
+                checked={form.is_latest}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, is_latest: event.target.checked }))
+                }
+                className="size-4 rounded border-white/30 bg-white/10"
+                aria-label="设为 latest"
+              />
+              设为 latest
             </label>
             <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
               <input
                 type="checkbox"
-                checked={form.is_milestone}
+                checked={form.is_preview}
                 onChange={(event) =>
-                  setForm((prev) => ({ ...prev, is_milestone: event.target.checked }))
+                  setForm((prev) => ({ ...prev, is_preview: event.target.checked }))
                 }
                 className="size-4 rounded border-white/30 bg-white/10"
+                aria-label="预发布版本"
               />
-              标记为里程碑版本
+              预发布版本
             </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">版本标题（创建）</span>
-              <input
-                type="text"
-                placeholder="例如：稳定版更新"
-                value={form.title}
-                onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-                maxLength={128}
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">下载链接列表 JSON</span>
-              <textarea
-                placeholder='例如：[{"url":"https://example.com/app.zip","name":"Windows 包","platform":"windows"}]'
-                value={form.download_links_json}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, download_links_json: event.target.value }))
-                }
-                rows={4}
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-              />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">更新内容</span>
-              <textarea
-                placeholder="描述本次版本的主要变化"
-                value={form.content}
-                onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))}
-                rows={4}
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-                maxLength={4096}
-              />
-            </label>
+          </div>
 
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">发布时间</span>
-              <input
-                type="datetime-local"
-                value={form.published_at}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, published_at: event.target.value }))
-                }
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-                aria-label="发布时间"
-              />
-            </label>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
+            <textarea
+              placeholder='例如：{"channel":"beta"}'
+              value={form.custom_data}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, custom_data: event.target.value }))
+              }
+              rows={4}
+              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
+            />
+          </label>
 
-            <div className="grid gap-3 sm:grid-cols-2 sm:items-center">
-              <div className="rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10">
-                <p className="mb-2 text-slate-700 dark:text-slate-300">
-                  平台范围（多选，空表示全部）
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  {platformOptions.map((item) => (
-                    <label
-                      key={item.value}
-                      className="inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={form.platforms.includes(item.value)}
-                        onChange={() =>
-                          setForm((prev) => ({
-                            ...prev,
-                            platforms: prev.platforms.includes(item.value)
-                              ? prev.platforms.filter((platform) => platform !== item.value)
-                              : [...prev.platforms, item.value],
-                          }))
-                        }
-                        className="size-4"
-                      />
-                      {item.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={form.is_deprecated}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, is_deprecated: event.target.checked }))
-                  }
-                  className="size-4 rounded border-white/30 bg-white/10"
-                />
-                标记为废弃版本（客户端必更）
-              </label>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={form.is_latest}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, is_latest: event.target.checked }))
-                  }
-                  className="size-4 rounded border-white/30 bg-white/10"
-                  aria-label="设为 latest"
-                />
-                设为 latest
-              </label>
-              <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={form.is_preview}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, is_preview: event.target.checked }))
-                  }
-                  className="size-4 rounded border-white/30 bg-white/10"
-                  aria-label="预发布版本"
-                />
-                预发布版本
-              </label>
-            </div>
-
-            <label className="space-y-1 text-sm">
-              <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
-              <textarea
-                placeholder='例如：{"channel":"beta"}'
-                value={form.custom_data}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, custom_data: event.target.value }))
-                }
-                rows={4}
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-              />
-            </label>
-
-            <Button
-              type="submit"
-              className="bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
-              disabled={submitLoading || !selectedProjectKey}
-            >
-              {submitLoading ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Plus className="size-4" />
-              )}
-              发布版本
-            </Button>
-          </form>
-        </AdminCard>
-      </section>
+          <Button
+            type="submit"
+            className="bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
+            disabled={submitLoading || !selectedProjectKey}
+          >
+            {submitLoading ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Plus className="size-4" />
+            )}
+            发布版本
+          </Button>
+        </form>
+      </AdminCard>
 
       <AdminCard className="space-y-4">
         <div className="space-y-1">

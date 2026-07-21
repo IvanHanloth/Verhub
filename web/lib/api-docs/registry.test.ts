@@ -60,11 +60,23 @@ describe("api endpoint docs registry", () => {
     }
   })
 
-  it("marks public endpoints as unauthenticated and admin endpoints as bearer", () => {
+  it("derives each endpoint's credential from its path prefix", () => {
     for (const doc of listApiEndpointDocs()) {
       if (doc.path.startsWith("/public/")) {
         expect(doc.visibility, doc.slug).toBe("public")
         expect(doc.auth.mode, doc.slug).toBe("none")
+      } else if (doc.path.startsWith("/webhooks/")) {
+        // 第三方回调只认签名，既不该冒充公开接口，也不接受管理凭据。
+        expect(doc.visibility, doc.slug).toBe("webhook")
+        expect(doc.auth.mode, doc.slug).toBe("signature")
+        expect(
+          doc.headers.some((header) => header.name === "X-Hub-Signature-256"),
+          doc.slug,
+        ).toBe(true)
+        expect(
+          doc.headers.some((header) => header.name === "Authorization"),
+          doc.slug,
+        ).toBe(false)
       } else {
         expect(doc.visibility, doc.slug).toBe("admin")
         expect(doc.auth.mode, doc.slug).toBe("bearer")
@@ -81,6 +93,9 @@ describe("api endpoint docs registry", () => {
 
     expect(docs.filter((item) => item.visibility === "public").map((item) => item.module)).toEqual(
       Array(11).fill("Public"),
+    )
+    expect(docs.filter((item) => item.visibility === "webhook").map((item) => item.module)).toEqual(
+      ["Webhooks"],
     )
     expect(docs.find((item) => item.slug === "post-admin-projects")?.module).toBe("Projects")
     expect(docs.find((item) => item.slug === "get-admin-projects-by-projectkey-logs")?.module).toBe(

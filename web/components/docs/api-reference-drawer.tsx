@@ -32,11 +32,17 @@ type Props = {
   triggerClassName?: string
 }
 
+// 公开接口在前：客户端接入时先看这一组；webhook 是第三方回调，排在最后。
+const VISIBILITY_ORDER: Record<ApiEndpointDoc["visibility"], number> = {
+  public: 0,
+  admin: 1,
+  webhook: 2,
+}
+
 function sortDocs(docs: ApiEndpointDoc[]): ApiEndpointDoc[] {
-  // 公开接口在前：客户端接入时先看这一组。
   return [...docs].sort((left, right) => {
     if (left.visibility !== right.visibility) {
-      return left.visibility === "public" ? -1 : 1
+      return VISIBILITY_ORDER[left.visibility] - VISIBILITY_ORDER[right.visibility]
     }
 
     return left.path.localeCompare(right.path)
@@ -73,6 +79,7 @@ export function ApiReferenceDrawer({ tag, title, projectKey, triggerClassName }:
   const groups = [
     { label: "公开接口", items: docs.filter((item) => item.visibility === "public") },
     { label: "管理接口", items: docs.filter((item) => item.visibility === "admin") },
+    { label: "Webhook 接口", items: docs.filter((item) => item.visibility === "webhook") },
   ].filter((group) => group.items.length)
 
   return (

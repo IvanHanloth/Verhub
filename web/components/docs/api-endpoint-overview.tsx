@@ -13,6 +13,12 @@ type Props = {
   headingLevel?: "h1" | "h2"
 }
 
+const VISIBILITY_LABELS: Record<ApiEndpointDoc["visibility"], string> = {
+  public: "公开接口",
+  admin: "管理接口",
+  webhook: "Webhook 接口",
+}
+
 /**
  * 单个接口的说明区（不含在线调试）。
  * 文档详情页与管理端接口弹窗共用，保证两处展示的信息完全一致。
@@ -27,7 +33,7 @@ export function ApiEndpointOverview({ doc, headingLevel = "h1" }: Props) {
         <div className="flex flex-wrap items-center gap-2">
           <ApiMethodBadge method={doc.method} />
           <span className="rounded-full border border-slate-300 px-2 py-1 text-xs text-slate-600 dark:border-white/15 dark:text-slate-300">
-            {doc.visibility === "public" ? "公开接口" : "管理接口"}
+            {VISIBILITY_LABELS[doc.visibility]}
           </span>
         </div>
         <Heading className="text-2xl font-bold text-slate-900 dark:text-slate-50">

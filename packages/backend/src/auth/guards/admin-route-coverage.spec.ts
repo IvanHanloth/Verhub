@@ -25,6 +25,7 @@ import { RequestStatsController } from "../../stats/request-stats.controller"
 import { VersionsController } from "../../versions/versions.controller"
 import { VersionsCompatController } from "../../versions/versions-compat.controller"
 import { VersionsStatsController } from "../../versions/versions-stats.controller"
+import { GithubWebhookSecretController } from "../../webhooks/github-webhook-secret.controller"
 
 import { AdminOrApiKeyGuard } from "./admin-or-api-key.guard"
 import { API_SCOPE_KEY } from "./api-scope.decorator"
@@ -37,6 +38,7 @@ const CONTROLLERS = [
   AnnouncementsStatsController,
   FeedbacksController,
   FeedbacksCompatController,
+  GithubWebhookSecretController,
   LogsController,
   ProjectsController,
   RequestStatsController,

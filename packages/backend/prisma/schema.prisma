@@ -98,6 +98,13 @@ model Project {
   publishedAt   Int?
   optionalUpdateMinComparableVersion String?
   optionalUpdateMaxComparableVersion String?
+  /// Shared secret for this project's GitHub release webhook. Stored in
+  /// plaintext because HMAC-SHA256 verification needs the original value —
+  /// a hash cannot reproduce the signature GitHub sends. Null disables the
+  /// webhook endpoint: unsigned deliveries are never accepted.
+  githubWebhookSecret String?
+  /// When the webhook secret was last set or regenerated, in Unix seconds.
+  githubWebhookSecretUpdatedAt Int?
   /// How long hourly request statistics are kept, in days. Capped at 365.
   statsRetentionDays Int         @default(365)
   createdAt     Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))

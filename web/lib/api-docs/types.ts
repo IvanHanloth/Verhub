@@ -1,6 +1,6 @@
 export type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE"
 
-export type AuthMode = "none" | "bearer" | "api-key"
+export type AuthMode = "none" | "bearer" | "api-key" | "signature"
 
 export type ApiParamDoc = {
   name: string
@@ -20,7 +20,11 @@ export type ApiEndpointDoc = {
   id: string
   slug: string
   module: string
-  visibility: "public" | "admin"
+  /**
+   * public：无鉴权的客户端接口；admin：管理员 JWT 或 API Key；
+   * webhook：第三方回调，只认签名，既不是客户端接口也不接受管理凭据。
+   */
+  visibility: "public" | "admin" | "webhook"
   title: string
   description: string
   method: HttpMethod

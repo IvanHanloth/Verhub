@@ -95,6 +95,35 @@
 1. 选择指定项目，如果项目已绑定 GitHub 仓库，则会显示“从 GitHub 导入历史版本”按钮
 2. 点击按钮后，将会自动拉取并入库该项目在 GitHub 上的所有 Release 版本，用户可在版本列表中查看并编辑这些版本信息。注意，如果获取到的版本号已存在则会被跳过以避免覆盖现有版本。
 
+### 通过 GitHub Webhook 自动同步
+
+配置一次之后，GitHub 上发布或编辑 Release 会自动写回 Verhub，不需要再手动点“获取版本”。
+
+配置步骤：
+
+1. 在项目管理页点击目标项目的“编辑”，在弹窗底部找到「GitHub Release Webhook」
+2. 点击“重新生成 Secret”，复制弹出的 secret。**关闭弹窗后无法再次查看**，只保留末四位用于区分
+3. 复制上方的 Payload URL
+4. 到 GitHub 仓库 Settings → Webhooks → Add webhook，填入 Payload URL 与 secret，Content type 选 `application/json`，事件选择 “Let me select individual events” 并只勾选 **Releases**
+5. 保存后 GitHub 会发一次 ping，在 Recent Deliveries 里看到 200 即接通
+
+若仓库上已经配置过 webhook，可以直接把原有 secret 填进“手动填写 secret”保存，不必改动 GitHub 侧配置。
+
+同步规则：
+
+- 只处理 `release` 事件的 `published` / `released` / `prereleased` / `created` / `edited` 动作
+- **版本号已存在时按 GitHub 的内容覆盖**：这意味着在后台手工改过的标题、说明会被下一次 Release 编辑覆盖回去。需要长期保留的自定义内容，请改用手动发布而不是 webhook 同步
+- `deleted` / `unpublished` 不会删除 Verhub 里的版本，避免客户端拿到的下载地址突然消失；需要下架请到后台手动删除
+- 草稿（draft）Release 会被跳过；`nightly`、`2024-06-01` 这类无法解析为可比较版本号的 tag 也会被跳过，返回 `ignored` 并注明原因
+- `prerelease` 会写成预览版本，不会抢占 latest；正式版本只有在版本号不低于当前 latest 时才会接管 latest，因此编辑旧 Release 不会把 latest 拉回旧版本
+- 附件（assets）会写入下载链接；没有附件时回落到源码包地址。若 CI 是「先建 Release 再传附件」，首次推送可能拿不到附件，等附件上传后编辑一次 Release 即可补齐
+
+安全说明：
+
+- 该接口不接受管理员 JWT 或 API Key，唯一凭据是 secret 对应的 `X-Hub-Signature-256` 签名
+- 未配置 secret 的项目会拒绝所有推送
+- 反向代理不得改写请求体，否则签名校验必然失败
+
 ## 更新策略与判定逻辑
 
 公开更新接口：

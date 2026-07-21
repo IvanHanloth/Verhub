@@ -12,6 +12,7 @@ import { LogsModule } from "./logs/logs.module"
 import { ProjectsModule } from "./projects/projects.module"
 import { StatsModule } from "./stats/stats.module"
 import { VersionsModule } from "./versions/versions.module"
+import { WebhooksModule } from "./webhooks/webhooks.module"
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { VersionsModule } from "./versions/versions.module"
     LogsModule,
     ActionsModule,
     StatsModule,
+    WebhooksModule,
   ],
 })
 export class AppModule {}

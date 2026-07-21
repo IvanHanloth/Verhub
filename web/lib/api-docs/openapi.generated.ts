@@ -45,6 +45,9 @@ export const openApiDocument: OpenApiDocument = {
     {
       name: "Statistics",
     },
+    {
+      name: "Webhooks",
+    },
   ],
   paths: {
     "/health": {
@@ -922,6 +925,245 @@ export const openApiDocument: OpenApiDocument = {
           },
           "401": {
             $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/github-webhook": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Webhooks"],
+        summary: "查询 GitHub Release Webhook 配置",
+        description:
+          "返回该项目的 GitHub Release Webhook 配置状态与需要填入 GitHub 的 Payload 路径。\n出于安全考虑只返回 secret 末 4 位提示，完整 secret 仅在设置或重新生成时返回一次。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/GithubWebhookSettings",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      put: {
+        tags: ["Webhooks"],
+        summary: "设置 GitHub Release Webhook Secret",
+        description:
+          "手动填入 secret，用于仓库上已经配置好 webhook 的场景。\n完整 secret 在本次响应中返回，之后不再可读。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/SetGithubWebhookSecretDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/GithubWebhookSecretRevealed",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      delete: {
+        tags: ["Webhooks"],
+        summary: "清除 GitHub Release Webhook Secret",
+        description: "清除后该项目的 webhook 接收端点会拒绝所有推送。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/GithubWebhookSettings",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/github-webhook/regenerate": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      post: {
+        tags: ["Webhooks"],
+        summary: "重新生成 GitHub Release Webhook Secret",
+        description:
+          "生成一个新的随机 secret 并覆盖原值，完整 secret 仅在本次响应中返回一次。\n旧 secret 立即失效，需要同步更新 GitHub 仓库上的 webhook 配置。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/GithubWebhookSecretRevealed",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/webhooks/github/{projectKey}": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      post: {
+        tags: ["Webhooks"],
+        summary: "接收 GitHub Release Webhook 推送",
+        description:
+          "供 GitHub 仓库 Webhook 直接调用，不使用管理员 JWT 或 API Key，\n唯一凭据是项目上配置的 secret（`X-Hub-Signature-256` HMAC-SHA256 校验）。\n\n- 仅处理 `release` 事件的 `published` / `released` / `prereleased` / `created` / `edited` 动作\n- `deleted` / `unpublished` 不会删除已有版本，需人工在后台处理\n- 草稿（draft）release、无法解析为可比较版本号的 tag 会被跳过并返回 `ignored`\n- 版本号已存在时按 GitHub 推送内容覆盖，不存在时创建\n- 直接使用推送 payload 中的 release 数据，不再回查 GitHub API\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            GithubSignatureAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            name: "X-GitHub-Event",
+            in: "header",
+            required: true,
+            description: "GitHub 事件名，仅 `release` 会触发同步，`ping` 返回 pong",
+            example: "release",
+            schema: {
+              type: "string",
+            },
+          },
+          {
+            name: "X-GitHub-Delivery",
+            in: "header",
+            required: false,
+            description: "GitHub 投递 ID，仅用于日志关联",
+            schema: {
+              type: "string",
+            },
+          },
+        ],
+        requestBody: {
+          required: true,
+          description: "GitHub release 事件原始负载",
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/GithubReleaseEventPayload",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/GithubWebhookDeliveryResult",
+                },
+              },
+            },
+          },
+          "401": {
+            description: "签名缺失或校验失败",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+          "403": {
+            description: "项目未配置 webhook secret",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
           },
           "404": {
             $ref: "#/components/responses/NotFound",
@@ -3447,6 +3689,13 @@ export const openApiDocument: OpenApiDocument = {
         description:
           "传 API Key 的兼容别名，等价于把同一个 Key 放进 Authorization: Bearer； 新接入建议统一用 BearerAuth。API Key 按 scope 授权：读接口需要 <资源>:read， 写接口需要 <资源>:write，写权限不隐含读权限；资源为 projects / versions / announcements / feedbacks / logs / actions，另有 stats:read 用于请求统计接口。 scope 或项目范围不匹配返回 401。\n",
       },
+      GithubSignatureAuth: {
+        type: "apiKey",
+        in: "header",
+        name: "X-Hub-Signature-256",
+        description:
+          "GitHub Webhook 的 HMAC-SHA256 签名，形如 sha256=<hex>，密钥是项目上配置的 webhook secret。签名覆盖请求体原始字节，服务端按原样字节重算比对， 因此代理层不得改写请求体。这是 webhook 接收端点唯一的凭据， 不接受管理员 JWT 或 API Key。\n",
+      },
     },
     parameters: {
       Limit: {
@@ -4287,6 +4536,222 @@ export const openApiDocument: OpenApiDocument = {
           stats_retention_days: 365,
           created_at: 1760000000,
           updated_at: 1760000000,
+        },
+      },
+      GithubWebhookSettings: {
+        type: "object",
+        required: ["enabled", "payload_path", "content_type", "secret_hint", "secret_updated_at"],
+        properties: {
+          enabled: {
+            type: "boolean",
+            description: "是否已配置 secret；为 false 时接收端点拒绝所有推送",
+          },
+          payload_path: {
+            type: "string",
+            description: "需要填入 GitHub Webhook 的 Payload URL 路径（相对于部署域名）",
+          },
+          content_type: {
+            type: "string",
+            enum: ["application/json"],
+            description: "GitHub Webhook 必须选择的 Content type",
+          },
+          secret_hint: {
+            type: ["string", "null"],
+            description: "secret 末 4 位，用于区分不同 secret，未配置时为 null",
+          },
+          secret_updated_at: {
+            type: ["integer", "null"],
+            format: "int64",
+            description: "secret 最近一次设置时间（Unix 秒）",
+          },
+        },
+        example: {
+          enabled: true,
+          payload_path: "/api/v1/webhooks/github/verhub",
+          content_type: "application/json",
+          secret_hint: "a3f9",
+          secret_updated_at: 1760000000,
+        },
+      },
+      GithubWebhookSecretRevealed: {
+        allOf: [
+          {
+            $ref: "#/components/schemas/GithubWebhookSettings",
+          },
+          {
+            type: "object",
+            required: ["secret"],
+            properties: {
+              secret: {
+                type: "string",
+                description: "完整 secret，仅在设置或重新生成时返回一次，请立即填入 GitHub",
+              },
+            },
+            example: {
+              secret: "whsec_5b1c9e0f8d2a47b6c3e18f04a7d95c2be6134af80d5e7cb9",
+            },
+          },
+        ],
+      },
+      SetGithubWebhookSecretDto: {
+        type: "object",
+        required: ["secret"],
+        properties: {
+          secret: {
+            type: "string",
+            minLength: 16,
+            maxLength: 256,
+            description: "GitHub Webhook 表单里填写的 secret 原文，前后空白会被去除",
+          },
+        },
+        example: {
+          secret: "whsec_5b1c9e0f8d2a47b6c3e18f04a7d95c2be6134af80d5e7cb9",
+        },
+      },
+      GithubReleaseEventPayload: {
+        type: "object",
+        description:
+          "GitHub `release` 事件负载，字段与 GitHub REST Release 资源一致。\n此处只列出会被读取的字段，其余字段原样忽略。\n",
+        properties: {
+          action: {
+            type: "string",
+            description: "事件动作",
+            enum: [
+              "published",
+              "released",
+              "prereleased",
+              "created",
+              "edited",
+              "deleted",
+              "unpublished",
+            ],
+          },
+          release: {
+            type: "object",
+            properties: {
+              tag_name: {
+                type: "string",
+                description: "Git tag，前缀 `v` 会被去除后作为版本号",
+              },
+              name: {
+                type: "string",
+                description: "Release 标题，超过 128 字符会被截断",
+              },
+              body: {
+                type: "string",
+                description: "Release 说明，超过 4096 字符会被截断",
+              },
+              draft: {
+                type: "boolean",
+                description: "草稿 release 会被跳过",
+              },
+              prerelease: {
+                type: "boolean",
+                description: "为 true 时写入 is_preview 且不会占用 is_latest",
+              },
+              published_at: {
+                type: "string",
+                format: "date-time",
+              },
+              html_url: {
+                type: "string",
+                format: "uri",
+              },
+              zipball_url: {
+                type: "string",
+                format: "uri",
+              },
+              assets: {
+                type: "array",
+                description: "附件列表，最多取前 32 个作为 download_links",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: {
+                      type: "string",
+                    },
+                    browser_download_url: {
+                      type: "string",
+                      format: "uri",
+                    },
+                  },
+                },
+              },
+            },
+          },
+          repository: {
+            type: "object",
+            properties: {
+              full_name: {
+                type: "string",
+              },
+            },
+          },
+        },
+        example: {
+          action: "published",
+          release: {
+            tag_name: "v1.4.0",
+            name: "Verhub 1.4.0",
+            body: "新增 GitHub Release Webhook 同步",
+            draft: false,
+            prerelease: false,
+            published_at: "2026-07-21T10:00:00Z",
+            html_url: "https://github.com/example/verhub/releases/tag/v1.4.0",
+            assets: [
+              {
+                name: "verhub-1.4.0-win-x64.zip",
+                browser_download_url:
+                  "https://github.com/example/verhub/releases/download/v1.4.0/verhub-1.4.0-win-x64.zip",
+              },
+            ],
+          },
+          repository: {
+            full_name: "example/verhub",
+          },
+        },
+      },
+      GithubWebhookDeliveryResult: {
+        type: "object",
+        required: ["status"],
+        properties: {
+          status: {
+            type: "string",
+            enum: ["synced", "ignored", "pong"],
+            description: "synced 表示已写入版本，ignored 表示按规则跳过，pong 为 ping 事件应答",
+          },
+          reason: {
+            type: "string",
+            enum: [
+              "unsupported_event",
+              "unsupported_action",
+              "missing_release",
+              "draft_release",
+              "missing_tag",
+              "unparsable_version",
+            ],
+            description: "仅在 status 为 ignored 时返回",
+          },
+          event: {
+            type: "string",
+          },
+          action: {
+            type: "string",
+          },
+          version: {
+            type: "string",
+          },
+          created: {
+            type: "boolean",
+            description: "true 表示新建版本，false 表示覆盖了已有版本",
+          },
+        },
+        example: {
+          status: "synced",
+          event: "release",
+          action: "published",
+          version: "1.4.0",
+          created: true,
         },
       },
       PublicEndpoint: {

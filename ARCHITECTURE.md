@@ -30,6 +30,7 @@ Verhub 采用 Monorepo + 模块化单体架构：
 - `feedbacks`：用户反馈上报/管理
 - `logs`：日志上报与日志查询
 - `actions`：行为定义管理与行为记录上报
+- `webhooks`：GitHub Release 推送接收（`GithubWebhookService`）与项目级 webhook secret 管理（`GithubWebhookSecretService`）
 - `database`：PrismaService 与数据库连接能力
 - `health`：服务健康检查
 - `common`：跨模块共享工具函数（`nowSeconds`、`normalizeProjectKey`、`isUniqueViolation`）
@@ -53,6 +54,7 @@ Verhub 采用 Monorepo + 模块化单体架构：
 - HTTP 前缀：`/api/v1`
 - 管理端接口：`/admin/...`
 - 客户端公开接口：`/public/...`
+- 第三方回调接口：`/webhooks/...`，既不走管理凭据也不属于客户端接口，不计入请求统计
 - 响应字段采用 snake_case，与前端 API Client 保持一致
 
 Token 范围模型（ApiKey）：
@@ -76,6 +78,22 @@ Token 范围模型（ApiKey）：
 - 创建新稳定版本时默认自动提升为 latest；手动调整 latest 时后端负责同项目互斥维护。
 - 支持从项目 `repoUrl` 对应的 GitHub Release 拉取版本草稿，用于减少重复录入。
 - 支持在后台按项目从 GitHub Release 批量导入历史版本；若数据库已有同版本号，则跳过导入并保留数据库记录。
+
+GitHub Release Webhook 同步（Webhooks）：
+
+- 接收端点 `POST /webhooks/github/{projectKey}`，只处理 `release` 事件的 `published` / `released` / `prereleased` / `created` / `edited`。
+- **直接采用推送 payload 中的 release 数据，不回查 GitHub REST API**：`release` 事件内嵌的 release 资源与 REST 返回结构一致，回查只会增加延迟、消耗匿名调用 60 次/小时的限额，并让私有仓库额外需要 token。代价是「先建 Release 再传附件」的 CI 流程首个 payload 可能没有 assets，由后续 `edited` 推送补齐。
+- 写入走 `VersionsService.upsertByVersion`：版本号不存在则创建，存在则按 GitHub 内容覆盖，与「以 GitHub 为准」的语义一致（与批量导入的“跳过已存在”策略刻意不同）。
+- `deleted` / `unpublished` 不删除已有版本，避免客户端已解析到的下载地址凭第三方事件消失。
+- `is_latest` 不由事件类型直接决定：预览版永不占用 latest，正式版只有在可比较版本号不低于当前 latest 时才接管，避免编辑旧 Release 把 latest 拉回旧版本。
+- 无法解析为可比较版本号的 tag、草稿 Release 一律跳过并返回 `ignored` + 原因码，而不是报错——这些在 GitHub 的 Recent Deliveries 里比一条红色 500 更有信息量。
+
+Webhook 鉴权（Project）：
+
+- `githubWebhookSecret` 明文存储：HMAC-SHA256 需要用原始密钥重算签名，单向哈希（ApiKey 的做法）在这里不可用。
+- 该端点不接受管理员 JWT 或 API Key，secret 为空即拒绝所有推送。
+- 完整 secret 仅在设置/重新生成时返回一次，此后管理接口只返回末 4 位提示，避免 `projects:read` 凭据能够伪造推送。
+- `main.ts` 以 `rawBody: true` 启动：签名覆盖请求体原始字节，重新序列化解析后的对象会改变键序与空白，签名必然对不上。反向代理同样不得改写请求体。
 
 项目级更新治理（Project）：
 
@@ -138,7 +156,7 @@ verhub.openapi.yaml
 - `x-verhub-doc: true` 标记进入应用内文档站与管理端弹窗的接口；未标记的接口仍在契约中，但不进文档。
 - `x-verhub-module` 可覆盖文档分组名；缺省时公开接口归 `Public`，管理接口按 `tags[0]` 分组。
 - 文档展示的示例值全部取自契约里的 `example`（schema 级或参数级）；组合型 schema（列表响应等）由生成器按 properties 自动拼装。
-- 鉴权信息由 `security` 推导：无声明即公开接口，`BearerAuth` 推导为管理员 JWT / API Key，`/auth/*` 下的凭据管理接口只接受 JWT。
+- 鉴权信息由 `security` 推导：无声明即公开接口，`BearerAuth` 推导为管理员 JWT / API Key，`GithubSignatureAuth` 推导为 webhook 签名接口（单列一档可见性，不混进公开接口），`/auth/*` 下的凭据管理接口只接受 JWT。
 - `Authorization` 请求头在 OpenAPI 里由 `security` 表达，文档的 Header 参数表由生成器按鉴权模式补出。
 
 生成物 `openapi.generated.ts` 随仓库提交，因此 `pnpm dev` / `pnpm build` / Docker 构建都不需要额外步骤（Docker 前端构建上下文不含根目录的 yaml 与 `scripts/`，刻意没有把生成挂进构建）。**只有修改 `verhub.openapi.yaml` 后需要重新生成**，且有两道自动兜底：

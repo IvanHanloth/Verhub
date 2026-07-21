@@ -31,6 +31,8 @@ import { VersionsCompatController } from "./versions/versions-compat.controller"
 import { VersionsPublicController } from "./versions/versions-public.controller"
 import { VersionsStatsController } from "./versions/versions-stats.controller"
 import { VersionsController } from "./versions/versions.controller"
+import { GithubWebhookController } from "./webhooks/github-webhook.controller"
+import { GithubWebhookSecretController } from "./webhooks/github-webhook-secret.controller"
 
 const CONTROLLERS = [
   ActionsController,
@@ -41,6 +43,8 @@ const CONTROLLERS = [
   AuthController,
   FeedbacksCompatController,
   FeedbacksController,
+  GithubWebhookController,
+  GithubWebhookSecretController,
   HealthController,
   LogsController,
   ProjectsController,

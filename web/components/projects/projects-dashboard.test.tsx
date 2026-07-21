@@ -20,6 +20,17 @@ vi.mock("@/lib/projects-api", () => ({
   updateProject: vi.fn(),
   deleteProject: vi.fn(),
   previewProjectFromGithubRepo: vi.fn(),
+  // 编辑弹窗里嵌了 webhook 配置面板，打开弹窗就会拉一次配置。
+  getGithubWebhookSettings: vi.fn().mockResolvedValue({
+    enabled: false,
+    payload_path: "/api/v1/webhooks/github/project-a",
+    content_type: "application/json",
+    secret_hint: null,
+    secret_updated_at: null,
+  }),
+  regenerateGithubWebhookSecret: vi.fn(),
+  setGithubWebhookSecret: vi.fn(),
+  clearGithubWebhookSecret: vi.fn(),
 }))
 
 vi.mock("sonner", () => ({

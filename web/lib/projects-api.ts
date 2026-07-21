@@ -52,6 +52,19 @@ export type GithubRepoProjectPreview = {
   optional_update_max_comparable_version?: string | null
 }
 
+export type GithubWebhookSettings = {
+  enabled: boolean
+  payload_path: string
+  content_type: "application/json"
+  /** 末 4 位提示，完整 secret 只在设置/重新生成时返回一次。 */
+  secret_hint: string | null
+  secret_updated_at: number | null
+}
+
+export type GithubWebhookSecretRevealed = GithubWebhookSettings & {
+  secret: string
+}
+
 export type LoginResponse = {
   access_token: string
   expires_in: number
@@ -105,6 +118,49 @@ export async function updateProject(
 
 export async function deleteProject(token: string, projectKey: string): Promise<{ success: true }> {
   return requestJson<{ success: true }>(`/admin/projects/${projectKey}`, {
+    method: "DELETE",
+    token,
+  })
+}
+
+export async function getGithubWebhookSettings(
+  token: string,
+  projectKey: string,
+  signal?: AbortSignal,
+): Promise<GithubWebhookSettings> {
+  return requestJson<GithubWebhookSettings>(`/admin/projects/${projectKey}/github-webhook`, {
+    token,
+    signal,
+  })
+}
+
+export async function regenerateGithubWebhookSecret(
+  token: string,
+  projectKey: string,
+): Promise<GithubWebhookSecretRevealed> {
+  return requestJson<GithubWebhookSecretRevealed>(
+    `/admin/projects/${projectKey}/github-webhook/regenerate`,
+    { method: "POST", token },
+  )
+}
+
+export async function setGithubWebhookSecret(
+  token: string,
+  projectKey: string,
+  secret: string,
+): Promise<GithubWebhookSecretRevealed> {
+  return requestJson<GithubWebhookSecretRevealed>(`/admin/projects/${projectKey}/github-webhook`, {
+    method: "PUT",
+    token,
+    body: { secret },
+  })
+}
+
+export async function clearGithubWebhookSecret(
+  token: string,
+  projectKey: string,
+): Promise<GithubWebhookSettings> {
+  return requestJson<GithubWebhookSettings>(`/admin/projects/${projectKey}/github-webhook`, {
     method: "DELETE",
     token,
   })

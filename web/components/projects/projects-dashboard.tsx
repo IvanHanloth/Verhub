@@ -34,6 +34,7 @@ import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
+import { GithubWebhookSettings } from "@/components/projects/github-webhook-settings"
 import { validateComparableVersion } from "@/lib/comparable-version"
 import { scrollToPageTop } from "@/lib/scroll"
 import {
@@ -864,6 +865,13 @@ export function ProjectsDashboard() {
                 minComparableError={editMinComparableError}
                 maxComparableError={editMaxComparableError}
                 theme="light"
+              />
+              {/* Keyed on the project so switching rows refetches instead of
+                  showing the previous project's webhook state. */}
+              <GithubWebhookSettings
+                key={editingProjectKey ?? "none"}
+                token={token}
+                projectKey={editingProjectKey}
               />
             </div>
           </DialogBody>

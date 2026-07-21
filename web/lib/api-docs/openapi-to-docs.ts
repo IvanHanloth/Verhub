@@ -52,7 +52,27 @@ function resolveAuthMode(security?: OpenApiSecurityRequirement[]): AuthMode {
     return "api-key"
   }
 
+  if (schemes.has("GithubSignatureAuth")) {
+    return "signature"
+  }
+
   return "none"
+}
+
+/**
+ * 可见性由鉴权模式推导：签名接口是第三方回调，既不该混进客户端公开接口，
+ * 也不接受管理凭据，因此单列一档。
+ */
+function resolveVisibility(mode: AuthMode): ApiEndpointDoc["visibility"] {
+  if (mode === "none") {
+    return "public"
+  }
+
+  if (mode === "signature") {
+    return "webhook"
+  }
+
+  return "admin"
 }
 
 function resolveAuthDescription(
@@ -66,6 +86,10 @@ function resolveAuthDescription(
 
   if (mode === "api-key") {
     return "需要 API Key（x-api-key: <key>）"
+  }
+
+  if (mode === "signature") {
+    return "需要 Webhook 签名（X-Hub-Signature-256: sha256=<hmac>），不接受管理员 JWT 或 API Key"
   }
 
   const acceptsApiKey = security?.some((requirement) => "ApiKeyAuth" in requirement) ?? false
@@ -111,6 +135,15 @@ function createAuthHeader(mode: AuthMode): ApiParamDoc | undefined {
       type: "string",
       required: true,
       description: "API Key（vh_ 前缀）",
+    }
+  }
+
+  if (mode === "signature") {
+    return {
+      name: "X-Hub-Signature-256",
+      type: "string",
+      required: true,
+      description: "sha256=<请求体原始字节的 HMAC-SHA256，密钥为项目 webhook secret>",
     }
   }
 
@@ -299,7 +332,7 @@ export function buildApiEndpointDocs(
 
       const security = operation.security
       const authMode = resolveAuthMode(security)
-      const visibility = authMode === "none" ? "public" : "admin"
+      const visibility = resolveVisibility(authMode)
       const { pathParams, queryParams, headers } = collectParameters(
         document,
         pathItem.parameters,

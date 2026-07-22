@@ -609,6 +609,54 @@ export function AnalyticsDashboard() {
         </ChartCard>
 
         <ChartCard
+          className="md:col-span-6 xl:col-span-5"
+          title="来源地区"
+          subtitle="按调用方 IP 解析的国家/地区"
+          icon={Globe2}
+          actions={<ChartViewToggle value={regionView} onChange={setRegionView} label="来源地区" />}
+        >
+          {regionItems.length === 0 ? (
+            <ChartPlaceholder loading={loading} />
+          ) : (
+            <DistributionChart
+              items={regionItems}
+              view={regionView}
+              measureLabel="请求数"
+              barColor="var(--series-4)"
+              labelWidth={88}
+            />
+          )}
+        </ChartCard>
+
+        <ChartCard
+          className="md:col-span-6 xl:col-span-7"
+          title={worldView ? "全球国家分布" : "国内省份分布"}
+          subtitle={
+            worldView
+              ? "按国家/地区请求量着色，不含无法定位的来源"
+              : "按省级请求量着色，悬停查看省名与占比"
+          }
+          icon={MapPin}
+          actions={
+            <SegmentedToggle
+              value={mapScope}
+              onChange={setMapScope}
+              label="地域分布"
+              options={MAP_SCOPES}
+            />
+          }
+        >
+          <GeoHeatMap
+            source={worldView ? WORLD_COUNTRY_MAP : CHINA_PROVINCE_MAP}
+            data={worldView ? countryData : provinceData}
+            loading={loading}
+            label={worldView ? regionLabel : identity}
+            emptyText={worldView ? "所选范围内暂无可定位的来源。" : "所选范围内暂无国内来源。"}
+            ariaLabel={worldView ? "全球国家请求量热力地图" : "中国省级请求量热力地图"}
+          />
+        </ChartCard>
+
+        <ChartCard
           className="md:col-span-6 xl:col-span-7"
           title="版本采纳曲线"
           subtitle={`头部 ${ADOPTION_SERIES_LIMIT} 个版本的上报量变化，看新版推广得多快`}
@@ -695,54 +743,6 @@ export function AnalyticsDashboard() {
               tailLabel="其他系统版本"
             />
           )}
-        </ChartCard>
-
-        <ChartCard
-          className="md:col-span-6 xl:col-span-5"
-          title="来源地区"
-          subtitle="按调用方 IP 解析的国家/地区"
-          icon={Globe2}
-          actions={<ChartViewToggle value={regionView} onChange={setRegionView} label="来源地区" />}
-        >
-          {regionItems.length === 0 ? (
-            <ChartPlaceholder loading={loading} />
-          ) : (
-            <DistributionChart
-              items={regionItems}
-              view={regionView}
-              measureLabel="请求数"
-              barColor="var(--series-4)"
-              labelWidth={88}
-            />
-          )}
-        </ChartCard>
-
-        <ChartCard
-          className="md:col-span-6 xl:col-span-7"
-          title={worldView ? "全球国家分布" : "国内省份分布"}
-          subtitle={
-            worldView
-              ? "按国家/地区请求量着色，不含无法定位的来源"
-              : "按省级请求量着色，悬停查看省名与占比"
-          }
-          icon={MapPin}
-          actions={
-            <SegmentedToggle
-              value={mapScope}
-              onChange={setMapScope}
-              label="地域分布"
-              options={MAP_SCOPES}
-            />
-          }
-        >
-          <GeoHeatMap
-            source={worldView ? WORLD_COUNTRY_MAP : CHINA_PROVINCE_MAP}
-            data={worldView ? countryData : provinceData}
-            loading={loading}
-            label={worldView ? regionLabel : identity}
-            emptyText={worldView ? "所选范围内暂无可定位的来源。" : "所选范围内暂无国内来源。"}
-            ariaLabel={worldView ? "全球国家请求量热力地图" : "中国省级请求量热力地图"}
-          />
         </ChartCard>
 
         <ChartCard

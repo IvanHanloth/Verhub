@@ -48,15 +48,51 @@ function readCssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
-/** 从 --heat-* 变量取一条渐变色阶，deps 传 resolvedTheme 以在切主题时重取。 */
+// zrender（echarts 的 canvas 渲染层）自带的色值解析器只认 hex/rgb/hsl，遇到 oklch 会解析
+// 失败并回退成黑色——这正是热力地图整块发黑的根因。而 canvas / getComputedStyle 这类「让
+// 浏览器代解析」的路子在本项目实测都不可靠（部分环境不把带彩度的 oklch 落成 rgb）。索性
+// 在 JS 里按 Ottosson 公式把 oklch(L C H) 直接算成 sRGB——只读 --heat-* 令牌、不依赖任何
+// 浏览器能力，明暗主题各自的令牌值照常跟随。
+function toRgb(cssColor: string): string {
+  const match = /^oklch\(\s*([\d.]+)%?\s+([\d.]+)\s+([\d.]+)/i.exec(cssColor)
+  if (!match) return cssColor
+  const L = parseFloat(match[1]!)
+  const C = parseFloat(match[2]!)
+  const hRad = (parseFloat(match[3]!) * Math.PI) / 180
+  const a = C * Math.cos(hRad)
+  const b = C * Math.sin(hRad)
+  // oklab → 三个 LMS 锥响应（已取立方）。
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3
+  const linear = [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ]
+  const channels = linear.map((x) => {
+    const c = x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055
+    return Math.max(0, Math.min(255, Math.round(c * 255)))
+  })
+  return `rgb(${channels[0]}, ${channels[1]}, ${channels[2]})`
+}
+
+/** 从 --heat-* 变量取一条渐变色阶并归一成 rgb，deps 传 resolvedTheme 以在切主题时重取。 */
 function readHeatColors(): string[] {
-  return [1, 2, 3, 4].map((step) => readCssVar(`--heat-${step}`))
+  return [1, 2, 3, 4].map((step) => toRgb(readCssVar(`--heat-${step}`)))
+}
+
+// 流量地理分布极度长尾（境内一国常比其余各国之和还大），线性映射会把除头部外的所有
+// 区域压到色带最低档、看不出差异。对计数取平方根压缩量级差，让中低流量区域也能着上色；
+// tooltip 仍显示真实计数。
+function toScale(count: number): number {
+  return Math.sqrt(Math.max(count, 0))
 }
 
 /**
  * 区域请求量热力地图。按区域请求数着色，hover 显示区域名、请求数与占比。
  *
- * 数据只含有流量的区域；无数据的区域自动落到 visualMap 的最小档（近乎无色），
+ * 数据只含有流量的区域；无数据区域由 series.itemStyle.areaColor 统一着空档色，
  * 因此无需补零。canvas 渲染，明暗主题通过读取 CSS 变量色值切换。
  */
 export function GeoHeatMap({
@@ -110,26 +146,28 @@ export function GeoHeatMap({
     chartRef.current = chart
 
     const colors = readHeatColors()
-    const empty = readCssVar("--heat-0")
+    const empty = toRgb(readCssVar("--heat-0"))
     const border = resolvedTheme === "dark" ? "#334155" : "#cbd5e1"
 
     chart.setOption(
       {
         tooltip: {
           trigger: "item",
-          formatter: (params: { name: string; value: number }) => {
-            const value = Number.isFinite(params.value) ? params.value : 0
+          formatter: (params: { name: string; data?: { rawCount?: number } }) => {
+            const value = params.data?.rawCount ?? 0
             const pct = total > 0 ? ((value / total) * 100).toFixed(1) : "0.0"
             return `${label(params.name)}<br/>${value.toLocaleString("zh-CN")} 次 · ${pct}%`
           },
         },
         visualMap: {
           min: 0,
-          max: max || 1,
+          max: toScale(max) || 1,
           left: "left",
           bottom: 8,
           text: ["多", "少"],
-          calculable: true,
+          // 展示用色带，不做交互筛选；且刻度是 sqrt 压缩后的内部值，露出数字只会误导，
+          // 故关掉可拖拽手柄，只留「多/少」。
+          calculable: false,
           inRange: { color: [empty, ...colors] },
           textStyle: { color: resolvedTheme === "dark" ? "#94a3b8" : "#64748b" },
         },
@@ -140,9 +178,26 @@ export function GeoHeatMap({
             nameProperty: source.key,
             boundingCoords: source.boundingCoords,
             roam: false,
+            // left/right/top/bottom 铺满整个容器，再由 preserveAspect 做等比 contain 适配：
+            // 填满约束边、另一维居中，既撑到最大又不变形。不能用 layoutSize:"100%"——它相对
+            // 容器短边(此处即高度)取值，宽容器里会把地图困成一个高度大小的小方块，全球图和全屏下
+            // 更明显。aspectScale 逐图给：省级图走 echarts 默认 0.75(按纬度压经度才不显宽)，
+            // 世界图用 1 取标准等距投影。
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            aspectScale: source.aspectScale ?? 0.75,
+            preserveAspect: true,
             emphasis: { label: { show: false } },
-            itemStyle: { borderColor: border, borderWidth: 0.5 },
-            data: data.map((item) => ({ name: item.key, value: item.count })),
+            // areaColor 兜住「无数据」区域：它们不经 visualMap，不显式给色就会落到 echarts
+            // 默认的浅灰，深色模式下格外扎眼。统一取空档色，与色带最低端一致。
+            itemStyle: { areaColor: empty, borderColor: border, borderWidth: 0.5 },
+            data: data.map((item) => ({
+              name: item.key,
+              value: toScale(item.count),
+              rawCount: item.count,
+            })),
           },
         ],
       },
@@ -171,7 +226,10 @@ export function GeoHeatMap({
 
   if (error) {
     return (
-      <div className="flex h-[320px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+      <div
+        data-chart-fill
+        className={`flex ${source.aspectClass} items-center justify-center text-sm text-slate-500 dark:text-slate-400`}
+      >
         {error}
       </div>
     )
@@ -179,11 +237,16 @@ export function GeoHeatMap({
 
   if (!loading && data.length === 0) {
     return (
-      <div className="flex h-[320px] items-center justify-center text-sm text-slate-500 dark:text-slate-400">
+      <div
+        data-chart-fill
+        className={`flex ${source.aspectClass} items-center justify-center text-sm text-slate-500 dark:text-slate-400`}
+      >
         {emptyText}
       </div>
     )
   }
 
-  return <div ref={containerRef} className="h-[320px] w-full" aria-label={ariaLabel} />
+  return (
+    <div ref={containerRef} data-chart-fill className={source.aspectClass} aria-label={ariaLabel} />
+  )
 }

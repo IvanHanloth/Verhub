@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { BarChart3, ChartPie, Loader2 } from "lucide-react"
+import { BarChart3, ChartPie, Loader2, Maximize2, Minimize2 } from "lucide-react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -37,8 +37,32 @@ export function ChartCard({
   bodyClassName,
   children,
 }: ChartCardProps) {
-  return (
-    <AdminCard className={cn("flex min-w-0 flex-col gap-4", className)}>
+  const [fullscreen, setFullscreen] = React.useState(false)
+
+  // 全屏时接管 Esc 退出并锁滚动，退出时精确还原原值（可能本就非空）。
+  React.useEffect(() => {
+    if (!fullscreen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFullscreen(false)
+    }
+    document.addEventListener("keydown", onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.removeEventListener("keydown", onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [fullscreen])
+
+  const card = (
+    <AdminCard
+      className={cn(
+        "flex min-w-0 flex-col gap-4",
+        // 全屏时卡片自身撑满遮罩，正文 flex-1 才能把图表拉高；标了 data-chart-fill 的
+        // 图表容器随之填满（!h-full 压过其固有高度/宽高比）。
+        fullscreen ? "h-full w-full" : className,
+      )}
+    >
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
         <div className="min-w-0">
           <h2 className="text-base font-semibold sm:text-lg">{title}</h2>
@@ -46,16 +70,44 @@ export function ChartCard({
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>
           ) : null}
         </div>
-        {actions || Icon ? (
-          <div className="flex shrink-0 items-center gap-2">
-            {actions}
-            {Icon ? <Icon className="size-4 text-slate-400" /> : null}
-          </div>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-2">
+          {actions}
+          <button
+            type="button"
+            onClick={() => setFullscreen((value) => !value)}
+            title={fullscreen ? "退出全屏" : "全屏"}
+            aria-label={fullscreen ? "退出全屏" : "全屏"}
+            aria-pressed={fullscreen}
+            className="rounded-md p-1 text-slate-400 transition hover:bg-slate-900/5 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-slate-200"
+          >
+            {fullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+          </button>
+          {Icon ? <Icon className="size-4 text-slate-400" /> : null}
+        </div>
       </div>
 
-      <div className={cn("min-w-0 flex-1", bodyClassName)}>{children}</div>
+      <div
+        className={cn(
+          "min-w-0 flex-1",
+          // 全屏正文只允许纵向滚动：图表都按宽度自适应、不需要横向滚动，放开 overflow-x 反而会
+          // 因 canvas 亚像素/滚动条占位触发「纵向条挤窄内容→横向条」的连锁，冒出多余横向滚动条。
+          // 真正需要横滚的地方（如分布表）自带内层 overflow-x-auto，不受这里影响。
+          fullscreen &&
+            "flex min-h-0 flex-col overflow-x-hidden overflow-y-auto [&>[data-chart-fill]]:h-full! [&>[data-chart-fill]]:min-h-0 [&>[data-chart-fill]]:flex-1",
+          bodyClassName,
+        )}
+      >
+        {children}
+      </div>
     </AdminCard>
+  )
+
+  if (!fullscreen) return card
+
+  return (
+    <div className="bg-background/95 fixed inset-0 z-50 flex p-4 backdrop-blur-sm sm:p-6">
+      {card}
+    </div>
   )
 }
 

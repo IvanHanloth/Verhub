@@ -1,5 +1,4 @@
 import type { Metadata } from "next"
-import { headers } from "next/headers"
 import Link from "next/link"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
@@ -17,13 +16,21 @@ const ABOUT_CONFIG = {
   fallbackDocsUrl: process.env.NEXT_PUBLIC_ABOUT_DOCS_URL,
 }
 
-const FALLBACK_SITE_URL = "http://127.0.0.1:3000"
+// 更新检查固定指向官方 Verhub 实例，否则自部署实例会拿本地库里根本不存在的
+// ivanhanloth-verhub 去查，永远报“已是最新”。仅当显式设置 VERHUB_ABOUT_UPSTREAM_URL
+// 时才换源（值为上游站点 origin，接口前缀固定 /api/v1）。
+const OFFICIAL_UPSTREAM_URL = "https://verhub.hanloth.cn"
+
 const COMPARABLE_VERSION_PATTERN =
   /^(?<core>\d+(?:\.\d+)*)(?:-(?<tag>alpha|beta|rc)(?:\.(?<tail>\d+(?:\.\d+)*))?)?$/
 
 export const metadata: Metadata = {
   title: "关于 Verhub",
 }
+
+// 强制运行时渲染：更新源可由 VERHUB_ABOUT_UPSTREAM_URL 在运行时覆盖，
+// 若被静态预渲染则只会读到构建期的空值，覆盖失效。上游请求仍按 fetch 的 revalidate 缓存。
+export const dynamic = "force-dynamic"
 
 type BuildInfo = {
   version: string
@@ -129,32 +136,16 @@ async function readBuildInfo(): Promise<BuildInfo> {
   }
 }
 
-async function resolveRequestOrigin(): Promise<string> {
-  const headersStore = await headers()
-  const host = headersStore.get("x-forwarded-host") ?? headersStore.get("host")
-  const proto = headersStore.get("x-forwarded-proto") ?? "http"
-
-  if (host) {
-    return `${proto}://${host}`
-  }
-
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? FALLBACK_SITE_URL
-  const normalized =
-    siteUrl.startsWith("http://") || siteUrl.startsWith("https://") ? siteUrl : `https://${siteUrl}`
-
-  return normalized.replace(/\/$/, "")
-}
-
-async function resolveApiBaseUrl(): Promise<string> {
-  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/v1"
-  const origin = await resolveRequestOrigin()
-  return `${origin}${apiBase.startsWith("/") ? apiBase : `/${apiBase}`}`
+function resolveUpstreamApiBaseUrl(): string {
+  const configured = process.env.VERHUB_ABOUT_UPSTREAM_URL?.trim()
+  const raw = configured && configured.length > 0 ? configured : OFFICIAL_UPSTREAM_URL
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+  return `${withScheme.replace(/\/+$/, "")}/api/v1`
 }
 
 async function requestPublicJson<T>(path: string, init?: RequestInit): Promise<T | null> {
   try {
-    const apiBaseUrl = await resolveApiBaseUrl()
-    const response = await fetch(`${apiBaseUrl}${path}`, {
+    const response = await fetch(`${resolveUpstreamApiBaseUrl()}${path}`, {
       ...init,
       headers: {
         "Content-Type": "application/json",

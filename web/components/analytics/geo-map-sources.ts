@@ -22,6 +22,16 @@ export type GeoMapSource = {
   /** feature.properties 里作为区域名的字段。 */
   key: string
   /**
+   * 经度方向缩放。省级图省略、走 echarts 默认 0.75——在中纬度按 cos(lat) 压一压经度才不显宽；
+   * 世界图设 1 取标准等距柱状投影(plate carrée)的 2:1 观感。
+   */
+  aspectScale?: number
+  /**
+   * 容器宽高比（Tailwind aspect-[] 值），让卡片盒子贴合底图形状、减少留白。
+   * 与 preserveAspect 配合：盒子接近底图比例，地图就几乎填满且不变形。
+   */
+  aspectClass: string
+  /**
    * 视野裁剪框 [[西北经纬], [东南经纬]]。世界图靠它砍掉南极洲那条空带，
    * 否则有效区域被压扁到卡片的上半截。
    */
@@ -33,6 +43,7 @@ export const CHINA_PROVINCE_MAP: GeoMapSource = {
   name: "china",
   url: "/geo/china-provinces.json",
   key: "name",
+  aspectClass: "aspect-[4/3] w-full",
 }
 
 /**
@@ -44,6 +55,8 @@ export const WORLD_COUNTRY_MAP: GeoMapSource = {
   name: "world",
   url: "/geo/world-countries.json",
   key: "code",
+  aspectScale: 1,
+  aspectClass: "aspect-[2/1] w-full",
   boundingCoords: [
     [-180, 84],
     [180, -58],

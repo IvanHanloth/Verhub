@@ -77,6 +77,10 @@ services:
     restart: unless-stopped
     networks:
       - verhub-net
+    environment:
+      # 关于页更新检查的上游源；留空即固定走官方 https://verhub.hanloth.cn。
+      # 仅在自建镜像源、需要指向自有 Verhub 实例时才覆盖（填站点 origin，接口前缀固定 /api/v1）。
+      VERHUB_ABOUT_UPSTREAM_URL: ${VERHUB_ABOUT_UPSTREAM_URL:-}
     depends_on:
       backend:
         condition: service_healthy

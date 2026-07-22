@@ -170,6 +170,10 @@ VERHUB_DEDUP_WINDOW_SECONDS=60
 # 暴露端口
 VERHUB_HTTP_PORT=80
 VERHUB_HTTPS_PORT=443
+
+# 关于页更新检查的上游源。留空即固定走官方 https://verhub.hanloth.cn；
+# 仅在需要把更新检查指向自有 Verhub 实例时覆盖（填站点 origin，接口前缀固定 /api/v1）。
+VERHUB_ABOUT_UPSTREAM_URL=
 ```
 
 ### 3) 启动与升级命令

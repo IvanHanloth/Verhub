@@ -111,7 +111,10 @@ Webhook 鉴权（Project）：
 
 调用方来源采集（Geo）：
 
-- IP 取 `X-Forwarded-For` 最左项，其次 `CF-Connecting-IP` / `True-Client-IP` / `X-Real-IP`，最后回退到连接地址。左值可被客户端伪造，这里可以接受：它是遥测而非鉴权；换成 socket 地址反而会把所有请求都记成反向代理的地址。写库前统一归一化（去端口、解包 `::ffff:` 形式的 IPv4）。
+- IP 按「越难伪造越先信」取：CDN 自写的客户端地址头（`CF-Connecting-IP` / `True-Client-IP` / `EO-Client-IP` / `Ali-CDN-Real-IP` / `Fastly-Client-IP`，边缘节点会无条件覆盖，客户端伪造不进来）→ `X-Forwarded-For` → `X-Real-IP` → 连接地址。`VERHUB_CLIENT_IP_HEADER` 可覆盖整份清单（自家 CDN 用别的头名时）。
+- `X-Forwarded-For` **不取最左项**，取右起第 `VERHUB_TRUSTED_PROXY_COUNT` 项（默认 1，即自带 nginx；套 CDN 应设 2）。链是逐跳追加的：每层可信反代追加它的直连对端，因此右起第 N 项才是访客，最左项由客户端自己写入——套 CDN 后信它就等于让任何人把自己报成任意地址。按跳数取到私网地址说明实际层数更多，继续向左找第一个公网地址兜底。层数设为 0 表示后端直接对外，转发头一概不信，只用连接地址。
+- 仍不是鉴权级别的可信，取不准的代价只是一条统计记错地区；但换成 socket 地址会把所有请求都记成网关/边缘节点。写库前统一归一化（去端口、解包 `::ffff:` 形式的 IPv4）。
+- 自带 nginx 配套：`X-Forwarded-For` 用 `$proxy_add_x_forwarded_for` 追加，`X-Real-IP` 经 `map` 保留上游已给出的值——直接写 `$remote_addr` 会在 CDN 后面把边缘节点地址盖上去。
 - 地区解析走公开免费接口，默认按 `pconline.com.cn（太平洋科技）→ cz88.net（纯真网络）→ ipwho.is → freeipapi.com → ipapi.co → ip-api.com` 顺序回退。前两家是国内接口，返回本土化中文省市名、对国内 IP 命中率更高，排在最前；它们只覆盖国内线路，境外 IP 解析不出来会自动落到后面的国际供应商。国际部分 HTTPS 优先，`ip-api.com` 免费档只有明文 HTTP 所以排最后。pconline 返回 GBK，须按 `charset` 解码否则中文乱码。自托管场景不应要求运维去注册任何账号，代价是每家都有限流、都可能消失，所以没有任何一家是必需的。
 - 解析结果持久化在 `IpGeoCache`（按 IP 主键），命中顺序为：私网短路 → 进程内 Map → `IpGeoCache` 表 → 供应商链。失败同样入缓存（`source = "NONE"`，TTL 15 分钟），否则每个请求都会重放整条链。进程内缓存有条数上限：它以客户端 IP 为键，而这个键由不可信调用方控制。
 - `VERHUB_GEO_TIMEOUT_MS` 是**整条链**的预算而非单家的超时。上报接口会等待解析完成（写入的那一行需要带上地区），若按单家计时，四家都慢就会在客户端的一次日志上报上叠成十秒。超预算即记为 UNKNOWN——缺个地区远比请求挂住轻。

@@ -55,7 +55,13 @@ import {
 import { formatPlatformVersion } from "@/lib/platform"
 
 import { ActivityCalendar } from "./activity-calendar"
-import { ChartCard, ChartPlaceholder, ChartViewToggle, type ChartView } from "./chart-card"
+import {
+  ChartCard,
+  ChartPlaceholder,
+  ChartViewToggle,
+  SegmentedToggle,
+  type ChartView,
+} from "./chart-card"
 import {
   DAY_SECONDS,
   PLATFORM_COLORS,
@@ -66,15 +72,26 @@ import {
   type DistributionItem,
 } from "./chart-utils"
 import { DistributionChart, ShareTable } from "./distribution-chart"
+import { CHINA_PROVINCE_MAP, WORLD_COUNTRY_MAP, toCountryHeat } from "./geo-map-sources"
 import { RequestHeatmap } from "./request-heatmap"
 import { StackedTrendChart, TrendLineChart } from "./trend-chart"
 import { StatTile, computeDelta } from "./stat-tile"
 
 // echarts 较重，懒加载以免进主 bundle；地图仅在统计大屏出现。
-const ChinaProvinceMap = dynamic(
-  () => import("./china-province-map").then((mod) => mod.ChinaProvinceMap),
-  { ssr: false },
-)
+const GeoHeatMap = dynamic(() => import("./geo-heat-map").then((mod) => mod.GeoHeatMap), {
+  ssr: false,
+})
+
+/** 地图粒度。国内看省级，全球看国家级——再细的境外行政区数据源给不出来。 */
+type MapScope = "china" | "world"
+
+const MAP_SCOPES: Array<{ value: MapScope; title: string }> = [
+  { value: "china", title: "国内" },
+  { value: "world", title: "全球" },
+]
+
+/** 省级图的 key 本身就是省名，无需翻译。模块级常量，免得每次渲染都换掉引用。 */
+const identity = (key: string) => key
 
 /** Rows in the version chart; everything past this is folded into 其他. */
 const VERSION_CHART_LIMIT = 12
@@ -153,6 +170,8 @@ export function AnalyticsDashboard() {
   const [platformVersionView, setPlatformVersionView] = React.useState<ChartView>("bar")
   const [regionView, setRegionView] = React.useState<ChartView>("bar")
   const [endpointView, setEndpointView] = React.useState<ChartView>("bar")
+  // 默认国内：主要流量在国内，省级粒度是常看的那张；全球图一键可切。
+  const [mapScope, setMapScope] = React.useState<MapScope>("china")
 
   const range = RANGE_OPTIONS[rangeIndex] ?? RANGE_OPTIONS[1]!
 
@@ -401,7 +420,14 @@ export function AnalyticsDashboard() {
   const announcementCount = countOf(overview, ["ANNOUNCEMENT_LIST", "ANNOUNCEMENT_LATEST"])
   const peak = trendPoints.reduce((max, point) => Math.max(max, point.count), 0)
 
-  const provinceData = React.useMemo(() => overview?.by_province ?? [], [overview])
+  const provinceData = React.useMemo(
+    () => (overview?.by_province ?? []).map((item) => ({ key: item.name, count: item.count })),
+    [overview],
+  )
+
+  const countryData = React.useMemo(() => toCountryHeat(overview?.by_region ?? []), [overview])
+
+  const worldView = mapScope === "world"
 
   return (
     <div className="space-y-4">
@@ -693,11 +719,30 @@ export function AnalyticsDashboard() {
 
         <ChartCard
           className="md:col-span-6 xl:col-span-7"
-          title="国内省份分布"
-          subtitle="按省级请求量着色，悬停查看省名与占比"
+          title={worldView ? "全球国家分布" : "国内省份分布"}
+          subtitle={
+            worldView
+              ? "按国家/地区请求量着色，不含无法定位的来源"
+              : "按省级请求量着色，悬停查看省名与占比"
+          }
           icon={MapPin}
+          actions={
+            <SegmentedToggle
+              value={mapScope}
+              onChange={setMapScope}
+              label="地域分布"
+              options={MAP_SCOPES}
+            />
+          }
         >
-          <ChinaProvinceMap data={provinceData} loading={loading} />
+          <GeoHeatMap
+            source={worldView ? WORLD_COUNTRY_MAP : CHINA_PROVINCE_MAP}
+            data={worldView ? countryData : provinceData}
+            loading={loading}
+            label={worldView ? regionLabel : identity}
+            emptyText={worldView ? "所选范围内暂无可定位的来源。" : "所选范围内暂无国内来源。"}
+            ariaLabel={worldView ? "全球国家请求量热力地图" : "中国省级请求量热力地图"}
+          />
         </ChartCard>
 
         <ChartCard

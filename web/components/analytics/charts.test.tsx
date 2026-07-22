@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest"
 import { ChartCard, ChartPlaceholder } from "./chart-card"
 import { collapseTail, seriesFill, type DistributionItem } from "./chart-utils"
 import { DistributionChart, ShareTable } from "./distribution-chart"
+import { toCountryHeat } from "./geo-map-sources"
 import { StatTile, computeDelta } from "./stat-tile"
 import { StackedTrendChart } from "./trend-chart"
 
@@ -81,6 +82,24 @@ describe("collapseTail", () => {
 
   it("omits the tail wedge when there is nothing left over", () => {
     expect(collapseTail(ITEMS)).toHaveLength(3)
+  })
+})
+
+describe("toCountryHeat", () => {
+  it("drops unplaceable buckets and folds 港澳台 into 中国", () => {
+    const heat = toCountryHeat([
+      { region: "CN", count: 100 },
+      { region: "HK", count: 5 },
+      { region: "TW", count: 3 },
+      { region: "US", count: 20 },
+      { region: "UNKNOWN", count: 40 },
+      { region: "LOCAL", count: 7 },
+    ])
+
+    expect(heat).toEqual([
+      { key: "CN", count: 108 },
+      { key: "US", count: 20 },
+    ])
   })
 })
 

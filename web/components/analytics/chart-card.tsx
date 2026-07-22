@@ -109,6 +109,56 @@ export function InlineSpinner() {
   return <Loader2 className="size-3.5 animate-spin text-slate-400" />
 }
 
+/**
+ * 卡片右上角的分段切换。
+ *
+ * 有图标就只画图标（标题挂在 title/aria-label 上），否则画文字；两种形态共用一套
+ * 胶囊样式，卡片头部才不会因为切换器的种类不同而高低不齐。
+ */
+export function SegmentedToggle<T extends string>({
+  value,
+  onChange,
+  label,
+  options,
+}: {
+  value: T
+  onChange: (next: T) => void
+  label: string
+  options: Array<{ value: T; title: string; icon?: React.ComponentType<{ className?: string }> }>
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={`${label}视图切换`}
+      className="flex rounded-full border border-slate-900/15 p-0.5 dark:border-white/20"
+    >
+      {options.map((option) => {
+        const Icon = option.icon
+        const active = value === option.value
+        return (
+          <button
+            key={option.value}
+            type="button"
+            title={option.title}
+            aria-label={option.title}
+            aria-pressed={active}
+            onClick={() => onChange(option.value)}
+            className={cn(
+              "rounded-full transition",
+              Icon ? "px-2.5 py-1" : "px-2.5 py-0.5 text-xs",
+              active
+                ? "bg-sky-500/20 text-sky-900 dark:text-sky-100"
+                : "text-slate-500 hover:bg-slate-900/5 dark:text-slate-400 dark:hover:bg-white/10",
+            )}
+          >
+            {Icon ? <Icon className="size-3.5" /> : option.title}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export type ChartView = "bar" | "donut"
 
 /**
@@ -127,38 +177,15 @@ export function ChartViewToggle({
   onChange: (next: ChartView) => void
   label: string
 }) {
-  const options: Array<{ view: ChartView; icon: typeof BarChart3; title: string }> = [
-    { view: "bar", icon: BarChart3, title: "柱状图" },
-    { view: "donut", icon: ChartPie, title: "环形图" },
-  ]
-
   return (
-    <div
-      role="group"
-      aria-label={`${label}视图切换`}
-      className="flex rounded-full border border-slate-900/15 p-0.5 dark:border-white/20"
-    >
-      {options.map((option) => {
-        const Icon = option.icon
-        const active = value === option.view
-        return (
-          <button
-            key={option.view}
-            type="button"
-            title={option.title}
-            aria-label={option.title}
-            aria-pressed={active}
-            onClick={() => onChange(option.view)}
-            className={`rounded-full px-2.5 py-1 transition ${
-              active
-                ? "bg-sky-500/20 text-sky-900 dark:text-sky-100"
-                : "text-slate-500 hover:bg-slate-900/5 dark:text-slate-400 dark:hover:bg-white/10"
-            }`}
-          >
-            <Icon className="size-3.5" />
-          </button>
-        )
-      })}
-    </div>
+    <SegmentedToggle
+      value={value}
+      onChange={onChange}
+      label={label}
+      options={[
+        { value: "bar", title: "柱状图", icon: BarChart3 },
+        { value: "donut", title: "环形图", icon: ChartPie },
+      ]}
+    />
   )
 }

@@ -46,6 +46,10 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       BOOTSTRAP_SECRET_DIR: /bootstrap
       API_KEY_SALT: ${API_KEY_SALT}
+      # 客户端 IP 识别：套 CDN 时改成 2（CDN + 自带 nginx 各一层），见
+      # doc/guide/deployment.md
+      VERHUB_TRUSTED_PROXY_COUNT: ${VERHUB_TRUSTED_PROXY_COUNT:-1}
+      VERHUB_CLIENT_IP_HEADER: ${VERHUB_CLIENT_IP_HEADER:-}
       # 来源地区解析与上报去重，见 doc/guide/deployment.md
       VERHUB_GEO_ENABLED: ${VERHUB_GEO_ENABLED:-true}
       VERHUB_GEO_PROVIDERS: ${VERHUB_GEO_PROVIDERS:-}

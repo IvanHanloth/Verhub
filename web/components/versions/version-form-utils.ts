@@ -1,12 +1,7 @@
-import type { ClientPlatform, CreateVersionInput, VersionDownloadLink } from "@/lib/versions-api"
+import type { CreateVersionInput, VersionDownloadLink } from "@/lib/versions-api"
+import { PLATFORM_OPTIONS, type Platform } from "@/lib/platform"
 
-export const platformOptions: Array<{ label: string; value: ClientPlatform }> = [
-  { label: "iOS", value: "ios" },
-  { label: "Android", value: "android" },
-  { label: "Windows", value: "windows" },
-  { label: "macOS", value: "mac" },
-  { label: "Web", value: "web" },
-]
+export const platformOptions = PLATFORM_OPTIONS
 
 export type VersionFormState = {
   version: string
@@ -20,7 +15,7 @@ export type VersionFormState = {
   is_milestone: boolean
   is_deprecated: boolean
   published_at: string
-  platforms: ClientPlatform[]
+  platforms: Platform[]
   custom_data: string
 }
 

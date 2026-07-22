@@ -1,8 +1,12 @@
 import { Injectable } from "@nestjs/common"
-import { ClientPlatform, StatPlatform } from "@prisma/client"
+import { Platform } from "@prisma/client"
 
 import { extractClientContext, type ClientRequestLike } from "../common/client-context"
-import { PLATFORM_HEADER, resolvePlatform } from "../stats/platform-detection"
+import {
+  PLATFORM_HEADER,
+  PLATFORM_VERSION_HEADER,
+  resolvePlatform,
+} from "../stats/platform-detection"
 import { GeoLocationService } from "./geo-location.service"
 
 /**
@@ -20,21 +24,15 @@ export type ClientOrigin = {
   countryName: string | null
   regionName: string | null
   city: string | null
-  platform: ClientPlatform | null
+  platform: Platform | null
+  /** 系统版本明细，如 "11" / "ubuntu 24.04"；无从得知时为 null。 */
+  platformVersion: string | null
 }
 
 /** Request shape plus the fields an SDK may use to declare its platform. */
 type SubmissionRequest = ClientRequestLike & {
-  body?: { platform?: unknown }
-  query?: { platform?: unknown }
-}
-
-const PLATFORM_BY_STAT: Partial<Record<StatPlatform, ClientPlatform>> = {
-  [StatPlatform.IOS]: ClientPlatform.IOS,
-  [StatPlatform.ANDROID]: ClientPlatform.ANDROID,
-  [StatPlatform.WINDOWS]: ClientPlatform.WINDOWS,
-  [StatPlatform.MAC]: ClientPlatform.MAC,
-  [StatPlatform.WEB]: ClientPlatform.WEB,
+  body?: { platform?: unknown; platform_version?: unknown }
+  query?: { platform?: unknown; platform_version?: unknown }
 }
 
 /**
@@ -51,6 +49,7 @@ export class ClientOriginService {
   async describe(request: SubmissionRequest): Promise<ClientOrigin> {
     const { ip, userAgent } = extractClientContext(request)
     const geo = await this.geoLocationService.resolve(ip)
+    const { platform, platformVersion } = this.resolveClientPlatform(request, userAgent)
 
     return {
       ip,
@@ -60,20 +59,35 @@ export class ClientOriginService {
       countryName: geo.countryName,
       regionName: geo.regionName,
       city: geo.city,
-      platform: this.resolveClientPlatform(request, userAgent),
+      platform,
+      platformVersion,
     }
   }
 
   /**
-   * Declared platform wins over the User-Agent guess; an unrecognized result
-   * stays null rather than becoming a bogus category.
+   * Declared platform wins over the User-Agent guess.
+   *
+   * 什么线索都没有时（OTHERS 且无版本明细）落到 null：明细页上「平台：其他」
+   * 与「平台：—」是两回事，前者会让人以为真的识别出了一个非主流平台。声明了
+   * OTHERS 或带着 "harmonyos 4" 这类明细时照常记录。
    */
   private resolveClientPlatform(
     request: SubmissionRequest,
     userAgent: string | null,
-  ): ClientPlatform | null {
+  ): { platform: Platform | null; platformVersion: string | null } {
     const declared =
       request.headers[PLATFORM_HEADER] ?? request.query?.platform ?? request.body?.platform
-    return PLATFORM_BY_STAT[resolvePlatform(declared, userAgent)] ?? null
+    const declaredVersion =
+      request.headers[PLATFORM_VERSION_HEADER] ??
+      request.query?.platform_version ??
+      request.body?.platform_version
+
+    const { platform, version } = resolvePlatform(declared, declaredVersion, userAgent)
+
+    if (platform === Platform.OTHERS && !version) {
+      return { platform: null, platformVersion: null }
+    }
+
+    return { platform, platformVersion: version || null }
   }
 }

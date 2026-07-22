@@ -6,8 +6,9 @@
  * and keeps each service focused on its own domain logic.
  */
 
-import { ClientPlatform, Prisma } from "@prisma/client"
+import { Platform, Prisma } from "@prisma/client"
 
+import { fromPlatform, fromPlatforms, type PlatformValue } from "../common/platform"
 import type { VersionItem, VersionRecord } from "./types"
 
 /** Convert a Prisma Version record to the API-facing VersionItem shape. */
@@ -32,8 +33,8 @@ export function toVersionItem(version: VersionRecord): VersionItem {
     is_preview: version.isPreview,
     is_milestone: version.isMilestone,
     is_deprecated: version.isDeprecated,
-    platforms: fromClientPlatforms(version.platforms),
-    platform: fromClientPlatform(version.platform),
+    platforms: fromPlatforms(version.platforms),
+    platform: fromPlatform(version.platform),
     custom_data: version.customData,
     published_at: version.publishedAt,
     created_at: version.createdAt,
@@ -42,48 +43,23 @@ export function toVersionItem(version: VersionRecord): VersionItem {
 
 // ── Platform conversion ──
 
-export function toClientPlatform(
-  platform: "ios" | "android" | "windows" | "mac" | "web" | undefined,
-): ClientPlatform | undefined {
-  if (!platform) {
-    return undefined
-  }
-  return platform.toUpperCase() as ClientPlatform
-}
-
-export function toClientPlatforms(
-  platforms: Array<"ios" | "android" | "windows" | "mac" | "web"> | undefined,
-  fallbackPlatform: "ios" | "android" | "windows" | "mac" | "web" | undefined,
-): ClientPlatform[] {
+/**
+ * 版本的发布目标列表。单数 `platform` 是数组字段出现之前的旧字段，仍作为
+ * 未提供 `platforms` 时的兜底，避免老调用方升级后发布目标凭空清空。
+ */
+export function toPlatforms(
+  platforms: PlatformValue[] | undefined,
+  fallbackPlatform: PlatformValue | undefined,
+): Platform[] {
   if (platforms && platforms.length > 0) {
-    return Array.from(new Set(platforms.map((item) => item.trim().toUpperCase() as ClientPlatform)))
+    return Array.from(new Set(platforms.map((item) => item.trim().toUpperCase() as Platform)))
   }
 
   if (fallbackPlatform) {
-    return [fallbackPlatform.trim().toUpperCase() as ClientPlatform]
+    return [fallbackPlatform.trim().toUpperCase() as Platform]
   }
 
   return []
-}
-
-export function fromClientPlatforms(
-  platforms: ClientPlatform[] | null | undefined,
-): Array<"ios" | "android" | "windows" | "mac" | "web"> {
-  if (!platforms || platforms.length === 0) {
-    return []
-  }
-  return platforms.map((item) => item.toLowerCase()) as Array<
-    "ios" | "android" | "windows" | "mac" | "web"
-  >
-}
-
-export function fromClientPlatform(
-  platform: ClientPlatform | null,
-): "ios" | "android" | "windows" | "mac" | "web" | null {
-  if (!platform) {
-    return null
-  }
-  return platform.toLowerCase() as "ios" | "android" | "windows" | "mac" | "web"
 }
 
 // ── Download link helpers ──

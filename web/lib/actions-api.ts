@@ -1,4 +1,5 @@
 import { requestJson } from "@/lib/api-client"
+import type { Platform } from "@/lib/platform"
 import { getSessionToken } from "@/lib/auth-session"
 
 export type ActionItem = {
@@ -23,7 +24,8 @@ export type ActionRecordItem = {
   country_name: string | null
   region_name: string | null
   city: string | null
-  platform: "ios" | "android" | "windows" | "mac" | "web" | null
+  platform: Platform | null
+  platform_version: string | null
 }
 
 export type ListActionsResponse = {

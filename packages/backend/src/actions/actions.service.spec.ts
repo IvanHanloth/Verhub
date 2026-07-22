@@ -58,6 +58,7 @@ const emptyOrigin = {
   regionName: null,
   city: null,
   platform: null,
+  platformVersion: null,
 }
 
 describe("ActionsService", () => {
@@ -177,6 +178,7 @@ describe("ActionsService", () => {
       regionName: null,
       city: null,
       platform: null,
+      platformVersion: null,
       createdAt: 2000,
     })
 
@@ -201,6 +203,7 @@ describe("ActionsService", () => {
       region_name: null,
       city: null,
       platform: null,
+      platform_version: null,
     })
   })
 

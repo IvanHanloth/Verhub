@@ -28,6 +28,7 @@ import {
   type AnnouncementMutationInput,
 } from "@/lib/announcements-api"
 import { isAuthError } from "@/lib/api-client"
+import { PLATFORM_OPTIONS, type Platform } from "@/lib/platform"
 import { getErrorMessage } from "@/lib/error-utils"
 import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
@@ -36,23 +37,14 @@ import { useAdminProjects } from "@/hooks/use-admin-projects"
 
 const PAGE_SIZE = 10
 
-const platformOptions: Array<{
-  label: string
-  value: "ios" | "android" | "windows" | "mac" | "web"
-}> = [
-  { label: "iOS", value: "ios" },
-  { label: "Android", value: "android" },
-  { label: "Windows", value: "windows" },
-  { label: "macOS", value: "mac" },
-  { label: "Web", value: "web" },
-]
+const platformOptions = PLATFORM_OPTIONS
 
 type AnnouncementFormState = {
   title: string
   content: string
   is_pinned: boolean
   is_hidden: boolean
-  platforms: Array<"ios" | "android" | "windows" | "mac" | "web">
+  platforms: Platform[]
   author: string
   published_at: string
 }
@@ -99,10 +91,7 @@ function toTimestamp(value: string): number | undefined {
   return Math.floor(date.getTime() / 1000)
 }
 
-function togglePlatform(
-  current: Array<"ios" | "android" | "windows" | "mac" | "web">,
-  next: "ios" | "android" | "windows" | "mac" | "web",
-): Array<"ios" | "android" | "windows" | "mac" | "web"> {
+function togglePlatform(current: Platform[], next: Platform): Platform[] {
   return current.includes(next) ? current.filter((item) => item !== next) : [...current, next]
 }
 

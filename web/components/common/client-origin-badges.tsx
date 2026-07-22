@@ -3,6 +3,8 @@
 import * as React from "react"
 import { Globe2, MapPin, Monitor, Network } from "lucide-react"
 
+import { formatPlatformVersion } from "@/lib/platform"
+
 /**
  * The server-observed origin of a submission, rendered as a compact badge row.
  *
@@ -19,14 +21,7 @@ export type ClientOriginFields = {
   region_name?: string | null
   city?: string | null
   platform?: string | null
-}
-
-const PLATFORM_LABELS: Record<string, string> = {
-  ios: "iOS",
-  android: "Android",
-  windows: "Windows",
-  mac: "macOS",
-  web: "Web",
+  platform_version?: string | null
 }
 
 /**
@@ -69,7 +64,7 @@ function Badge({
 
 export function ClientOriginBadges({ origin }: { origin: ClientOriginFields }) {
   const location = formatLocation(origin)
-  const platform = origin.platform ? (PLATFORM_LABELS[origin.platform] ?? origin.platform) : null
+  const platform = formatPlatformVersion(origin.platform, origin.platform_version)
   const userAgent = origin.user_agent?.trim() || null
 
   if (!origin.ip && !location && !platform && !userAgent) {

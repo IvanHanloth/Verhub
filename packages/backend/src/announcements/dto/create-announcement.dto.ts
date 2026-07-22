@@ -9,9 +9,7 @@ import {
   MaxLength,
 } from "class-validator"
 
-const clientPlatforms = ["ios", "android", "windows", "mac", "web"] as const
-
-type ClientPlatform = (typeof clientPlatforms)[number]
+import { NormalizePlatform, PLATFORM_VALUES, type PlatformValue } from "../../common/platform"
 
 export class CreateAnnouncementDto {
   @IsString()
@@ -33,8 +31,9 @@ export class CreateAnnouncementDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(8)
-  @IsIn(clientPlatforms, { each: true })
-  platforms?: ClientPlatform[]
+  @NormalizePlatform()
+  @IsIn(PLATFORM_VALUES, { each: true })
+  platforms?: PlatformValue[]
 
   @IsOptional()
   @IsString()

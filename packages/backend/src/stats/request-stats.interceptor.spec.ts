@@ -1,6 +1,6 @@
 import { CallHandler, ExecutionContext } from "@nestjs/common"
 import { Reflector } from "@nestjs/core"
-import { PublicEndpoint, StatPlatform } from "@prisma/client"
+import { Platform, PublicEndpoint } from "@prisma/client"
 import { of, throwError, lastValueFrom } from "rxjs"
 
 import { RequestStatsInterceptor } from "./request-stats.interceptor"
@@ -25,7 +25,11 @@ function createHandler(result: unknown = { ok: true }): CallHandler {
 
 function createInterceptor(endpoint: PublicEndpoint | undefined) {
   const reflector = { get: jest.fn().mockReturnValue(endpoint) } as unknown as Reflector
-  const statsService = { recordRequestSafely: jest.fn(), recordClientVersionSafely: jest.fn() }
+  const statsService = {
+    recordRequestSafely: jest.fn(),
+    recordClientVersionSafely: jest.fn(),
+    recordPlatformVersionSafely: jest.fn(),
+  }
   const interceptor = new RequestStatsInterceptor(reflector, statsService as never)
   return { interceptor, statsService }
 }
@@ -43,7 +47,7 @@ describe("RequestStatsInterceptor", () => {
     expect(statsService.recordRequestSafely).toHaveBeenCalledWith({
       projectKey: "verhub",
       endpoint: PublicEndpoint.VERSION_LATEST,
-      platform: StatPlatform.WINDOWS,
+      platform: Platform.WINDOWS,
       ip: null,
     })
   })
@@ -75,7 +79,7 @@ describe("RequestStatsInterceptor", () => {
     await lastValueFrom(interceptor.intercept(context, createHandler()))
 
     expect(statsService.recordRequestSafely).toHaveBeenCalledWith(
-      expect.objectContaining({ platform: StatPlatform.IOS }),
+      expect.objectContaining({ platform: Platform.IOS }),
     )
   })
 
@@ -90,7 +94,55 @@ describe("RequestStatsInterceptor", () => {
     await lastValueFrom(interceptor.intercept(context, createHandler()))
 
     expect(statsService.recordRequestSafely).toHaveBeenCalledWith(
-      expect.objectContaining({ platform: StatPlatform.ANDROID }),
+      expect.objectContaining({ platform: Platform.ANDROID }),
+    )
+  })
+
+  it("records the OS version on every tracked route, not just check-update", async () => {
+    // 系统版本描述的是设备本身，任何一次调用都带得出来；客户端版本只有
+    // check-update 才报得出，两者的采集面因此不同。
+    const { interceptor, statsService } = createInterceptor(PublicEndpoint.VERSION_LATEST)
+    const context = createContext({
+      params: { projectKey: "verhub" },
+      headers: { "x-verhub-platform": "windows", "x-verhub-platform-version": "11" },
+    })
+
+    await lastValueFrom(interceptor.intercept(context, createHandler()))
+
+    expect(statsService.recordPlatformVersionSafely).toHaveBeenCalledWith({
+      projectKey: "verhub",
+      platform: Platform.WINDOWS,
+      platformVersion: "11",
+    })
+  })
+
+  it("splits an OS version the client packed into the platform field", async () => {
+    const { interceptor, statsService } = createInterceptor(PublicEndpoint.VERSION_LATEST)
+    const context = createContext({
+      params: { projectKey: "verhub" },
+      headers: {},
+      query: { platform: "ubuntu 24.04" },
+    })
+
+    await lastValueFrom(interceptor.intercept(context, createHandler()))
+
+    expect(statsService.recordRequestSafely).toHaveBeenCalledWith(
+      expect.objectContaining({ platform: Platform.LINUX }),
+    )
+    expect(statsService.recordPlatformVersionSafely).toHaveBeenCalledWith(
+      expect.objectContaining({ platform: Platform.LINUX, platformVersion: "ubuntu 24.04" }),
+    )
+  })
+
+  it("counts traffic that reports no OS version in an empty-detail bucket", async () => {
+    // 空串照样落一行：否则「多少流量根本没报系统版本」无从回答，占比分母也会失真。
+    const { interceptor, statsService } = createInterceptor(PublicEndpoint.VERSION_LATEST)
+    const context = createContext({ params: { projectKey: "verhub" }, headers: {} })
+
+    await lastValueFrom(interceptor.intercept(context, createHandler()))
+
+    expect(statsService.recordPlatformVersionSafely).toHaveBeenCalledWith(
+      expect.objectContaining({ platform: Platform.OTHERS, platformVersion: "" }),
     )
   })
 
@@ -136,7 +188,7 @@ describe("RequestStatsInterceptor", () => {
     expect(statsService.recordClientVersionSafely).toHaveBeenCalledWith({
       projectKey: "verhub",
       version: "2.3.0",
-      platform: StatPlatform.MAC,
+      platform: Platform.MACOS,
     })
   })
 

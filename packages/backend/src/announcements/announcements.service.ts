@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException } from "@nestjs/common"
-import { ClientPlatform, Prisma } from "@prisma/client"
+import { Platform, Prisma } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
 import { normalizeProjectKey, nowSeconds } from "../common/utils"
-import { fromClientPlatforms } from "../versions/version-mapping"
+import { fromPlatforms, type PlatformValue } from "../common/platform"
 import { CreateAnnouncementDto } from "./dto/create-announcement.dto"
 import { QueryAnnouncementsDto } from "./dto/query-announcements.dto"
 import { UpdateAnnouncementDto } from "./dto/update-announcement.dto"
@@ -14,21 +14,19 @@ type AnnouncementItem = {
   content: string
   is_pinned: boolean
   is_hidden: boolean
-  platforms: Array<"ios" | "android" | "windows" | "mac" | "web">
+  platforms: PlatformValue[]
   author: string | null
   published_at: number
   created_at: number
   updated_at: number
 }
 
-function normalizePlatforms(
-  platforms?: Array<"ios" | "android" | "windows" | "mac" | "web">,
-): ClientPlatform[] {
+function normalizePlatforms(platforms?: PlatformValue[]): Platform[] {
   if (!platforms) {
     return []
   }
 
-  return Array.from(new Set(platforms.map((item) => item.trim().toUpperCase()))) as ClientPlatform[]
+  return Array.from(new Set(platforms.map((item) => item.trim().toUpperCase()))) as Platform[]
 }
 
 type AnnouncementListResponse = {
@@ -108,7 +106,7 @@ export class AnnouncementsService {
         ? {
             OR: [
               { platforms: { isEmpty: true } },
-              { platforms: { has: query.platform.toUpperCase() as ClientPlatform } },
+              { platforms: { has: query.platform.toUpperCase() as Platform } },
             ],
           }
         : {}),
@@ -150,7 +148,7 @@ export class AnnouncementsService {
         ? {
             OR: [
               { platforms: { isEmpty: true } },
-              { platforms: { has: query.platform.toUpperCase() as ClientPlatform } },
+              { platforms: { has: query.platform.toUpperCase() as Platform } },
             ],
           }
         : {}),
@@ -286,7 +284,7 @@ export class AnnouncementsService {
     content: string
     isPinned: boolean
     isHidden: boolean
-    platforms: ClientPlatform[]
+    platforms: Platform[]
     author: string | null
     publishedAt: number
     createdAt: number
@@ -298,7 +296,7 @@ export class AnnouncementsService {
       content: announcement.content,
       is_pinned: announcement.isPinned,
       is_hidden: announcement.isHidden,
-      platforms: fromClientPlatforms(announcement.platforms),
+      platforms: fromPlatforms(announcement.platforms),
       author: announcement.author,
       published_at: announcement.publishedAt,
       created_at: announcement.createdAt,

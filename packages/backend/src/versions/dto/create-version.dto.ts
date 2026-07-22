@@ -15,11 +15,10 @@ import {
 } from "class-validator"
 import { Type } from "class-transformer"
 
-const clientPlatforms = ["ios", "android", "windows", "mac", "web"] as const
+import { NormalizePlatform, PLATFORM_VALUES, type PlatformValue } from "../../common/platform"
+
 const COMPARABLE_VERSION_PATTERN =
   /^(?<core>\d+(?:\.\d+)*)(?:-(?<tag>alpha|beta|rc)(?:\.(?<tail>\d+(?:\.\d+)*))?)?$/
-
-type ClientPlatform = (typeof clientPlatforms)[number]
 
 export class VersionDownloadLinkDto {
   @IsString()
@@ -81,14 +80,16 @@ export class CreateVersionDto {
   is_preview?: boolean
 
   @IsOptional()
-  @IsIn(clientPlatforms)
-  platform?: ClientPlatform
+  @NormalizePlatform()
+  @IsIn(PLATFORM_VALUES)
+  platform?: PlatformValue
 
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(8)
-  @IsIn(clientPlatforms, { each: true })
-  platforms?: ClientPlatform[]
+  @NormalizePlatform()
+  @IsIn(PLATFORM_VALUES, { each: true })
+  platforms?: PlatformValue[]
 
   @IsOptional()
   @IsBoolean()

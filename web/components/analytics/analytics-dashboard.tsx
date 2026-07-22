@@ -7,35 +7,20 @@ import {
   AlertTriangle,
   BarChart3,
   CalendarDays,
-  ChartPie,
   Flame,
   Globe2,
   Layers,
   Loader2,
   MapPin,
+  MessageSquareHeart,
+  MonitorSmartphone,
   RefreshCw,
+  ScrollText,
+  Table2,
+  TrendingUp,
 } from "lucide-react"
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  XAxis,
-  YAxis,
-} from "recharts"
 
 import { Button } from "@workspace/ui/components/button"
-import {
-  ChartContainer,
-  ChartLegend,
-  ChartLegendContent,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from "@workspace/ui/components/chart"
 
 import { isAuthError } from "@/lib/api-client"
 import { getErrorMessage } from "@/lib/error-utils"
@@ -47,21 +32,43 @@ import {
   ENDPOINT_LABELS,
   PLATFORM_LABELS,
   getClientVersionStats,
+  getFeedbackRatingStats,
+  getLogLevelStats,
+  getPlatformVersionStats,
   getRequestStatsHeatmap,
   getRequestStatsOverview,
   getRequestStatsTimeseries,
+  getVersionAdoptionStats,
   regionLabel,
   type ClientVersionStats,
+  type FeedbackRatingStats,
   type Granularity,
+  type LogLevelStats,
+  type PlatformVersionStats,
   type PublicEndpoint,
   type RequestStatsHeatmap,
   type RequestStatsOverview,
   type RequestStatsTimeseries,
-  type StatPlatform,
+  type TimeseriesGroupBy,
+  type VersionAdoptionStats,
 } from "@/lib/analytics-api"
+import { formatPlatformVersion } from "@/lib/platform"
 
 import { ActivityCalendar } from "./activity-calendar"
+import { ChartCard, ChartPlaceholder, ChartViewToggle, type ChartView } from "./chart-card"
+import {
+  DAY_SECONDS,
+  PLATFORM_COLORS,
+  TAIL_COLOR,
+  formatNumber,
+  percent,
+  seriesColor,
+  type DistributionItem,
+} from "./chart-utils"
+import { DistributionChart, ShareTable } from "./distribution-chart"
 import { RequestHeatmap } from "./request-heatmap"
+import { StackedTrendChart, TrendLineChart } from "./trend-chart"
+import { StatTile, computeDelta } from "./stat-tile"
 
 // echarts 较重，懒加载以免进主 bundle；地图仅在统计大屏出现。
 const ChinaProvinceMap = dynamic(
@@ -69,10 +76,14 @@ const ChinaProvinceMap = dynamic(
   { ssr: false },
 )
 
-const DAY_SECONDS = 86400
-
 /** Rows in the version chart; everything past this is folded into 其他. */
 const VERSION_CHART_LIMIT = 12
+
+/** 系统版本比客户端版本更分散（多平台 × 多大版本），行数放宽一档。 */
+const PLATFORM_VERSION_CHART_LIMIT = 16
+
+/** 采纳曲线的序列数：超过六条，颜色就分不清了。 */
+const ADOPTION_SERIES_LIMIT = 6
 
 /** The activity calendar always shows a fixed year, independent of the range picker. */
 const CALENDAR_DAYS = 364
@@ -95,103 +106,53 @@ const RANGE_OPTIONS: RangeOption[] = [
   { label: "近一年", seconds: 365 * DAY_SECONDS, granularity: "day" },
 ]
 
-/**
- * Categorical slots, assigned in fixed order and never cycled. Platform count is
- * bounded at 6 by the backend enum, so the 8-slot palette always suffices.
- */
-const PLATFORM_COLORS: Record<StatPlatform, string> = {
-  IOS: "var(--series-1)",
-  ANDROID: "var(--series-2)",
-  WINDOWS: "var(--series-3)",
-  MAC: "var(--series-5)",
-  WEB: "var(--series-6)",
-  UNKNOWN: "var(--series-8)",
-}
+/** 趋势图的拆分方式。`total` 是不拆，画一条总量线。 */
+type TrendMode = "total" | TimeseriesGroupBy
 
-/**
- * Slots for charts whose categories come from the data (versions, countries)
- * rather than a fixed enum. Assigned by rank and cycled once exhausted: past
- * eight categories a repeated hue is unavoidable, and every one of these charts
- * is paired with a table that carries the identity as text.
- */
-const SERIES_VARS = Array.from({ length: 8 }, (_, index) => `var(--series-${index + 1})`)
+const TREND_MODES: Array<{ value: TrendMode; label: string }> = [
+  { value: "total", label: "总量" },
+  { value: "endpoint", label: "按接口" },
+  { value: "platform", label: "按平台" },
+]
 
-function seriesColor(index: number): string {
-  return SERIES_VARS[index % SERIES_VARS.length]!
-}
+const LOG_LEVEL_LABELS = ["DEBUG", "INFO", "WARN", "ERROR"]
 
-/** How many slices a pie stays readable at; the rest collapses into 其他. */
-const PIE_SLICE_LIMIT = 8
+/** 等级色沿用告警语义，而不是定类调色板的取号顺序：ERROR 必须是红的。 */
+const LOG_LEVEL_COLORS = [TAIL_COLOR, "var(--series-1)", "var(--series-3)", "var(--series-6)"]
 
-type ChartView = "bar" | "pie"
-
-function formatBucket(bucket: number, granularity: Granularity): string {
-  const date = new Date(bucket * 1000)
-  if (granularity === "hour") {
-    return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(
-      2,
-      "0",
-    )} ${String(date.getHours()).padStart(2, "0")}:00`
-  }
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-    date.getDate(),
-  ).padStart(2, "0")}`
-}
-
-function formatNumber(value: number): string {
-  return value.toLocaleString("zh-CN")
-}
-
-function percent(value: number, total: number): string {
-  if (total <= 0) return "0%"
-  return `${((value / total) * 100).toFixed(1)}%`
-}
-
-type PieSlice = { key: string; label: string; count: number; fill: string }
-
-/**
- * Keep the largest slices and fold everything else into one 其他 wedge.
- *
- * A pie stops communicating anything past a handful of slices, but dropping the
- * tail outright would leave a chart whose wedges do not add up to the total the
- * card claims — so the tail becomes a wedge of its own.
- */
-function collapsePieTail(
-  items: Array<{ key: string; label: string; count: number }>,
-  extraTail = 0,
-): PieSlice[] {
-  const head = items.slice(0, PIE_SLICE_LIMIT)
-  const tail =
-    items.slice(PIE_SLICE_LIMIT).reduce((sum, item) => sum + item.count, 0) + Math.max(extraTail, 0)
-
-  const slices: PieSlice[] = head.map((item, index) => ({ ...item, fill: seriesColor(index) }))
-
-  if (tail > 0) {
-    slices.push({
-      key: "__other__",
-      label: "其他",
-      count: tail,
-      // Neutral, so the aggregate wedge does not read as another category.
-      fill: "var(--muted-foreground)",
-    })
-  }
-
-  return slices
-}
+/** 评分色按好差分档，让直方图不用读数字就能看出口碑偏向。 */
+const RATING_COLORS = [
+  "var(--series-6)",
+  "var(--series-8)",
+  "var(--series-3)",
+  "var(--series-2)",
+  "var(--series-4)",
+]
 
 export function AnalyticsDashboard() {
   const { selectedProject, selectedProjectKey, error: projectsError } = useAdminProjects()
   const [rangeIndex, setRangeIndex] = React.useState(1)
   const [overview, setOverview] = React.useState<RequestStatsOverview | null>(null)
+  /** 上一个等长区间，只用来算 KPI 环比。 */
+  const [previous, setPrevious] = React.useState<RequestStatsOverview | null>(null)
   const [timeseries, setTimeseries] = React.useState<RequestStatsTimeseries | null>(null)
   const [clientVersions, setClientVersions] = React.useState<ClientVersionStats | null>(null)
+  const [adoption, setAdoption] = React.useState<VersionAdoptionStats | null>(null)
+  const [platformVersions, setPlatformVersions] = React.useState<PlatformVersionStats | null>(null)
+  const [logLevels, setLogLevels] = React.useState<LogLevelStats | null>(null)
+  const [ratings, setRatings] = React.useState<FeedbackRatingStats | null>(null)
   const [heatmap, setHeatmap] = React.useState<RequestStatsHeatmap | null>(null)
   const [calendar, setCalendar] = React.useState<RequestStatsTimeseries | null>(null)
   const [loading, setLoading] = React.useState(false)
+  const [trendLoading, setTrendLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [reloadToken, setReloadToken] = React.useState(0)
+
+  const [trendMode, setTrendMode] = React.useState<TrendMode>("total")
   const [versionView, setVersionView] = React.useState<ChartView>("bar")
+  const [platformVersionView, setPlatformVersionView] = React.useState<ChartView>("bar")
   const [regionView, setRegionView] = React.useState<ChartView>("bar")
+  const [endpointView, setEndpointView] = React.useState<ChartView>("bar")
 
   const range = RANGE_OPTIONS[rangeIndex] ?? RANGE_OPTIONS[1]!
 
@@ -199,8 +160,12 @@ export function AnalyticsDashboard() {
     const token = getSessionToken()
     if (!token || !selectedProjectKey) {
       setOverview(null)
-      setTimeseries(null)
+      setPrevious(null)
       setClientVersions(null)
+      setAdoption(null)
+      setPlatformVersions(null)
+      setLogLevels(null)
+      setRatings(null)
       setHeatmap(null)
       setCalendar(null)
       return
@@ -215,12 +180,11 @@ export function AnalyticsDashboard() {
 
     Promise.all([
       getRequestStatsOverview(token, selectedProjectKey, { startTime, endTime }, controller.signal),
-      getRequestStatsTimeseries(
+      // 紧邻的上一个等长区间，供 KPI 算环比。
+      getRequestStatsOverview(
         token,
         selectedProjectKey,
-        { startTime, endTime },
-        range.granularity,
-        undefined,
+        { startTime: startTime - range.seconds, endTime: startTime },
         controller.signal,
       ),
       getClientVersionStats(
@@ -230,6 +194,23 @@ export function AnalyticsDashboard() {
         VERSION_CHART_LIMIT,
         controller.signal,
       ),
+      getVersionAdoptionStats(
+        token,
+        selectedProjectKey,
+        { startTime, endTime },
+        range.granularity,
+        ADOPTION_SERIES_LIMIT,
+        controller.signal,
+      ),
+      getPlatformVersionStats(
+        token,
+        selectedProjectKey,
+        { startTime, endTime },
+        PLATFORM_VERSION_CHART_LIMIT,
+        controller.signal,
+      ),
+      getLogLevelStats(token, selectedProjectKey, { startTime, endTime }, controller.signal),
+      getFeedbackRatingStats(token, selectedProjectKey, { startTime, endTime }, controller.signal),
       getRequestStatsHeatmap(token, selectedProjectKey, { startTime, endTime }, controller.signal),
       // The calendar is deliberately not tied to the range picker: a year of
       // daily buckets is the whole point of the view, and re-fetching it for
@@ -243,14 +224,30 @@ export function AnalyticsDashboard() {
         controller.signal,
       ),
     ])
-      .then(([overviewResult, timeseriesResult, versionsResult, heatmapResult, calendarResult]) => {
-        if (controller.signal.aborted) return
-        setOverview(overviewResult)
-        setTimeseries(timeseriesResult)
-        setClientVersions(versionsResult)
-        setHeatmap(heatmapResult)
-        setCalendar(calendarResult)
-      })
+      .then(
+        ([
+          overviewResult,
+          previousResult,
+          versionsResult,
+          adoptionResult,
+          platformVersionsResult,
+          logResult,
+          ratingResult,
+          heatmapResult,
+          calendarResult,
+        ]) => {
+          if (controller.signal.aborted) return
+          setOverview(overviewResult)
+          setPrevious(previousResult)
+          setClientVersions(versionsResult)
+          setAdoption(adoptionResult)
+          setPlatformVersions(platformVersionsResult)
+          setLogLevels(logResult)
+          setRatings(ratingResult)
+          setHeatmap(heatmapResult)
+          setCalendar(calendarResult)
+        },
+      )
       .catch((cause: unknown) => {
         if (controller.signal.aborted || isAuthError(cause)) return
         setError(getErrorMessage(cause))
@@ -264,55 +261,74 @@ export function AnalyticsDashboard() {
     }
   }, [selectedProjectKey, range.seconds, range.granularity, reloadToken])
 
-  const total = overview?.total ?? 0
+  // 趋势图单独拉：切换拆分维度只该重取这一张图，而不是把整屏十几个请求全打一遍。
+  React.useEffect(() => {
+    const token = getSessionToken()
+    if (!token || !selectedProjectKey) {
+      setTimeseries(null)
+      return
+    }
 
-  const endpointData = React.useMemo(
+    const controller = new AbortController()
+    const endTime = Math.floor(Date.now() / 1000)
+    const startTime = endTime - range.seconds
+
+    setTrendLoading(true)
+    getRequestStatsTimeseries(
+      token,
+      selectedProjectKey,
+      { startTime, endTime },
+      range.granularity,
+      undefined,
+      controller.signal,
+      trendMode === "total" ? undefined : trendMode,
+    )
+      .then((result) => {
+        if (!controller.signal.aborted) setTimeseries(result)
+      })
+      .catch((cause: unknown) => {
+        if (controller.signal.aborted || isAuthError(cause)) return
+        setError(getErrorMessage(cause))
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setTrendLoading(false)
+      })
+
+    return () => {
+      controller.abort()
+    }
+  }, [selectedProjectKey, range.seconds, range.granularity, trendMode, reloadToken])
+
+  const total = overview?.total ?? 0
+  const trendPoints = React.useMemo(() => timeseries?.data ?? [], [timeseries])
+  const sparkline = React.useMemo(() => trendPoints.map((point) => point.count), [trendPoints])
+
+  const endpointItems = React.useMemo<DistributionItem[]>(
     () =>
-      (overview?.by_endpoint ?? []).map((item) => ({
-        endpoint: item.endpoint,
+      (overview?.by_endpoint ?? []).map((item, index) => ({
+        key: item.endpoint,
         label: ENDPOINT_LABELS[item.endpoint] ?? item.endpoint,
         count: item.count,
-      })),
-    [overview],
-  )
-
-  const platformData = React.useMemo(
-    () =>
-      (overview?.by_platform ?? []).map((item) => ({
-        platform: item.platform,
-        label: PLATFORM_LABELS[item.platform] ?? item.platform,
-        count: item.count,
-        fill: PLATFORM_COLORS[item.platform] ?? "var(--series-8)",
-      })),
-    [overview],
-  )
-
-  const seriesData = React.useMemo(
-    () =>
-      (timeseries?.data ?? []).map((point) => ({
-        bucket: point.bucket,
-        label: formatBucket(point.bucket, timeseries?.granularity ?? "hour"),
-        count: point.count,
-      })),
-    [timeseries],
-  )
-
-  const versionTotal = clientVersions?.total ?? 0
-  const versionData = React.useMemo(
-    () =>
-      (clientVersions?.data ?? []).map((item, index) => ({
-        version: item.version,
-        count: item.count,
-        share: versionTotal > 0 ? item.count / versionTotal : 0,
         fill: seriesColor(index),
       })),
-    [clientVersions, versionTotal],
+    [overview],
   )
 
-  const regionData = React.useMemo(
+  const platformItems = React.useMemo<DistributionItem[]>(
+    () =>
+      (overview?.by_platform ?? []).map((item) => ({
+        key: item.platform,
+        label: PLATFORM_LABELS[item.platform] ?? item.platform,
+        count: item.count,
+        fill: PLATFORM_COLORS[item.platform] ?? TAIL_COLOR,
+      })),
+    [overview],
+  )
+
+  const regionItems = React.useMemo<DistributionItem[]>(
     () =>
       (overview?.by_region ?? []).map((item, index) => ({
-        region: item.region,
+        key: item.region,
         label: regionLabel(item.region),
         count: item.count,
         fill: seriesColor(index),
@@ -320,93 +336,78 @@ export function AnalyticsDashboard() {
     [overview],
   )
 
+  const versionTotal = clientVersions?.total ?? 0
+  const versionItems = React.useMemo<DistributionItem[]>(
+    () =>
+      (clientVersions?.data ?? []).map((item, index) => ({
+        key: item.version,
+        label: item.version,
+        count: item.count,
+        fill: seriesColor(index),
+      })),
+    [clientVersions],
+  )
+  // API 截断掉的行仍属于 total，显式列出来，免得占比悄悄不闭合。
+  const versionTail = versionTotal - versionItems.reduce((sum, item) => sum + item.count, 0)
+  const topVersion = versionItems[0] ?? null
+
+  const platformVersionTotal = platformVersions?.total ?? 0
+  const platformVersionItems = React.useMemo(
+    () =>
+      (platformVersions?.data ?? []).map((item) => ({
+        key: `${item.platform}:${item.platform_version}`,
+        // 明细为空串的桶是「报了平台没报版本」，标出来才不会被当成解析失败。
+        label:
+          formatPlatformVersion(item.platform.toLowerCase(), item.platform_version) ??
+          item.platform,
+        suffix: item.platform_version ? "" : " · 未报版本",
+        count: item.count,
+        fill: PLATFORM_COLORS[item.platform] ?? TAIL_COLOR,
+      })),
+    [platformVersions],
+  )
+  const platformVersionTail =
+    platformVersionTotal - platformVersionItems.reduce((sum, item) => sum + item.count, 0)
+
+  const logItems = React.useMemo<DistributionItem[]>(
+    () =>
+      (logLevels?.by_level ?? []).map((item) => ({
+        key: String(item.level),
+        label: LOG_LEVEL_LABELS[item.level] ?? String(item.level),
+        count: item.count,
+        fill: LOG_LEVEL_COLORS[item.level] ?? TAIL_COLOR,
+      })),
+    [logLevels],
+  )
+  const errorCount = logLevels?.by_level.find((item) => item.level === 3)?.count ?? 0
+
+  const ratingItems = React.useMemo<DistributionItem[]>(
+    () =>
+      (ratings?.by_rating ?? []).map((item) => ({
+        key: String(item.rating),
+        label: "★".repeat(item.rating),
+        count: item.count,
+        fill: RATING_COLORS[item.rating - 1] ?? TAIL_COLOR,
+      })),
+    [ratings],
+  )
+
+  const adoptionSeries = React.useMemo(
+    () => (adoption?.series ?? []).map((item) => ({ key: item.version, data: item.data })),
+    [adoption],
+  )
+
+  const checkUpdateCount = countOf(overview, ["VERSION_CHECK_UPDATE"])
+  const announcementCount = countOf(overview, ["ANNOUNCEMENT_LIST", "ANNOUNCEMENT_LATEST"])
+  const peak = trendPoints.reduce((max, point) => Math.max(max, point.count), 0)
+
   const provinceData = React.useMemo(() => overview?.by_province ?? [], [overview])
 
-  // The API caps the rows it returns; the remainder is still part of the total,
-  // so show it explicitly rather than letting the shares silently not add up.
-  const versionTailCount = versionTotal - versionData.reduce((sum, item) => sum + item.count, 0)
-  const topVersion = versionData[0] ?? null
-
-  const versionPieData = React.useMemo(
-    () =>
-      collapsePieTail(
-        versionData.map((item) => ({ key: item.version, label: item.version, count: item.count })),
-        // The rows the API already truncated belong in the same 其他 wedge, or
-        // the pie would claim a total it is not drawing.
-        versionTailCount,
-      ).map((item) => ({
-        version: item.key,
-        label: item.label,
-        count: item.count,
-        fill: item.fill,
-      })),
-    [versionData, versionTailCount],
-  )
-
-  const regionPieData = React.useMemo(
-    () =>
-      collapsePieTail(
-        regionData.map((item) => ({ key: item.region, label: item.label, count: item.count })),
-      ).map((item) => ({
-        region: item.key,
-        label: item.label,
-        count: item.count,
-        fill: item.fill,
-      })),
-    [regionData],
-  )
-
-  const checkUpdateCount =
-    overview?.by_endpoint.find((item) => item.endpoint === "VERSION_CHECK_UPDATE")?.count ?? 0
-  const announcementCount = (overview?.by_endpoint ?? [])
-    .filter(
-      (item) => item.endpoint === "ANNOUNCEMENT_LIST" || item.endpoint === "ANNOUNCEMENT_LATEST",
-    )
-    .reduce((sum, item) => sum + item.count, 0)
-  const peak = seriesData.reduce((max, point) => Math.max(max, point.count), 0)
-
-  // A single measure across categories: identity comes from the axis labels, so
-  // one color rather than a redundant hue per bar.
-  const endpointConfig: ChartConfig = { count: { label: "请求数", color: "var(--series-1)" } }
-  const trendConfig: ChartConfig = { count: { label: "请求数", color: "var(--series-1)" } }
-  const platformConfig: ChartConfig = React.useMemo(() => {
-    const config: ChartConfig = { count: { label: "请求数" } }
-    for (const item of platformData) {
-      config[item.platform] = { label: item.label, color: item.fill }
-    }
-    return config
-  }, [platformData])
-
-  // The bar view carries identity on the axis and needs one measure color; the
-  // pie needs a per-slice entry so the legend and tooltip can name each wedge.
-  const versionConfig: ChartConfig = React.useMemo(() => {
-    if (versionView === "bar") {
-      return { count: { label: "上报数", color: "var(--series-2)" } }
-    }
-    const config: ChartConfig = { count: { label: "上报数" } }
-    for (const item of versionPieData) {
-      // item.label, not item.version: the tail slice's key is a sentinel.
-      config[item.version] = { label: item.label, color: item.fill }
-    }
-    return config
-  }, [versionView, versionPieData])
-
-  const regionConfig: ChartConfig = React.useMemo(() => {
-    if (regionView === "bar") {
-      return { count: { label: "请求数", color: "var(--series-4)" } }
-    }
-    const config: ChartConfig = { count: { label: "请求数" } }
-    for (const item of regionPieData) {
-      config[item.region] = { label: item.label, color: item.fill }
-    }
-    return config
-  }, [regionView, regionPieData])
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <AdminPageHeader
         title="统计大屏"
-        description="按项目查看请求趋势、客户端版本分布、接口构成与访问活跃度。"
+        description="按项目查看请求趋势、版本采纳、系统构成、来源分布与访问活跃度。"
         icon={BarChart3}
         actions={
           <Button
@@ -424,8 +425,8 @@ export function AnalyticsDashboard() {
         }
       />
 
-      {/* 筛选条整行置于页头下方，作用于下方所有图表（活跃度日历除外，它固定看一年）。 */}
-      <AdminCard className="flex flex-wrap items-center gap-x-4 gap-y-3">
+      {/* 筛选条作用于下方所有图表（活跃度日历除外，它固定看一年）。 */}
+      <AdminCard className="flex flex-wrap items-center gap-x-4 gap-y-3 py-3">
         <h2 className="text-sm font-semibold whitespace-nowrap">统计范围</h2>
         <div className="flex flex-wrap gap-2">
           {RANGE_OPTIONS.map((option, index) => (
@@ -444,490 +445,368 @@ export function AnalyticsDashboard() {
             </button>
           ))}
         </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          统计按小时聚合，{range.granularity === "hour" ? "按小时展示" : "按天汇总展示"}。
-          数据保留时长可在项目管理中调整。
+        <p className="hidden text-xs text-slate-500 lg:block dark:text-slate-400">
+          统计按小时聚合，{range.granularity === "hour" ? "按小时展示" : "按天汇总展示"}
+          。数据保留时长可在项目管理中调整。
         </p>
       </AdminCard>
 
-      {/* min-w-0: 图表的固有宽度否则会撑破容器，让窄屏出现横向滚动。 */}
-      <div className="min-w-0 space-y-6">
-        {error || projectsError ? (
-          <AdminCard className="flex items-center gap-2 text-sm text-rose-500 dark:text-rose-300">
-            <AlertTriangle className="size-4" />
-            {error ?? projectsError}
-          </AdminCard>
-        ) : null}
+      {error || projectsError ? (
+        <AdminCard className="flex items-center gap-2 text-sm text-rose-500 dark:text-rose-300">
+          <AlertTriangle className="size-4" />
+          {error ?? projectsError}
+        </AdminCard>
+      ) : null}
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatTile label="总请求数" value={formatNumber(total)} hint={range.label} />
-          <StatTile
-            label="主流版本"
-            value={topVersion?.version ?? "—"}
-            hint={
-              topVersion
-                ? `占上报客户端 ${(topVersion.share * 100).toFixed(1)}%`
-                : "暂无客户端上报版本"
-            }
-          />
-          <StatTile
-            label="检查更新"
-            value={formatNumber(checkUpdateCount)}
-            hint={percent(checkUpdateCount, total)}
-          />
-          <StatTile
-            label="公告获取"
-            value={formatNumber(announcementCount)}
-            hint={percent(announcementCount, total)}
-          />
-        </div>
-
-        <AdminCard className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">请求趋势</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {selectedProject?.name ?? "未选择项目"} · 峰值 {formatNumber(peak)}
-              </p>
-            </div>
-            <Activity className="size-4 text-slate-400" />
-          </div>
-
-          {seriesData.length === 0 ? (
-            <EmptyHint loading={loading} />
-          ) : (
-            <ChartContainer config={trendConfig} className="aspect-[16/6] w-full">
-              <LineChart data={seriesData} margin={{ left: 4, right: 12, top: 8, bottom: 4 }}>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="label"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  minTickGap={32}
-                />
-                <YAxis tickLine={false} axisLine={false} width={40} allowDecimals={false} />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Line
-                  dataKey="count"
-                  type="monotone"
-                  stroke="var(--color-count)"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4 }}
-                />
-              </LineChart>
-            </ChartContainer>
+      {/*
+        Bento 栅格：手机单列，平板 6 列，桌面 12 列。每张卡自己声明跨度，卡片高度
+        由内容决定而不是强行拉平——数据密度不同的卡硬撑成同高只会留出大片空白。
+        min-w-0 贯穿到底：图表的固有宽度否则会撑破栅格，让窄屏横向滚动。
+      */}
+      <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-6 xl:grid-cols-12">
+        {/* 六个磁贴在桌面一行排满（12 栅格 / 每个 2 格），平板折成两行三列。 */}
+        <StatTile
+          className="md:col-span-2 xl:col-span-2"
+          label="总请求数"
+          value={formatNumber(total)}
+          hint={range.label}
+          spark={sparkline}
+          delta={computeDelta(total, previous?.total ?? 0)}
+        />
+        <StatTile
+          className="md:col-span-2 xl:col-span-2"
+          label="检查更新"
+          value={formatNumber(checkUpdateCount)}
+          hint={percent(checkUpdateCount, total)}
+          delta={computeDelta(checkUpdateCount, countOf(previous, ["VERSION_CHECK_UPDATE"]))}
+        />
+        <StatTile
+          className="md:col-span-2 xl:col-span-2"
+          label="公告获取"
+          value={formatNumber(announcementCount)}
+          hint={percent(announcementCount, total)}
+          delta={computeDelta(
+            announcementCount,
+            countOf(previous, ["ANNOUNCEMENT_LIST", "ANNOUNCEMENT_LATEST"]),
           )}
-        </AdminCard>
+        />
+        <StatTile
+          className="md:col-span-2 xl:col-span-2"
+          label="主流版本"
+          value={topVersion?.label ?? "—"}
+          hint={
+            topVersion
+              ? `占上报客户端 ${percent(topVersion.count, versionTotal)}`
+              : "暂无客户端上报版本"
+          }
+        />
+        {/* 错误数与评分没有上一区间的数据，不显示环比——留空好过编一个。 */}
+        <StatTile
+          className="md:col-span-2 xl:col-span-2"
+          label="错误日志"
+          value={formatNumber(errorCount)}
+          hint={logLevels ? `共 ${formatNumber(logLevels.total)} 条日志` : "暂无日志"}
+          higherIsBetter={false}
+        />
+        <StatTile
+          className="md:col-span-2 xl:col-span-2"
+          label="平均评分"
+          value={ratings?.average_rating ? ratings.average_rating.toFixed(1) : "—"}
+          hint={
+            ratings && ratings.total > 0 ? `${formatNumber(ratings.total)} 条反馈` : "暂无用户反馈"
+          }
+        />
 
-        {/* 客户端版本分布：图表与明细并排，左看形态、右看具体占比。 */}
-        <div className="grid min-w-0 gap-6 xl:grid-cols-2">
-          <AdminCard className="min-w-0 space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">客户端版本分布</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  来自 check-update 上报的 current_version · 共 {formatNumber(versionTotal)} 次上报
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <ChartViewToggle value={versionView} onChange={setVersionView} label="版本分布" />
-                <Layers className="size-4 text-slate-400" />
-              </div>
-            </div>
-
-            {versionData.length === 0 ? (
-              <EmptyHint loading={loading} emptyText="所选范围内没有客户端上报版本。" />
-            ) : versionView === "bar" ? (
-              <ChartContainer config={versionConfig} className="aspect-[4/3] w-full">
-                <BarChart
-                  data={versionData}
-                  layout="vertical"
-                  margin={{ left: 8, right: 40, top: 4, bottom: 4 }}
+        <ChartCard
+          className="md:col-span-6 xl:col-span-8"
+          title="请求趋势"
+          subtitle={`${selectedProject?.name ?? "未选择项目"} · 峰值 ${formatNumber(peak)}`}
+          icon={Activity}
+          actions={
+            <div
+              role="group"
+              aria-label="趋势拆分维度"
+              className="flex rounded-full border border-slate-900/15 p-0.5 text-xs dark:border-white/20"
+            >
+              {TREND_MODES.map((mode) => (
+                <button
+                  key={mode.value}
+                  type="button"
+                  aria-pressed={trendMode === mode.value}
+                  onClick={() => setTrendMode(mode.value)}
+                  className={`rounded-full px-2.5 py-1 transition ${
+                    trendMode === mode.value
+                      ? "bg-sky-500/20 text-sky-900 dark:text-sky-100"
+                      : "text-slate-500 hover:bg-slate-900/5 dark:text-slate-400 dark:hover:bg-white/10"
+                  }`}
                 >
-                  <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-                  <XAxis type="number" dataKey="count" hide allowDecimals={false} />
-                  {/* Identity lives on the axis here, so every tick must render. */}
-                  <YAxis
-                    type="category"
-                    dataKey="version"
-                    tickLine={false}
-                    axisLine={false}
-                    width={92}
-                    interval={0}
-                  />
-                  <ChartTooltip content={<ChartTooltipContent hideLabel />} />
-                  <Bar dataKey="count" fill="var(--color-count)" radius={4} barSize={14} />
-                </BarChart>
-              </ChartContainer>
-            ) : (
-              <ChartContainer config={versionConfig} className="aspect-square max-h-[300px] w-full">
-                <PieChart>
-                  <ChartTooltip content={<ChartTooltipContent nameKey="version" hideLabel />} />
-                  {/* isAnimationActive={false}: see the platform pie below. */}
-                  <Pie
-                    data={versionPieData}
-                    dataKey="count"
-                    nameKey="version"
-                    innerRadius={48}
-                    outerRadius={96}
-                    strokeWidth={2}
-                    isAnimationActive={false}
-                  />
-                  <ChartLegend content={<ChartLegendContent nameKey="version" />} />
-                </PieChart>
-              </ChartContainer>
-            )}
-          </AdminCard>
-
-          <AdminCard className="min-w-0 space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold">版本占比明细</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                按上报数降序，占比以全部上报为分母
-              </p>
+                  {mode.label}
+                </button>
+              ))}
             </div>
+          }
+        >
+          {trendPoints.length === 0 ? (
+            <ChartPlaceholder loading={trendLoading} />
+          ) : trendMode === "total" || !timeseries?.series?.length ? (
+            <TrendLineChart
+              points={trendPoints}
+              granularity={timeseries?.granularity ?? range.granularity}
+              className="aspect-[16/9] w-full sm:aspect-[16/7]"
+            />
+          ) : (
+            <StackedTrendChart
+              series={timeseries.series}
+              granularity={timeseries.granularity}
+              naming={trendMode}
+              className="aspect-[16/9] w-full sm:aspect-[16/7]"
+            />
+          )}
+        </ChartCard>
 
-            {versionData.length === 0 ? (
-              <EmptyHint loading={loading} emptyText="所选范围内没有客户端上报版本。" />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-xs text-slate-500 dark:text-slate-400">
-                    <tr className="border-b border-slate-900/10 dark:border-white/10">
-                      <th className="py-2 text-left font-medium">版本</th>
-                      <th className="py-2 text-right font-medium">上报数</th>
-                      <th className="py-2 text-right font-medium">占比</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {versionData.map((item) => (
-                      <tr
-                        key={item.version}
-                        className="border-b border-slate-900/5 last:border-0 dark:border-white/5"
-                      >
-                        <td className="py-2 font-mono text-xs">{item.version}</td>
-                        <td className="py-2 text-right tabular-nums">{formatNumber(item.count)}</td>
-                        <td className="py-2 text-right tabular-nums">
-                          {(item.share * 100).toFixed(1)}%
-                        </td>
-                      </tr>
-                    ))}
-                    {versionTailCount > 0 ? (
-                      <tr className="text-slate-500 dark:text-slate-400">
-                        <td className="py-2 text-xs">其他版本</td>
-                        <td className="py-2 text-right tabular-nums">
-                          {formatNumber(versionTailCount)}
-                        </td>
-                        <td className="py-2 text-right tabular-nums">
-                          {percent(versionTailCount, versionTotal)}
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </AdminCard>
-        </div>
+        <ChartCard
+          className="md:col-span-6 xl:col-span-4"
+          title="来源平台"
+          subtitle="按 SDK 声明或 User-Agent 推断"
+          icon={MonitorSmartphone}
+        >
+          {platformItems.length === 0 ? (
+            <ChartPlaceholder loading={loading} />
+          ) : (
+            <DistributionChart
+              items={platformItems}
+              view="donut"
+              measureLabel="请求数"
+              className="aspect-[4/3] w-full"
+            />
+          )}
+        </ChartCard>
 
-        <div className="grid min-w-0 gap-6 xl:grid-cols-2">
-          <AdminCard className="min-w-0 space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold">接口构成</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">各公开接口请求次数</p>
-            </div>
+        <ChartCard
+          className="md:col-span-6 xl:col-span-7"
+          title="版本采纳曲线"
+          subtitle={`头部 ${ADOPTION_SERIES_LIMIT} 个版本的上报量变化，看新版推广得多快`}
+          icon={TrendingUp}
+        >
+          {adoptionSeries.length === 0 ? (
+            <ChartPlaceholder loading={loading} emptyText="所选范围内没有客户端上报版本。" />
+          ) : (
+            <StackedTrendChart
+              series={adoptionSeries}
+              granularity={adoption?.granularity ?? range.granularity}
+              naming="raw"
+              className="aspect-[16/9] w-full sm:aspect-[16/7]"
+            />
+          )}
+        </ChartCard>
 
-            {endpointData.length === 0 ? (
-              <EmptyHint loading={loading} />
-            ) : (
-              <ChartContainer config={endpointConfig} className="aspect-[4/3] w-full">
-                <BarChart
-                  data={endpointData}
-                  layout="vertical"
-                  margin={{ left: 8, right: 40, top: 4, bottom: 4 }}
-                >
-                  <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-                  <XAxis type="number" dataKey="count" hide allowDecimals={false} />
-                  {/* interval={0} forces every category label: this chart carries
-                        identity on the axis, so a skipped tick is an unlabeled bar. */}
-                  <YAxis
-                    type="category"
-                    dataKey="label"
-                    tickLine={false}
-                    axisLine={false}
-                    width={92}
-                    interval={0}
-                  />
-                  <ChartTooltip content={<ChartTooltipContent hideLabel />} />
-                  <Bar dataKey="count" fill="var(--color-count)" radius={4} barSize={14} />
-                </BarChart>
-              </ChartContainer>
-            )}
-          </AdminCard>
+        <ChartCard
+          className="md:col-span-6 xl:col-span-5"
+          title="客户端版本分布"
+          subtitle={`来自 check-update 上报 · 共 ${formatNumber(versionTotal)} 次`}
+          icon={Layers}
+          actions={
+            <ChartViewToggle value={versionView} onChange={setVersionView} label="版本分布" />
+          }
+        >
+          {versionItems.length === 0 ? (
+            <ChartPlaceholder loading={loading} emptyText="所选范围内没有客户端上报版本。" />
+          ) : (
+            <DistributionChart
+              items={versionItems}
+              view={versionView}
+              measureLabel="上报数"
+              barColor="var(--series-2)"
+              extraTail={versionTail}
+              labelWidth={84}
+            />
+          )}
+        </ChartCard>
 
-          <AdminCard className="min-w-0 space-y-4">
-            <div>
-              <h2 className="text-lg font-semibold">来源平台</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                由 SDK 声明或 User-Agent 推断
-              </p>
-            </div>
+        <ChartCard
+          className="md:col-span-6 xl:col-span-5"
+          title="系统版本分布"
+          subtitle={`调用方系统 · 共 ${formatNumber(platformVersionTotal)} 次请求`}
+          icon={MonitorSmartphone}
+          actions={
+            <ChartViewToggle
+              value={platformVersionView}
+              onChange={setPlatformVersionView}
+              label="系统版本分布"
+            />
+          }
+        >
+          {platformVersionItems.length === 0 ? (
+            <ChartPlaceholder loading={loading} emptyText="所选范围内没有系统版本记录。" />
+          ) : (
+            <DistributionChart
+              items={platformVersionItems}
+              view={platformVersionView}
+              measureLabel="请求数"
+              extraTail={platformVersionTail}
+              labelWidth={104}
+              labelMaxChars={14}
+              className="aspect-[4/5] w-full sm:aspect-[4/3]"
+            />
+          )}
+        </ChartCard>
 
-            {platformData.length === 0 ? (
-              <EmptyHint loading={loading} />
-            ) : (
-              <ChartContainer
-                config={platformConfig}
-                className="aspect-square max-h-[280px] w-full"
-              >
-                <PieChart>
-                  <ChartTooltip content={<ChartTooltipContent nameKey="platform" hideLabel />} />
-                  {/* isAnimationActive={false} is required, not cosmetic: with
-                        recharts 3.9 on React 19 the Pie entry animation renders no
-                        sectors at all, leaving an invisible chart with only a legend. */}
-                  <Pie
-                    data={platformData}
-                    dataKey="count"
-                    nameKey="platform"
-                    innerRadius={48}
-                    outerRadius={96}
-                    strokeWidth={2}
-                    isAnimationActive={false}
-                  />
-                  <ChartLegend content={<ChartLegendContent nameKey="platform" />} />
-                </PieChart>
-              </ChartContainer>
-            )}
-          </AdminCard>
-        </div>
+        <ChartCard
+          className="md:col-span-6 xl:col-span-7"
+          title="系统版本明细"
+          subtitle="按请求数降序，占比以全部请求为分母"
+          icon={Table2}
+        >
+          {platformVersionItems.length === 0 ? (
+            <ChartPlaceholder loading={loading} emptyText="所选范围内没有系统版本记录。" />
+          ) : (
+            <ShareTable
+              items={platformVersionItems}
+              total={platformVersionTotal}
+              categoryHeader="系统"
+              measureHeader="请求数"
+              tailCount={platformVersionTail}
+              tailLabel="其他系统版本"
+            />
+          )}
+        </ChartCard>
 
-        {/* 来源地区：图表看形态，右侧表格给出可读的国家名与占比。 */}
-        <div className="grid min-w-0 gap-6 xl:grid-cols-2">
-          <AdminCard className="min-w-0 space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">来源地区</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  按调用方 IP 解析的国家/地区
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <ChartViewToggle value={regionView} onChange={setRegionView} label="地区分布" />
-                <Globe2 className="size-4 text-slate-400" />
-              </div>
-            </div>
+        <ChartCard
+          className="md:col-span-6 xl:col-span-5"
+          title="来源地区"
+          subtitle="按调用方 IP 解析的国家/地区"
+          icon={Globe2}
+          actions={<ChartViewToggle value={regionView} onChange={setRegionView} label="来源地区" />}
+        >
+          {regionItems.length === 0 ? (
+            <ChartPlaceholder loading={loading} />
+          ) : (
+            <DistributionChart
+              items={regionItems}
+              view={regionView}
+              measureLabel="请求数"
+              barColor="var(--series-4)"
+              labelWidth={88}
+            />
+          )}
+        </ChartCard>
 
-            {regionData.length === 0 ? (
-              <EmptyHint loading={loading} />
-            ) : regionView === "bar" ? (
-              <ChartContainer config={regionConfig} className="aspect-[4/3] w-full">
-                <BarChart
-                  data={regionData}
-                  layout="vertical"
-                  margin={{ left: 8, right: 40, top: 4, bottom: 4 }}
-                >
-                  <CartesianGrid horizontal={false} strokeDasharray="3 3" />
-                  <XAxis type="number" dataKey="count" hide allowDecimals={false} />
-                  <YAxis
-                    type="category"
-                    dataKey="label"
-                    tickLine={false}
-                    axisLine={false}
-                    width={92}
-                    interval={0}
-                  />
-                  <ChartTooltip content={<ChartTooltipContent hideLabel />} />
-                  <Bar dataKey="count" fill="var(--color-count)" radius={4} barSize={14} />
-                </BarChart>
-              </ChartContainer>
-            ) : (
-              <ChartContainer config={regionConfig} className="aspect-square max-h-[300px] w-full">
-                <PieChart>
-                  <ChartTooltip content={<ChartTooltipContent nameKey="region" hideLabel />} />
-                  <Pie
-                    data={regionPieData}
-                    dataKey="count"
-                    nameKey="region"
-                    innerRadius={48}
-                    outerRadius={96}
-                    strokeWidth={2}
-                    isAnimationActive={false}
-                  />
-                  <ChartLegend content={<ChartLegendContent nameKey="region" />} />
-                </PieChart>
-              </ChartContainer>
-            )}
-          </AdminCard>
+        <ChartCard
+          className="md:col-span-6 xl:col-span-7"
+          title="国内省份分布"
+          subtitle="按省级请求量着色，悬停查看省名与占比"
+          icon={MapPin}
+        >
+          <ChinaProvinceMap data={provinceData} loading={loading} />
+        </ChartCard>
 
-          <AdminCard className="min-w-0 space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold">国内省份分布</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  按省份请求量着色，悬停查看省名与占比
-                </p>
-              </div>
-              <MapPin className="size-4 text-slate-400" />
-            </div>
+        <ChartCard
+          className="md:col-span-6 xl:col-span-4"
+          title="接口构成"
+          subtitle="各公开接口的请求次数"
+          icon={BarChart3}
+          actions={
+            <ChartViewToggle value={endpointView} onChange={setEndpointView} label="接口构成" />
+          }
+        >
+          {endpointItems.length === 0 ? (
+            <ChartPlaceholder loading={loading} />
+          ) : (
+            <DistributionChart
+              items={endpointItems}
+              view={endpointView}
+              measureLabel="请求数"
+              labelWidth={92}
+              className="aspect-[4/5] w-full sm:aspect-[4/3]"
+            />
+          )}
+        </ChartCard>
 
-            <ChinaProvinceMap data={provinceData} loading={loading} />
-          </AdminCard>
-        </div>
+        <ChartCard
+          className="md:col-span-3 xl:col-span-4"
+          title="日志等级分布"
+          subtitle={logLevels ? `共 ${formatNumber(logLevels.total)} 条日志` : "范围内的日志上报"}
+          icon={ScrollText}
+        >
+          {!logLevels || logLevels.total === 0 ? (
+            <ChartPlaceholder loading={loading} emptyText="所选范围内没有日志上报。" />
+          ) : (
+            <DistributionChart
+              items={logItems}
+              view="bar"
+              measureLabel="条数"
+              labelWidth={64}
+              className="aspect-[4/3] w-full"
+            />
+          )}
+        </ChartCard>
 
-        <AdminCard className="min-w-0 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">活跃度日历</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                近一年每日请求量，不随上方统计范围变化
-              </p>
-            </div>
-            <CalendarDays className="size-4 text-slate-400" />
-          </div>
+        <ChartCard
+          className="md:col-span-3 xl:col-span-4"
+          title="反馈评分分布"
+          subtitle={
+            ratings?.average_rating
+              ? `平均 ${ratings.average_rating.toFixed(1)} 分 · ${formatNumber(ratings.unrated)} 条未评分`
+              : "范围内的用户反馈"
+          }
+          icon={MessageSquareHeart}
+        >
+          {!ratings || ratings.total === 0 ? (
+            <ChartPlaceholder loading={loading} emptyText="所选范围内没有用户反馈。" />
+          ) : (
+            <DistributionChart
+              items={ratingItems}
+              view="bar"
+              measureLabel="条数"
+              labelWidth={56}
+              className="aspect-[4/3] w-full"
+            />
+          )}
+        </ChartCard>
+
+        <ChartCard
+          className="col-span-full"
+          title="活跃度日历"
+          subtitle="近一年每日请求量，不随上方统计范围变化"
+          icon={CalendarDays}
+        >
           <ActivityCalendar points={calendar?.data ?? []} loading={loading} />
-        </AdminCard>
+        </ChartCard>
 
-        <AdminCard className="min-w-0 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold">访问热力图</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {range.label}内按「星期 × 小时」折叠的请求量（按来源当地时区），用于定位用户活跃时段
-              </p>
-            </div>
-            <Flame className="size-4 text-slate-400" />
-          </div>
+        <ChartCard
+          className="md:col-span-6 xl:col-span-7"
+          title="访问热力图"
+          subtitle={`${range.label}内按「星期 × 小时」折叠（按来源当地时区），用于定位用户活跃时段`}
+          icon={Flame}
+        >
           <RequestHeatmap cells={heatmap?.data ?? []} loading={loading} />
-        </AdminCard>
+        </ChartCard>
 
-        <AdminCard className="space-y-4">
-          <div>
-            <h2 className="text-lg font-semibold">明细数据</h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400">按接口列出请求次数与占比</p>
-          </div>
-          <EndpointTable rows={endpointData} total={total} />
-        </AdminCard>
+        <ChartCard
+          className="md:col-span-6 xl:col-span-5"
+          title="接口明细"
+          subtitle="按接口列出请求次数与占比"
+          icon={Table2}
+        >
+          {endpointItems.length === 0 ? (
+            <ChartPlaceholder loading={loading} />
+          ) : (
+            <ShareTable
+              items={endpointItems}
+              total={total}
+              categoryHeader="接口"
+              measureHeader="请求数"
+            />
+          )}
+        </ChartCard>
       </div>
     </div>
   )
 }
 
-/**
- * Bar/pie switch for a single card.
- *
- * Bar is the default because it ranks reliably at any category count; the pie
- * is there for the "what share of the fleet" reading, which a bar chart makes
- * you compute yourself.
- */
-function ChartViewToggle({
-  value,
-  onChange,
-  label,
-}: {
-  value: ChartView
-  onChange: (next: ChartView) => void
-  label: string
-}) {
-  const options: Array<{ view: ChartView; icon: typeof BarChart3; title: string }> = [
-    { view: "bar", icon: BarChart3, title: "柱状图" },
-    { view: "pie", icon: ChartPie, title: "饼状图" },
-  ]
-
-  return (
-    <div
-      role="group"
-      aria-label={`${label}视图切换`}
-      className="flex rounded-full border border-slate-900/15 p-0.5 dark:border-white/20"
-    >
-      {options.map((option) => {
-        const Icon = option.icon
-        const active = value === option.view
-        return (
-          <button
-            key={option.view}
-            type="button"
-            title={option.title}
-            aria-label={option.title}
-            aria-pressed={active}
-            onClick={() => onChange(option.view)}
-            className={`rounded-full px-2.5 py-1 transition ${
-              active
-                ? "bg-sky-500/20 text-sky-900 dark:text-sky-100"
-                : "text-slate-500 hover:bg-slate-900/5 dark:text-slate-400 dark:hover:bg-white/10"
-            }`}
-          >
-            <Icon className="size-3.5" />
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-function StatTile({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return (
-    <AdminCard className="space-y-1">
-      <p className="text-xs tracking-wide text-slate-500 uppercase dark:text-slate-400">{label}</p>
-      <p className="font-mono text-2xl font-semibold tabular-nums">{value}</p>
-      <p className="text-xs text-slate-500 dark:text-slate-400">{hint}</p>
-    </AdminCard>
-  )
-}
-
-function EmptyHint({ loading, emptyText }: { loading: boolean; emptyText?: string }) {
-  return (
-    <div className="flex h-40 items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-      {loading ? (
-        <>
-          <Loader2 className="size-4 animate-spin" />
-          加载中…
-        </>
-      ) : (
-        (emptyText ?? "所选范围内暂无请求记录。")
-      )}
-    </div>
-  )
-}
-
-/**
- * The table view is the relief for the palette's sub-3:1 contrast slots: every
- * value is readable as text, not by color alone.
- */
-function EndpointTable({
-  rows,
-  total,
-}: {
-  rows: { endpoint: PublicEndpoint; label: string; count: number }[]
-  total: number
-}) {
-  if (rows.length === 0) {
-    return <p className="text-sm text-slate-500 dark:text-slate-400">暂无数据。</p>
-  }
-
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[360px] text-sm">
-        <thead>
-          <tr className="text-left text-xs text-slate-500 uppercase dark:text-slate-400">
-            <th className="pb-2 font-medium">接口</th>
-            <th className="pb-2 text-right font-medium">请求数</th>
-            <th className="pb-2 text-right font-medium">占比</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.endpoint} className="border-t border-slate-900/10 dark:border-white/10">
-              <td className="py-2">{row.label}</td>
-              <td className="py-2 text-right font-mono tabular-nums">{formatNumber(row.count)}</td>
-              <td className="py-2 text-right text-slate-500 dark:text-slate-400">
-                {percent(row.count, total)}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
+/** 若干接口的请求数之和；概览缺失时为 0，让环比在首次加载时也算得出来。 */
+function countOf(overview: RequestStatsOverview | null, endpoints: PublicEndpoint[]): number {
+  return (overview?.by_endpoint ?? [])
+    .filter((item) => endpoints.includes(item.endpoint))
+    .reduce((sum, item) => sum + item.count, 0)
 }

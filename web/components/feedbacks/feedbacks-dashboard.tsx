@@ -30,27 +30,19 @@ import {
   deleteFeedback,
   listFeedbacks,
   updateFeedback,
-  type ClientPlatform,
   type FeedbackItem,
   type FeedbackMutationInput,
 } from "@/lib/feedbacks-api"
+import { PLATFORM_OPTIONS as platformOptions, type Platform } from "@/lib/platform"
 import { scrollToPageTop } from "@/lib/scroll"
 
 const PAGE_SIZE = 10
-
-const platformOptions: Array<{ label: string; value: ClientPlatform }> = [
-  { label: "iOS", value: "ios" },
-  { label: "Android", value: "android" },
-  { label: "Windows", value: "windows" },
-  { label: "macOS", value: "mac" },
-  { label: "Web", value: "web" },
-]
 
 type FeedbackFormState = {
   user_id: string
   rating: string
   content: string
-  platform: "" | ClientPlatform
+  platform: "" | Platform
   custom_data: string
 }
 
@@ -360,7 +352,7 @@ export function FeedbacksDashboard() {
               onChange={(event) =>
                 setForm((prev) => ({
                   ...prev,
-                  platform: event.target.value as "" | ClientPlatform,
+                  platform: event.target.value as "" | Platform,
                 }))
               }
               className="w-full rounded-xl border border-white/20 bg-white/10 px-3 py-2 text-sm ring-rose-300 transition outline-none focus:ring-2"
@@ -562,7 +554,7 @@ export function FeedbacksDashboard() {
                     onChange={(event) =>
                       setForm((prev) => ({
                         ...prev,
-                        platform: event.target.value as "" | ClientPlatform,
+                        platform: event.target.value as "" | Platform,
                       }))
                     }
                     className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common"
-import { Prisma, PublicEndpoint, StatPlatform } from "@prisma/client"
+import { Platform, Prisma, PublicEndpoint } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
 import { GeoLocationService } from "../geo/geo-location.service"
@@ -16,7 +16,7 @@ export const UNKNOWN_REGION = "UNKNOWN"
 export type RecordRequestInput = {
   projectKey: string
   endpoint: PublicEndpoint
-  platform: StatPlatform
+  platform: Platform
   /** ISO-3166 alpha-2, or a sentinel. Resolved from `ip` when omitted. */
   region?: string
   /** 省/市级行政区划码，仅国内命中时非空；与 region 一起从 `ip` 解析。 */
@@ -30,7 +30,15 @@ export type RecordRequestInput = {
 export type RecordClientVersionInput = {
   projectKey: string
   version: string
-  platform: StatPlatform
+  platform: Platform
+  occurredAt?: number
+}
+
+export type RecordPlatformVersionInput = {
+  projectKey: string
+  platform: Platform
+  /** 归一化后的系统版本明细；空串表示客户端没报，照样计数。 */
+  platformVersion: string
   occurredAt?: number
 }
 
@@ -46,11 +54,17 @@ export type StatsRange = {
 }
 
 export type EndpointBucket = { endpoint: PublicEndpoint; count: number }
-export type PlatformBucket = { platform: StatPlatform; count: number }
+export type PlatformBucket = { platform: Platform; count: number }
+/** 系统版本分布桶。`platformVersion` 为空串表示该平台下未上报明细的那部分流量。 */
+export type PlatformVersionBucket = { platform: Platform; platformVersion: string; count: number }
 export type RegionBucket = { region: string; count: number }
 /** 国内省份分布桶：省级码 + 标准中文省名 + 计数。 */
 export type ProvinceBucket = { code: string; name: string; count: number }
 export type TimeseriesPoint = { bucket: number; count: number }
+/** 一条命名序列，用于堆叠图。`key` 是端点名 / 平台名 / 版本号。 */
+export type TimeseriesSeries = { key: string; data: TimeseriesPoint[] }
+/** 趋势可拆分的维度。都是低基数的枚举列，不会拆出画不动的序列数。 */
+export type TimeseriesGroupBy = "endpoint" | "platform"
 export type ClientVersionBucket = { version: string; count: number }
 /**
  * `weekday` is 0=Sunday..6=Saturday and `hour` is 0..23, folded in each
@@ -104,7 +118,7 @@ export class RequestStatsService {
         ${projectKey},
         ${input.endpoint}::"PublicEndpoint",
         ${hourBucket},
-        ${platform}::"StatPlatform",
+        ${platform}::"Platform",
         ${region},
         ${regionCode ?? ""},
         ${cityCode ?? ""},
@@ -156,7 +170,7 @@ export class RequestStatsService {
         ${projectKey},
         ${version},
         ${hourBucket},
-        ${input.platform}::"StatPlatform",
+        ${input.platform}::"Platform",
         1
       )
       ON CONFLICT ("projectKey", "version", "hourBucket", "platform")
@@ -171,6 +185,45 @@ export class RequestStatsService {
     this.recordClientVersion(input).catch((error: unknown) => {
       this.logger.warn(
         `Failed to record client version stat for ${input.projectKey}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      )
+    })
+  }
+
+  /**
+   * Increment the hourly counter for one client's operating-system version.
+   *
+   * Same atomic upsert-increment as `recordRequest`, for the same reason.
+   * 明细为空串照样计数：不然「多少流量根本没报系统版本」这个问题就无从回答，
+   * 各版本的占比分母也会失真。超长明细在解析阶段已归一为空串。
+   */
+  async recordPlatformVersion(input: RecordPlatformVersionInput): Promise<void> {
+    const projectKey = normalizeProjectKey(input.projectKey)
+    const hourBucket = toHourBucket(input.occurredAt ?? nowSeconds())
+
+    await this.prisma.$executeRaw`
+      INSERT INTO "PlatformVersionStat" ("id", "projectKey", "hourBucket", "platform", "platformVersion", "count")
+      VALUES (
+        gen_random_uuid()::text,
+        ${projectKey},
+        ${hourBucket},
+        ${input.platform}::"Platform",
+        ${input.platformVersion},
+        1
+      )
+      ON CONFLICT ("projectKey", "hourBucket", "platform", "platformVersion")
+      DO UPDATE SET
+        "count" = "PlatformVersionStat"."count" + 1,
+        "updatedAt" = CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)
+    `
+  }
+
+  /** Best-effort counterpart to `recordPlatformVersion`; never fails the caller. */
+  recordPlatformVersionSafely(input: RecordPlatformVersionInput): void {
+    this.recordPlatformVersion(input).catch((error: unknown) => {
+      this.logger.warn(
+        `Failed to record platform version stat for ${input.projectKey}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       )
@@ -291,14 +344,121 @@ export class RequestStatsService {
       totals.set(bucket, (totals.get(bucket) ?? 0) + (row._sum.count ?? 0))
     }
 
-    const points: TimeseriesPoint[] = []
-    const first = this.floorTo(range.startTime, step, shift)
-    const last = this.floorTo(range.endTime, step, shift)
-    for (let bucket = first; bucket <= last; bucket += step) {
-      points.push({ bucket, count: totals.get(bucket) ?? 0 })
+    return this.bucketBoundaries(range, step, shift).map((bucket) => ({
+      bucket,
+      count: totals.get(bucket) ?? 0,
+    }))
+  }
+
+  /**
+   * 同一区间内按维度拆分的多条序列，用于堆叠面积图。
+   *
+   * 与 `getTimeseries` 分开而不是加参数返回两种形状：总量那条线永远要画（堆叠图
+   * 的包络线、KPI 的分母都靠它），调用方总是两个都要，合并成一个方法反而要在
+   * 返回值里塞一个可空字段。
+   *
+   * 每条序列都补齐了全部时间桶的零点：Recharts 的堆叠图按下标对齐各序列，缺桶
+   * 会让后面的点整体错位到错误的时间上。
+   */
+  async getTimeseriesByGroup(
+    projectKey: string,
+    range: StatsRange,
+    granularity: "hour" | "day",
+    groupBy: TimeseriesGroupBy,
+    tzOffsetMinutes = 0,
+  ): Promise<TimeseriesSeries[]> {
+    const step = granularity === "hour" ? HOUR_SECONDS : DAY_SECONDS
+    const shift = granularity === "day" ? tzOffsetMinutes * 60 : 0
+
+    const rows = await this.prisma.apiRequestStat.groupBy({
+      by: ["hourBucket", groupBy],
+      _sum: { count: true },
+      where: this.rangeWhere(projectKey, range),
+    })
+
+    const totalsByKey = new Map<string, Map<number, number>>()
+    for (const row of rows) {
+      const key = String(row[groupBy])
+      const bucket = this.floorTo(row.hourBucket, step, shift)
+      const buckets = totalsByKey.get(key) ?? new Map<number, number>()
+      buckets.set(bucket, (buckets.get(bucket) ?? 0) + (row._sum.count ?? 0))
+      totalsByKey.set(key, buckets)
     }
 
-    return points
+    const boundaries = this.bucketBoundaries(range, step, shift)
+
+    return (
+      [...totalsByKey.entries()]
+        .map(([key, buckets]) => ({
+          key,
+          data: boundaries.map((bucket) => ({ bucket, count: buckets.get(bucket) ?? 0 })),
+          total: [...buckets.values()].reduce((sum, count) => sum + count, 0),
+        }))
+        // 大的在前，前端的配色与图例顺序才稳定，不会因为某小时的抖动而换位。
+        .sort((a, b) => b.total - a.total || a.key.localeCompare(b.key))
+        .map(({ key, data }) => ({ key, data }))
+    )
+  }
+
+  /**
+   * 各客户端版本的上报量随时间变化，用于看新版本推广得多快。
+   *
+   * 只返回区间内总量最大的 `limit` 个版本：一个跑了一年的项目上报过的版本可能
+   * 上百个，全画出来既看不清也传得慢。被截掉的尾巴不单独成序列，调用方用
+   * `getTimeseries` 的总量减去各序列即可还原，口径与其他图表一致。
+   */
+  async getVersionAdoption(
+    projectKey: string,
+    range: StatsRange,
+    granularity: "hour" | "day",
+    limit: number,
+    tzOffsetMinutes = 0,
+  ): Promise<TimeseriesSeries[]> {
+    const step = granularity === "hour" ? HOUR_SECONDS : DAY_SECONDS
+    const shift = granularity === "day" ? tzOffsetMinutes * 60 : 0
+
+    const rows = await this.prisma.clientVersionStat.groupBy({
+      by: ["hourBucket", "version"],
+      _sum: { count: true },
+      where: {
+        projectKey: normalizeProjectKey(projectKey),
+        hourBucket: { gte: toHourBucket(range.startTime), lte: range.endTime },
+      },
+    })
+
+    const totalsByVersion = new Map<string, Map<number, number>>()
+    const grandTotals = new Map<string, number>()
+    for (const row of rows) {
+      const bucket = this.floorTo(row.hourBucket, step, shift)
+      const count = row._sum.count ?? 0
+      const buckets = totalsByVersion.get(row.version) ?? new Map<number, number>()
+      buckets.set(bucket, (buckets.get(bucket) ?? 0) + count)
+      totalsByVersion.set(row.version, buckets)
+      grandTotals.set(row.version, (grandTotals.get(row.version) ?? 0) + count)
+    }
+
+    const boundaries = this.bucketBoundaries(range, step, shift)
+
+    return [...totalsByVersion.entries()]
+      .sort(
+        (a, b) =>
+          (grandTotals.get(b[0]) ?? 0) - (grandTotals.get(a[0]) ?? 0) || a[0].localeCompare(b[0]),
+      )
+      .slice(0, limit)
+      .map(([version, buckets]) => ({
+        key: version,
+        data: boundaries.map((bucket) => ({ bucket, count: buckets.get(bucket) ?? 0 })),
+      }))
+  }
+
+  /** 区间内全部桶的起点，含无流量的空桶。 */
+  private bucketBoundaries(range: StatsRange, step: number, shift: number): number[] {
+    const boundaries: number[] = []
+    const last = this.floorTo(range.endTime, step, shift)
+    for (let bucket = this.floorTo(range.startTime, step, shift); bucket <= last; bucket += step) {
+      boundaries.push(bucket)
+    }
+    return boundaries
   }
 
   /**
@@ -336,6 +496,45 @@ export class RequestStatsService {
     const buckets = rows
       .map((row) => ({ version: row.version, count: row._sum.count ?? 0 }))
       .sort((a, b) => b.count - a.count || a.version.localeCompare(b.version))
+
+    const total = buckets.reduce((sum, bucket) => sum + bucket.count, 0)
+
+    return { total, buckets: buckets.slice(0, limit) }
+  }
+
+  /**
+   * 系统版本分布，降序。回答「Windows 用户里还有多少留在 10」这类问题。
+   *
+   * 与 `getClientVersionBreakdown` 同样返回全量 `total` 而非分页后的和，让调用方
+   * 在 `limit` 截尾后仍能算出真实占比。排序键带上平台与版本，保证 count 相同的
+   * 桶顺序稳定，前端不会因为刷新而抖动。
+   */
+  async getPlatformVersionBreakdown(
+    projectKey: string,
+    range: StatsRange,
+    limit: number,
+  ): Promise<{ total: number; buckets: PlatformVersionBucket[] }> {
+    const rows = await this.prisma.platformVersionStat.groupBy({
+      by: ["platform", "platformVersion"],
+      _sum: { count: true },
+      where: {
+        projectKey: normalizeProjectKey(projectKey),
+        hourBucket: { gte: toHourBucket(range.startTime), lte: range.endTime },
+      },
+    })
+
+    const buckets = rows
+      .map((row) => ({
+        platform: row.platform,
+        platformVersion: row.platformVersion,
+        count: row._sum.count ?? 0,
+      }))
+      .sort(
+        (a, b) =>
+          b.count - a.count ||
+          a.platform.localeCompare(b.platform) ||
+          a.platformVersion.localeCompare(b.platformVersion),
+      )
 
     const total = buckets.reduce((sum, bucket) => sum + bucket.count, 0)
 

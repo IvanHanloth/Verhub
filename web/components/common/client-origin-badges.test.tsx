@@ -26,6 +26,19 @@ describe("ClientOriginBadges", () => {
     expect(screen.getByText("verhub-sdk/1.0")).toBeInTheDocument()
   })
 
+  it("appends the OS version to the platform badge", () => {
+    render(<ClientOriginBadges origin={{ platform: "windows", platform_version: "11" }} />)
+
+    expect(screen.getByText("Windows 11")).toBeInTheDocument()
+  })
+
+  it("does not repeat the platform name when the detail already carries it", () => {
+    // 发行版形态的明细自带平台名，拼起来会变成「Linux linux mint 21」。
+    render(<ClientOriginBadges origin={{ platform: "linux", platform_version: "linux mint 21" }} />)
+
+    expect(screen.getByText("linux mint 21")).toBeInTheDocument()
+  })
+
   it("collapses the duplicate city/region names providers often return", () => {
     render(
       <ClientOriginBadges

@@ -1,13 +1,13 @@
 import { requestJson } from "@/lib/api-client"
-
-export type ClientPlatform = "ios" | "android" | "windows" | "mac" | "web"
+import type { Platform } from "@/lib/platform"
 
 export type FeedbackItem = {
   id: string
   user_id: string | null
   rating: number | null
   content: string
-  platform: ClientPlatform | null
+  platform: Platform | null
+  platform_version: string | null
   custom_data: unknown
   /** Server-observed caller origin; null on rows submitted before it was captured. */
   ip: string | null
@@ -28,7 +28,8 @@ export type FeedbackMutationInput = {
   user_id?: string
   rating?: number
   content?: string
-  platform?: ClientPlatform
+  platform?: Platform
+  platform_version?: string
   custom_data?: Record<string, unknown>
 }
 

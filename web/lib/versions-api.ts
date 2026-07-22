@@ -1,6 +1,5 @@
 import { requestJson } from "@/lib/api-client"
-
-export type ClientPlatform = "ios" | "android" | "windows" | "mac" | "web"
+import type { Platform } from "@/lib/platform"
 
 export type VersionDownloadLink = {
   url: string
@@ -21,8 +20,8 @@ export type VersionItem = {
   is_preview: boolean
   is_milestone?: boolean
   is_deprecated?: boolean
-  platforms?: ClientPlatform[]
-  platform: ClientPlatform | null
+  platforms?: Platform[]
+  platform: Platform | null
   custom_data: Record<string, unknown> | null
   published_at: number
   created_at: number
@@ -44,8 +43,8 @@ export type CreateVersionInput = {
   is_preview?: boolean
   is_milestone?: boolean
   is_deprecated?: boolean
-  platforms?: ClientPlatform[]
-  platform?: ClientPlatform
+  platforms?: Platform[]
+  platform?: Platform
   custom_data?: Record<string, unknown>
   published_at?: number
 }
@@ -62,10 +61,10 @@ export type GithubReleaseVersionPreview = {
   is_preview: boolean
   is_milestone?: boolean
   is_deprecated?: boolean
-  platforms?: ClientPlatform[]
+  platforms?: Platform[]
   custom_data: Record<string, unknown>
   published_at: number
-  platform?: ClientPlatform
+  platform?: Platform
 }
 
 export type CheckVersionUpdateInput = {

@@ -26,10 +26,10 @@ import {
   normalizeVersionTag,
   parseDownloadLinks,
   resolveDownloadData,
-  toClientPlatform,
-  toClientPlatforms,
+  toPlatforms,
   toVersionItem,
 } from "./version-mapping"
+import { toPlatform } from "../common/platform"
 import type { VersionItem, VersionListResponse } from "./types"
 import { normalizeProjectKey, nowSeconds } from "./types"
 
@@ -218,8 +218,8 @@ export class VersionsService {
           isPreview,
           isMilestone: dto.is_milestone ?? false,
           isDeprecated: dto.is_deprecated ?? false,
-          platforms: toClientPlatforms(dto.platforms, dto.platform),
-          platform: toClientPlatform(dto.platform),
+          platforms: toPlatforms(dto.platforms, dto.platform),
+          platform: toPlatform(dto.platform),
           customData: dto.custom_data as Prisma.InputJsonValue | undefined,
           publishedAt,
         },
@@ -364,9 +364,9 @@ export class VersionsService {
           isDeprecated: dto.is_deprecated,
           platforms:
             dto.platforms !== undefined || dto.platform !== undefined
-              ? toClientPlatforms(dto.platforms, dto.platform)
+              ? toPlatforms(dto.platforms, dto.platform)
               : undefined,
-          platform: toClientPlatform(dto.platform),
+          platform: toPlatform(dto.platform),
           customData: dto.custom_data as Prisma.InputJsonValue | undefined,
           publishedAt: nextPublishedAt,
         },

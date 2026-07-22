@@ -5,7 +5,9 @@
  * (VersionsService, GithubReleaseService, VersionUpdateCheckService).
  */
 
-import { Prisma, ClientPlatform } from "@prisma/client"
+import { Prisma, Platform } from "@prisma/client"
+
+import type { PlatformValue } from "../common/platform"
 
 /** API-facing version item with snake_case fields. */
 export type VersionItem = {
@@ -21,8 +23,8 @@ export type VersionItem = {
   is_preview: boolean
   is_milestone: boolean
   is_deprecated: boolean
-  platforms: Array<"ios" | "android" | "windows" | "mac" | "web">
-  platform: "ios" | "android" | "windows" | "mac" | "web" | null
+  platforms: PlatformValue[]
+  platform: PlatformValue | null
   custom_data: Prisma.JsonValue | null
   published_at: number
   created_at: number
@@ -72,8 +74,8 @@ export type VersionRecord = {
   isPreview: boolean
   isMilestone: boolean
   isDeprecated: boolean
-  platforms: ClientPlatform[]
-  platform: ClientPlatform | null
+  platforms: Platform[]
+  platform: Platform | null
   customData: Prisma.JsonValue | null
   downloadLinks: Prisma.JsonValue | null
   publishedAt: number

@@ -1,8 +1,7 @@
 import { requestJson } from "@/lib/api-client"
+import type { Platform } from "@/lib/platform"
 
 export type LogLevel = 0 | 1 | 2 | 3
-
-export type ClientPlatform = "ios" | "android" | "windows" | "mac" | "web"
 
 export type LogItem = {
   id: string
@@ -17,7 +16,8 @@ export type LogItem = {
   country_name: string | null
   region_name: string | null
   city: string | null
-  platform: ClientPlatform | null
+  platform: Platform | null
+  platform_version: string | null
   created_at: number
 }
 

@@ -1,11 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common"
 
-import { Prisma, ClientPlatform, LogLevel } from "@prisma/client"
+import { Prisma, Platform, LogLevel } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
 import { buildDedupHash, resolveDedupWindowSeconds, stableStringify } from "../common/dedup"
 import { normalizeProjectKey, nowSeconds } from "../common/utils"
-import { fromClientPlatform } from "../versions/version-mapping"
+import { fromPlatform, type PlatformValue } from "../common/platform"
 import type { ClientOrigin } from "../geo/client-origin.service"
 import { QueryLogsDto } from "./dto/query-logs.dto"
 import { UploadLogDto } from "./dto/upload-log.dto"
@@ -22,7 +22,8 @@ type LogItem = {
   country_name: string | null
   region_name: string | null
   city: string | null
-  platform: "ios" | "android" | "windows" | "mac" | "web" | null
+  platform: PlatformValue | null
+  platform_version: string | null
   created_at: number
 }
 
@@ -39,7 +40,8 @@ type LogRecord = {
   countryName: string | null
   regionName: string | null
   city: string | null
-  platform: ClientPlatform | null
+  platform: Platform | null
+  platformVersion: string | null
   createdAt: number
 }
 
@@ -159,6 +161,7 @@ export class LogsService {
         regionName: origin.regionName,
         city: origin.city,
         platform: origin.platform,
+        platformVersion: origin.platformVersion,
         dedupHash,
       },
     })
@@ -244,7 +247,8 @@ export class LogsService {
       country_name: log.countryName,
       region_name: log.regionName,
       city: log.city,
-      platform: fromClientPlatform(log.platform),
+      platform: fromPlatform(log.platform),
+      platform_version: log.platformVersion,
       created_at: log.createdAt,
     }
   }

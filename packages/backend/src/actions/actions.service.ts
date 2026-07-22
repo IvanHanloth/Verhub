@@ -1,10 +1,10 @@
 import { Injectable, NotFoundException } from "@nestjs/common"
-import { ClientPlatform, Prisma } from "@prisma/client"
+import { Platform, Prisma } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
 import { buildDedupHash, resolveDedupWindowSeconds, stableStringify } from "../common/dedup"
 import { normalizeProjectKey, nowSeconds } from "../common/utils"
-import { fromClientPlatform } from "../versions/version-mapping"
+import { fromPlatform, type PlatformValue } from "../common/platform"
 import type { ClientOrigin } from "../geo/client-origin.service"
 import { CreateActionDto } from "./dto/create-action.dto"
 import { CreateActionRecordDto } from "./dto/create-action-record.dto"
@@ -32,7 +32,8 @@ type ActionRecordItem = {
   country_name: string | null
   region_name: string | null
   city: string | null
-  platform: "ios" | "android" | "windows" | "mac" | "web" | null
+  platform: PlatformValue | null
+  platform_version: string | null
 }
 
 type ActionRecordRecord = {
@@ -46,7 +47,8 @@ type ActionRecordRecord = {
   countryName: string | null
   regionName: string | null
   city: string | null
-  platform: ClientPlatform | null
+  platform: Platform | null
+  platformVersion: string | null
   createdAt: number
 }
 
@@ -228,6 +230,7 @@ export class ActionsService {
         regionName: origin.regionName,
         city: origin.city,
         platform: origin.platform,
+        platformVersion: origin.platformVersion,
         dedupHash,
       },
     })
@@ -293,7 +296,8 @@ export class ActionsService {
       country_name: record.countryName,
       region_name: record.regionName,
       city: record.city,
-      platform: fromClientPlatform(record.platform),
+      platform: fromPlatform(record.platform),
+      platform_version: record.platformVersion,
     }
   }
 }

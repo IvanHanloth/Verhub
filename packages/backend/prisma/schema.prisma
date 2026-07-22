@@ -19,23 +19,23 @@ enum LogLevel {
   ERROR
 }
 
-enum ClientPlatform {
+/// 平台维度，发布目标（版本/公告）与来源统计共用一套取值。
+///
+/// 只有这七个粗粒度分类，具体系统版本走独立的 `platformVersion` 自由文本
+/// （"11" / "ubuntu 24.04" / "26"），不再往枚举里堆 Windows 11、Ubuntu 这类值：
+/// 枚举一旦细化就必须随发行版更新，而统计需要的恰恰是稳定的分组维度。
+///
+/// `WEB` 只在客户端显式声明时产生——浏览器 UA 本身带真实 OS，UA 推断永远给出
+/// 具体系统而非 WEB；它保留下来是因为版本/公告的「Web 版」是有意义的发布目标。
+/// `OTHERS` 是兜底：识别不出、未声明、或该平台不在上述分类中。
+enum Platform {
+  WINDOWS
+  LINUX
+  MACOS
   IOS
   ANDROID
-  WINDOWS
-  MAC
   WEB
-}
-
-/// Platform dimension for request statistics. Mirrors ClientPlatform but adds
-/// UNKNOWN, since a caller may send no SDK platform hint and no parseable UA.
-enum StatPlatform {
-  IOS
-  ANDROID
-  WINDOWS
-  MAC
-  WEB
-  UNKNOWN
+  OTHERS
 }
 
 /// Public endpoints tracked by request statistics. One member per public route;
@@ -87,7 +87,7 @@ model ApiKey {
 }
 
 model Project {
-  projectKey                         String              @id
+  projectKey                         String                @id
   name                               String
   repoUrl                            String?
   description                        String?
@@ -107,9 +107,9 @@ model Project {
   /// When the webhook secret was last set or regenerated, in Unix seconds.
   githubWebhookSecretUpdatedAt       Int?
   /// How long hourly request statistics are kept, in days. Capped at 365.
-  statsRetentionDays                 Int                 @default(365)
-  createdAt                          Int                 @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  updatedAt                          Int                 @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  statsRetentionDays                 Int                   @default(365)
+  createdAt                          Int                   @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt                          Int                   @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   versions                           Version[]
   announcements                      Announcement[]
   feedbacks                          Feedback[]
@@ -117,6 +117,7 @@ model Project {
   actions                            Action[]
   requestStats                       ApiRequestStat[]
   clientVersionStats                 ClientVersionStat[]
+  platformVersionStats               PlatformVersionStat[]
 }
 
 /// Hourly rollup of public API requests, one row per
@@ -134,7 +135,7 @@ model ApiRequestStat {
   endpoint   PublicEndpoint
   /// Unix seconds truncated to the start of the hour (UTC).
   hourBucket Int
-  platform   StatPlatform   @default(UNKNOWN)
+  platform   Platform       @default(OTHERS)
   region     String         @default("UNKNOWN")
   /// 省/市级行政区划码（GB/T 2260），仅 region=CN 时非空；境外/未定位为空串。
   /// 空串而非 NULL：Postgres unique 视 NULL 互异，会破坏 upsert-increment（同 region/platform 的理由）。
@@ -161,20 +162,47 @@ model ApiRequestStat {
 /// signal an operator wants to see, so coercing it into a known release would
 /// destroy the finding. Shares the retention sweep with `ApiRequestStat`.
 model ClientVersionStat {
-  id         String       @id @default(cuid())
+  id         String   @id @default(cuid())
   projectKey String
   /// Client-reported version string, trimmed. Never null; unreported calls are not recorded.
   version    String
   /// Unix seconds truncated to the start of the hour (UTC).
   hourBucket Int
-  platform   StatPlatform @default(UNKNOWN)
-  count      Int          @default(0)
-  createdAt  Int          @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  updatedAt  Int          @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  platform   Platform @default(OTHERS)
+  count      Int      @default(0)
+  createdAt  Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt  Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
   @@unique([projectKey, version, hourBucket, platform])
+  @@index([projectKey, hourBucket])
+  @@index([hourBucket])
+}
+
+/// 客户端系统版本的小时汇总，一行一个 (project, hour, platform, platformVersion)。
+///
+/// 单独一张表而不是给 ApiRequestStat 加一列：那张表已经是
+/// endpoint×region×省×市 的笛卡尔积，再乘一个自由文本维度会成倍放大行数，
+/// 而「系统版本分布」根本不需要按端点或地区下钻。
+///
+/// `platformVersion` 是归一化后的自由文本（小写、去掉与 platform 重复的前缀），
+/// 空串表示客户端没报——空串而非 NULL 的理由同 ApiRequestStat.regionCode。
+/// 与 ApiRequestStat 共用保留期清理。
+model PlatformVersionStat {
+  id              String   @id @default(cuid())
+  projectKey      String
+  /// Unix seconds truncated to the start of the hour (UTC).
+  hourBucket      Int
+  platform        Platform @default(OTHERS)
+  platformVersion String   @default("")
+  count           Int      @default(0)
+  createdAt       Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt       Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
+
+  @@unique([projectKey, hourBucket, platform, platformVersion])
   @@index([projectKey, hourBucket])
   @@index([hourBucket])
 }
@@ -225,22 +253,24 @@ model Action {
 }
 
 model ActionRecord {
-  id          String          @id @default(cuid())
-  actionId    String
-  http        Json?
-  customData  Json?
+  id              String    @id @default(cuid())
+  actionId        String
+  http            Json?
+  customData      Json?
   /// Caller origin, captured at submit time. See the `Log` model for why these
   /// are columns rather than keys inside `http`.
-  ip          String?
-  userAgent   String?
-  countryCode String?
-  countryName String?
-  regionName  String?
-  city        String?
-  platform    ClientPlatform?
+  ip              String?
+  userAgent       String?
+  countryCode     String?
+  countryName     String?
+  regionName      String?
+  city            String?
+  platform        Platform?
+  /// 客户端上报或从 UA 解析出的系统版本明细，如 "11" / "ubuntu 24.04"；见 `Feedback.platformVersion`。
+  platformVersion String?
   /// Fingerprint for near-duplicate suppression; see `Log.dedupHash`.
-  dedupHash   String?
-  createdAt   Int             @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  dedupHash       String?
+  createdAt       Int       @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   action Action @relation(fields: [actionId], references: [id], onDelete: Cascade)
 
@@ -249,7 +279,7 @@ model ActionRecord {
 }
 
 model Version {
-  id                String           @id @default(cuid())
+  id                String     @id @default(cuid())
   projectKey        String
   version           String
   comparableVersion String?
@@ -257,16 +287,16 @@ model Version {
   content           String?
   downloadUrl       String?
   downloadLinks     Json?
-  forced            Boolean          @default(false)
-  isLatest          Boolean          @default(false)
-  isPreview         Boolean          @default(false)
-  isMilestone       Boolean          @default(false)
-  isDeprecated      Boolean          @default(false)
-  platforms         ClientPlatform[] @default([])
-  platform          ClientPlatform?
+  forced            Boolean    @default(false)
+  isLatest          Boolean    @default(false)
+  isPreview         Boolean    @default(false)
+  isMilestone       Boolean    @default(false)
+  isDeprecated      Boolean    @default(false)
+  platforms         Platform[] @default([])
+  platform          Platform?
   customData        Json?
-  publishedAt       Int              @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  createdAt         Int              @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  publishedAt       Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  createdAt         Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
@@ -275,17 +305,17 @@ model Version {
 }
 
 model Announcement {
-  id          String           @id @default(cuid())
+  id          String     @id @default(cuid())
   projectKey  String
   title       String
   content     String
-  isPinned    Boolean          @default(false)
-  isHidden    Boolean          @default(false)
-  platforms   ClientPlatform[] @default([])
+  isPinned    Boolean    @default(false)
+  isHidden    Boolean    @default(false)
+  platforms   Platform[] @default([])
   author      String?
-  publishedAt Int              @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  createdAt   Int              @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  updatedAt   Int              @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  publishedAt Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  createdAt   Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt   Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
@@ -293,24 +323,28 @@ model Announcement {
 }
 
 model Feedback {
-  id          String          @id @default(cuid())
-  projectKey  String
-  userId      String?
-  rating      Int?
-  content     String
+  id              String    @id @default(cuid())
+  projectKey      String
+  userId          String?
+  rating          Int?
+  content         String
   /// Declared by the client when it submits, else inferred from the User-Agent.
-  platform    ClientPlatform?
-  customData  Json?
+  platform        Platform?
+  /// 系统版本明细（`platform_version` 字段、`x-verhub-platform-version` 头，或从
+  /// UA 解析），如 "11" / "ubuntu 24.04" / "26"。与 platform 分开存：platform 是
+  /// 固定分组维度，这里是随发行版无限增长的自由文本。null 表示无从得知。
+  platformVersion String?
+  customData      Json?
   /// Caller origin, captured at submit time. See the `Log` model.
-  ip          String?
-  userAgent   String?
-  countryCode String?
-  countryName String?
-  regionName  String?
-  city        String?
+  ip              String?
+  userAgent       String?
+  countryCode     String?
+  countryName     String?
+  regionName      String?
+  city            String?
   /// Fingerprint for near-duplicate suppression; see `Log.dedupHash`.
-  dedupHash   String?
-  createdAt   Int             @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  dedupHash       String?
+  createdAt       Int       @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
@@ -319,31 +353,33 @@ model Feedback {
 }
 
 model Log {
-  id          String          @id @default(cuid())
-  projectKey  String
-  level       LogLevel
-  content     String
-  deviceInfo  Json?
-  customData  Json?
+  id              String    @id @default(cuid())
+  projectKey      String
+  level           LogLevel
+  content         String
+  deviceInfo      Json?
+  customData      Json?
   /// Caller origin, captured at submit time. Stored as columns rather than
   /// inside `deviceInfo` because that field is client-supplied and therefore
   /// forgeable, while these are observed server-side — mixing the two would
   /// make it impossible to tell which is which when triaging.
-  ip          String?
-  userAgent   String?
+  ip              String?
+  userAgent       String?
   /// ISO-3166 alpha-2 / `LOCAL`; null when the address could not be placed.
-  countryCode String?
-  countryName String?
+  countryCode     String?
+  countryName     String?
   /// Sub-national area (province/state), as reported by the geo provider.
-  regionName  String?
-  city        String?
+  regionName      String?
+  city            String?
   /// Inferred from the User-Agent; the log upload API has no platform field.
-  platform    ClientPlatform?
+  platform        Platform?
+  /// 同 `Feedback.platformVersion`；日志上报只能从 UA 解析。
+  platformVersion String?
   /// Fingerprint of the payload plus caller, for near-duplicate suppression.
   /// A crashing client retries the same line every few seconds; keeping only
   /// the first within a short window preserves the signal without the flood.
-  dedupHash   String?
-  createdAt   Int             @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  dedupHash       String?
+  createdAt       Int       @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 

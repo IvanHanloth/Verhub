@@ -1,4 +1,4 @@
-import { PublicEndpoint, StatPlatform } from "@prisma/client"
+import { Platform, PublicEndpoint } from "@prisma/client"
 
 import { RequestStatsService, toHourBucket } from "./request-stats.service"
 
@@ -10,6 +10,9 @@ function createPrismaMock() {
       groupBy: jest.fn(),
     },
     clientVersionStat: {
+      groupBy: jest.fn(),
+    },
+    platformVersionStat: {
       groupBy: jest.fn(),
     },
   }
@@ -54,7 +57,7 @@ describe("RequestStatsService.recordRequest", () => {
     await service.recordRequest({
       projectKey: "  VerHub ",
       endpoint: PublicEndpoint.VERSION_CHECK_UPDATE,
-      platform: StatPlatform.ANDROID,
+      platform: Platform.ANDROID,
       occurredAt: 1784191655,
     })
 
@@ -64,7 +67,7 @@ describe("RequestStatsService.recordRequest", () => {
     expect(values).toContain("verhub")
     expect(values).toContain(1784188800)
     expect(values).toContain(PublicEndpoint.VERSION_CHECK_UPDATE)
-    expect(values).toContain(StatPlatform.ANDROID)
+    expect(values).toContain(Platform.ANDROID)
     expect(values).toContain("UNKNOWN")
   })
 
@@ -76,7 +79,7 @@ describe("RequestStatsService.recordRequest", () => {
     await service.recordRequest({
       projectKey: "verhub",
       endpoint: PublicEndpoint.VERSION_LATEST,
-      platform: StatPlatform.IOS,
+      platform: Platform.IOS,
       ip: "203.0.113.9",
     })
 
@@ -92,7 +95,7 @@ describe("RequestStatsService.recordRequest", () => {
     await service.recordRequest({
       projectKey: "verhub",
       endpoint: PublicEndpoint.VERSION_LATEST,
-      platform: StatPlatform.ANDROID,
+      platform: Platform.ANDROID,
       ip: "203.0.113.9",
     })
 
@@ -110,7 +113,7 @@ describe("RequestStatsService.recordRequest", () => {
     await service.recordRequest({
       projectKey: "verhub",
       endpoint: PublicEndpoint.VERSION_LATEST,
-      platform: StatPlatform.IOS,
+      platform: Platform.IOS,
       ip: "203.0.113.9",
     })
 
@@ -127,7 +130,7 @@ describe("RequestStatsService.recordRequest", () => {
     await service.recordRequest({
       projectKey: "verhub",
       endpoint: PublicEndpoint.VERSION_LATEST,
-      platform: StatPlatform.IOS,
+      platform: Platform.IOS,
       ip: "203.0.113.9",
       region: "DE",
     })
@@ -147,7 +150,7 @@ describe("RequestStatsService.recordRequestSafely", () => {
       service.recordRequestSafely({
         projectKey: "verhub",
         endpoint: PublicEndpoint.VERSION_LATEST,
-        platform: StatPlatform.WEB,
+        platform: Platform.WEB,
       }),
     ).not.toThrow()
 
@@ -282,13 +285,13 @@ describe("RequestStatsService.recordClientVersion", () => {
     await service.recordClientVersion({
       projectKey: "  VerHub ",
       version: " 2.3.0 ",
-      platform: StatPlatform.MAC,
+      platform: Platform.MACOS,
       occurredAt: 1784191655,
     })
 
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(1)
     const values = prisma.$executeRaw.mock.calls[0]!.slice(1)
-    expect(values).toEqual(["verhub", "2.3.0", 1784188800, StatPlatform.MAC])
+    expect(values).toEqual(["verhub", "2.3.0", 1784188800, Platform.MACOS])
   })
 
   it("skips a blank version rather than creating an empty bucket", async () => {
@@ -298,7 +301,7 @@ describe("RequestStatsService.recordClientVersion", () => {
     await service.recordClientVersion({
       projectKey: "verhub",
       version: "   ",
-      platform: StatPlatform.WEB,
+      platform: Platform.WEB,
     })
 
     expect(prisma.$executeRaw).not.toHaveBeenCalled()
@@ -311,10 +314,130 @@ describe("RequestStatsService.recordClientVersion", () => {
     await service.recordClientVersion({
       projectKey: "verhub",
       version: "9".repeat(65),
-      platform: StatPlatform.WEB,
+      platform: Platform.WEB,
     })
 
     expect(prisma.$executeRaw).not.toHaveBeenCalled()
+  })
+})
+
+describe("RequestStatsService.getTimeseriesByGroup", () => {
+  it("pads every series to the same buckets and orders them by total", async () => {
+    const prisma = createPrismaMock()
+    // 只有第二个小时有 IOS 流量；补零后两条序列的下标才对得上同一批时间桶。
+    prisma.apiRequestStat.groupBy.mockResolvedValue([
+      { hourBucket: 3600, platform: Platform.WINDOWS, _sum: { count: 5 } },
+      { hourBucket: 7200, platform: Platform.WINDOWS, _sum: { count: 7 } },
+      { hourBucket: 7200, platform: Platform.IOS, _sum: { count: 2 } },
+    ])
+    const service = new RequestStatsService(prisma as never, createGeoMock() as never)
+
+    const series = await service.getTimeseriesByGroup(
+      "verhub",
+      { startTime: 3600, endTime: 7200 },
+      "hour",
+      "platform",
+    )
+
+    expect(series).toEqual([
+      {
+        key: Platform.WINDOWS,
+        data: [
+          { bucket: 3600, count: 5 },
+          { bucket: 7200, count: 7 },
+        ],
+      },
+      {
+        key: Platform.IOS,
+        data: [
+          { bucket: 3600, count: 0 },
+          { bucket: 7200, count: 2 },
+        ],
+      },
+    ])
+  })
+})
+
+describe("RequestStatsService.getVersionAdoption", () => {
+  it("keeps only the biggest versions and pads their buckets", async () => {
+    const prisma = createPrismaMock()
+    prisma.clientVersionStat.groupBy.mockResolvedValue([
+      { hourBucket: 3600, version: "2.3.0", _sum: { count: 10 } },
+      { hourBucket: 7200, version: "2.3.0", _sum: { count: 20 } },
+      { hourBucket: 7200, version: "2.2.1", _sum: { count: 4 } },
+      { hourBucket: 3600, version: "1.0.0", _sum: { count: 1 } },
+    ])
+    const service = new RequestStatsService(prisma as never, createGeoMock() as never)
+
+    const series = await service.getVersionAdoption(
+      "verhub",
+      { startTime: 3600, endTime: 7200 },
+      "hour",
+      2,
+    )
+
+    // 截掉的尾巴不单独成序列：调用方用 client-versions 的 total 减出来即可。
+    expect(series.map((item) => item.key)).toEqual(["2.3.0", "2.2.1"])
+    expect(series[1]!.data).toEqual([
+      { bucket: 3600, count: 0 },
+      { bucket: 7200, count: 4 },
+    ])
+  })
+})
+
+describe("RequestStatsService.recordPlatformVersion", () => {
+  it("normalizes the project key and buckets the timestamp by hour", async () => {
+    const prisma = createPrismaMock()
+    const service = new RequestStatsService(prisma as never, createGeoMock() as never)
+
+    await service.recordPlatformVersion({
+      projectKey: "  VerHub ",
+      platform: Platform.WINDOWS,
+      platformVersion: "11",
+      occurredAt: 1784191655,
+    })
+
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1)
+    const values = prisma.$executeRaw.mock.calls[0]!.slice(1)
+    expect(values).toEqual(["verhub", 1784188800, Platform.WINDOWS, "11"])
+  })
+
+  it("still counts a request that reported no OS version", async () => {
+    // 空明细也要落行，否则「多少流量没报系统版本」无从回答，占比分母也会失真。
+    const prisma = createPrismaMock()
+    const service = new RequestStatsService(prisma as never, createGeoMock() as never)
+
+    await service.recordPlatformVersion({
+      projectKey: "verhub",
+      platform: Platform.OTHERS,
+      platformVersion: "",
+    })
+
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("RequestStatsService.getPlatformVersionBreakdown", () => {
+  it("sorts by count and totals every bucket, not just the returned page", async () => {
+    const prisma = createPrismaMock()
+    prisma.platformVersionStat.groupBy.mockResolvedValue([
+      { platform: Platform.WINDOWS, platformVersion: "10", _sum: { count: 30 } },
+      { platform: Platform.WINDOWS, platformVersion: "11", _sum: { count: 50 } },
+      { platform: Platform.LINUX, platformVersion: "ubuntu 24.04", _sum: { count: 20 } },
+    ])
+    const service = new RequestStatsService(prisma as never, createGeoMock() as never)
+
+    const result = await service.getPlatformVersionBreakdown(
+      "verhub",
+      { startTime: 0, endTime: 100 },
+      2,
+    )
+
+    expect(result.total).toBe(100)
+    expect(result.buckets).toEqual([
+      { platform: Platform.WINDOWS, platformVersion: "11", count: 50 },
+      { platform: Platform.WINDOWS, platformVersion: "10", count: 30 },
+    ])
   })
 })
 

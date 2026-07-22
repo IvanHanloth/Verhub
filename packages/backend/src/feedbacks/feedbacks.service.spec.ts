@@ -29,6 +29,7 @@ const emptyOrigin = {
   regionName: null,
   city: null,
   platform: null,
+  platformVersion: null,
 }
 
 describe("FeedbacksService", () => {
@@ -168,6 +169,7 @@ describe("FeedbacksService", () => {
       rating: 3,
       content: "ok",
       platform: null,
+      platformVersion: null,
       customData: null,
       createdAt: 2000,
     })
@@ -250,6 +252,7 @@ describe("FeedbacksService", () => {
       rating: null,
       content: "changed",
       platform: null,
+      platformVersion: null,
       customData: null,
       createdAt: 3000,
     })

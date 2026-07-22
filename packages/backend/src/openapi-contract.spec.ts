@@ -26,6 +26,7 @@ import { HealthController } from "./health/health.controller"
 import { LogsController } from "./logs/logs.controller"
 import { ProjectsPublicController } from "./projects/projects-public.controller"
 import { ProjectsController } from "./projects/projects.controller"
+import { ContentStatsController } from "./stats/content-stats.controller"
 import { RequestStatsController } from "./stats/request-stats.controller"
 import { VersionsCompatController } from "./versions/versions-compat.controller"
 import { VersionsPublicController } from "./versions/versions-public.controller"
@@ -36,6 +37,7 @@ import { GithubWebhookSecretController } from "./webhooks/github-webhook-secret.
 
 const CONTROLLERS = [
   ActionsController,
+  ContentStatsController,
   AnnouncementsCompatController,
   AnnouncementsController,
   AnnouncementsPublicController,

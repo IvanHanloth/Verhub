@@ -26,6 +26,7 @@ const emptyOrigin = {
   regionName: null,
   city: null,
   platform: null,
+  platformVersion: null,
 }
 
 describe("LogsService", () => {
@@ -78,6 +79,7 @@ describe("LogsService", () => {
         regionName: "Tokyo",
         city: "Tokyo",
         platform: "WINDOWS" as never,
+        platformVersion: "11",
       },
     )
 
@@ -85,6 +87,7 @@ describe("LogsService", () => {
     expect(result.user_agent).toBe("verhub-sdk/1.0")
     expect(result.country_code).toBe("JP")
     expect(result.platform).toBe("windows")
+    expect(result.platform_version).toBe("11")
   })
 
   it("returns the existing row for an identical upload inside the dedup window", async () => {
@@ -103,6 +106,7 @@ describe("LogsService", () => {
       regionName: null,
       city: null,
       platform: null,
+      platformVersion: null,
       createdAt: 1767225600,
     })
 

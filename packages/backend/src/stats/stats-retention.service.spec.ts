@@ -7,6 +7,7 @@ function createPrismaMock() {
     project: { findMany: jest.fn() },
     apiRequestStat: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
     clientVersionStat: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    platformVersionStat: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
   }
 }
 
@@ -63,19 +64,19 @@ describe("StatsRetentionService.purgeExpiredStats", () => {
     })
   })
 
-  it("ages out client version rollups on the same per-project window", async () => {
+  it("ages out client and platform version rollups on the same per-project window", async () => {
     const prisma = createPrismaMock()
     prisma.project.findMany.mockResolvedValue([{ projectKey: "alpha", statsRetentionDays: 30 }])
     const service = new StatsRetentionService(prisma as never)
 
     await service.purgeExpiredStats()
 
-    expect(prisma.clientVersionStat.deleteMany).toHaveBeenCalledWith({
-      where: { projectKey: "alpha", hourBucket: { lt: now - 30 * DAY } },
-    })
+    const expected = { where: { projectKey: "alpha", hourBucket: { lt: now - 30 * DAY } } }
+    expect(prisma.clientVersionStat.deleteMany).toHaveBeenCalledWith(expected)
+    expect(prisma.platformVersionStat.deleteMany).toHaveBeenCalledWith(expected)
   })
 
-  it("reports the total number of rows purged across both tables", async () => {
+  it("reports the total number of rows purged across every table", async () => {
     const prisma = createPrismaMock()
     prisma.project.findMany.mockResolvedValue([
       { projectKey: "alpha", statsRetentionDays: 30 },
@@ -87,8 +88,11 @@ describe("StatsRetentionService.purgeExpiredStats", () => {
     prisma.clientVersionStat.deleteMany
       .mockResolvedValueOnce({ count: 1 })
       .mockResolvedValueOnce({ count: 2 })
+    prisma.platformVersionStat.deleteMany
+      .mockResolvedValueOnce({ count: 5 })
+      .mockResolvedValueOnce({ count: 6 })
     const service = new StatsRetentionService(prisma as never)
 
-    await expect(service.purgeExpiredStats()).resolves.toBe(10)
+    await expect(service.purgeExpiredStats()).resolves.toBe(21)
   })
 })

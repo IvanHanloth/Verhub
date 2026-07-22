@@ -183,12 +183,19 @@ class VerhubPublicApi {
    * @param {string} content 反馈内容
    * @param {string=} userId 用户 ID
    * @param {number=} rating 评分
-   * @param {string=} platform 平台
+   * @param {string=} platform 平台（windows / linux / macos / ios / android / web / others）
+   * @param {string=} platformVersion 系统版本，如 11 / ubuntu 24.04 / 26
    */
-  createFeedback(projectKey, content, userId, rating, platform) {
+  createFeedback(projectKey, content, userId, rating, platform, platformVersion) {
     return this.client.request("POST", "/public/{projectKey}/feedbacks", {
       pathParams: { projectKey },
-      body: compact({ user_id: userId, rating, content, platform }),
+      body: compact({
+        user_id: userId,
+        rating,
+        content,
+        platform,
+        platform_version: platformVersion,
+      }),
     })
   }
 

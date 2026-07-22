@@ -1,14 +1,11 @@
-import { ClientPlatform } from "@prisma/client"
+import { Platform } from "@prisma/client"
 
 import {
-  fromClientPlatform,
-  fromClientPlatforms,
   normalizeDownloadLinks,
   normalizeVersionTag,
   parseDownloadLinks,
   resolveDownloadData,
-  toClientPlatform,
-  toClientPlatforms,
+  toPlatforms,
   toGithubReleaseDownloadLinks,
   toVersionItem,
 } from "./version-mapping"
@@ -31,8 +28,8 @@ describe("toVersionItem", () => {
     isPreview: false,
     isMilestone: false,
     isDeprecated: false,
-    platforms: [ClientPlatform.IOS, ClientPlatform.ANDROID],
-    platform: ClientPlatform.IOS,
+    platforms: [Platform.IOS, Platform.ANDROID],
+    platform: Platform.IOS,
     customData: null,
     publishedAt: 1000,
     createdAt: 900,
@@ -84,70 +81,22 @@ describe("toVersionItem", () => {
 
 // ── Platform conversion ──
 
-describe("toClientPlatform", () => {
-  it("converts lowercase to enum", () => {
-    expect(toClientPlatform("ios")).toBe(ClientPlatform.IOS)
-    expect(toClientPlatform("android")).toBe(ClientPlatform.ANDROID)
-    expect(toClientPlatform("windows")).toBe(ClientPlatform.WINDOWS)
-    expect(toClientPlatform("mac")).toBe(ClientPlatform.MAC)
-    expect(toClientPlatform("web")).toBe(ClientPlatform.WEB)
-  })
-
-  it("returns undefined for undefined", () => {
-    expect(toClientPlatform(undefined)).toBeUndefined()
-  })
-})
-
-describe("toClientPlatforms", () => {
+describe("toPlatforms", () => {
   it("converts array of lowercase platforms", () => {
-    expect(toClientPlatforms(["ios", "android"], undefined)).toEqual([
-      ClientPlatform.IOS,
-      ClientPlatform.ANDROID,
-    ])
+    expect(toPlatforms(["ios", "android"], undefined)).toEqual([Platform.IOS, Platform.ANDROID])
   })
 
   it("deduplicates platform values", () => {
-    expect(toClientPlatforms(["ios", "ios"], undefined)).toEqual([ClientPlatform.IOS])
+    expect(toPlatforms(["ios", "ios"], undefined)).toEqual([Platform.IOS])
   })
 
-  it("falls back to single platform when array is empty", () => {
-    expect(toClientPlatforms([], "mac")).toEqual([ClientPlatform.MAC])
-  })
-
-  it("falls back to single platform when array is undefined", () => {
-    expect(toClientPlatforms(undefined, "web")).toEqual([ClientPlatform.WEB])
+  it("falls back to the legacy single platform when the array is empty", () => {
+    expect(toPlatforms([], "macos")).toEqual([Platform.MACOS])
+    expect(toPlatforms(undefined, "linux")).toEqual([Platform.LINUX])
   })
 
   it("returns empty array when both undefined", () => {
-    expect(toClientPlatforms(undefined, undefined)).toEqual([])
-  })
-})
-
-describe("fromClientPlatforms", () => {
-  it("converts enum array to lowercase strings", () => {
-    expect(fromClientPlatforms([ClientPlatform.IOS, ClientPlatform.WEB])).toEqual(["ios", "web"])
-  })
-
-  it("returns empty array for null", () => {
-    expect(fromClientPlatforms(null)).toEqual([])
-  })
-
-  it("returns empty array for undefined", () => {
-    expect(fromClientPlatforms(undefined)).toEqual([])
-  })
-
-  it("returns empty array for empty array", () => {
-    expect(fromClientPlatforms([])).toEqual([])
-  })
-})
-
-describe("fromClientPlatform", () => {
-  it("converts single enum to lowercase", () => {
-    expect(fromClientPlatform(ClientPlatform.ANDROID)).toBe("android")
-  })
-
-  it("returns null for null", () => {
-    expect(fromClientPlatform(null)).toBeNull()
+    expect(toPlatforms(undefined, undefined)).toEqual([])
   })
 })
 

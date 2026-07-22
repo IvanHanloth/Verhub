@@ -1,4 +1,5 @@
 import { requestJson } from "@/lib/api-client"
+import type { Platform } from "@/lib/platform"
 
 export type AnnouncementItem = {
   id: string
@@ -6,7 +7,7 @@ export type AnnouncementItem = {
   content: string
   is_pinned: boolean
   is_hidden: boolean
-  platforms: Array<"ios" | "android" | "windows" | "mac" | "web">
+  platforms: Platform[]
   author: string | null
   published_at: number
   created_at: number
@@ -23,7 +24,7 @@ export type AnnouncementMutationInput = {
   content: string
   is_pinned?: boolean
   is_hidden?: boolean
-  platforms?: Array<"ios" | "android" | "windows" | "mac" | "web">
+  platforms?: Platform[]
   author?: string
   published_at?: number
 }

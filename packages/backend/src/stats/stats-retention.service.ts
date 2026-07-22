@@ -36,15 +36,18 @@ export class StatsRetentionService {
 
       // Client version rollups age out on the same per-project window; leaving
       // them behind would keep telemetry past the retention the project declared.
-      const [requests, clientVersions] = await Promise.all([
+      const [requests, clientVersions, platformVersions] = await Promise.all([
         this.prisma.apiRequestStat.deleteMany({
           where: { projectKey: project.projectKey, hourBucket: { lt: cutoff } },
         }),
         this.prisma.clientVersionStat.deleteMany({
           where: { projectKey: project.projectKey, hourBucket: { lt: cutoff } },
         }),
+        this.prisma.platformVersionStat.deleteMany({
+          where: { projectKey: project.projectKey, hourBucket: { lt: cutoff } },
+        }),
       ])
-      deleted += requests.count + clientVersions.count
+      deleted += requests.count + clientVersions.count + platformVersions.count
     }
 
     if (deleted > 0) {

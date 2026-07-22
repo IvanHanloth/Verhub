@@ -1,4 +1,5 @@
 import { requestJson } from "@/lib/api-client"
+import type { StatPlatform } from "@/lib/platform"
 
 /** Mirrors the backend `PublicEndpoint` enum. */
 export type PublicEndpoint =
@@ -14,8 +15,7 @@ export type PublicEndpoint =
   | "LOG_UPLOAD"
   | "ACTION_RECORD"
 
-/** Mirrors the backend `StatPlatform` enum. */
-export type StatPlatform = "IOS" | "ANDROID" | "WINDOWS" | "MAC" | "WEB" | "UNKNOWN"
+export type { StatPlatform } from "@/lib/platform"
 
 export type Granularity = "hour" | "day"
 
@@ -33,14 +33,54 @@ export type RequestStatsOverview = {
   by_province: { code: string; name: string; count: number }[]
 }
 
+export type TimeseriesPoint = { bucket: number; count: number }
+
+/** 一条命名序列。各序列的时间桶与总量逐一对齐（含 0 值桶），可直接堆叠。 */
+export type TimeseriesSeries = { key: string; data: TimeseriesPoint[] }
+
+/** 趋势可拆分的维度。都是低基数枚举列，不会拆出画不动的序列数。 */
+export type TimeseriesGroupBy = "endpoint" | "platform"
+
 export type RequestStatsTimeseries = {
   start_time: number
   end_time: number
   granularity: Granularity
   tz_offset_minutes: number
   endpoint: PublicEndpoint | null
+  group_by: TimeseriesGroupBy | null
   /** For `day` granularity the bucket is the instant local midnight started. */
-  data: { bucket: number; count: number }[]
+  data: TimeseriesPoint[]
+  /** 仅在请求时指定 group_by 才非空。 */
+  series: TimeseriesSeries[] | null
+}
+
+export type VersionAdoptionStats = {
+  start_time: number
+  end_time: number
+  granularity: Granularity
+  tz_offset_minutes: number
+  /** 按区间内总上报量降序，最多 limit 条；尾巴不单独成序列。 */
+  series: { version: string; data: TimeseriesPoint[] }[]
+}
+
+export type LogLevelStats = {
+  start_time: number
+  end_time: number
+  total: number
+  /** 恒定四项（0=DEBUG..3=ERROR），该等级没有日志时 count 为 0。 */
+  by_level: { level: number; count: number }[]
+}
+
+export type FeedbackRatingStats = {
+  start_time: number
+  end_time: number
+  /** 范围内反馈总条数，含未打分的。 */
+  total: number
+  unrated: number
+  /** 仅按已打分的条数计算；无人打分时为 null。 */
+  average_rating: number | null
+  /** 恒定五项（1..5 星），缺档也返回 0。 */
+  by_rating: { rating: number; count: number }[]
 }
 
 export type ClientVersionStats = {
@@ -49,6 +89,15 @@ export type ClientVersionStats = {
   /** Across every version in range, not just the returned rows — the share denominator. */
   total: number
   data: { version: string; count: number }[]
+}
+
+export type PlatformVersionStats = {
+  start_time: number
+  end_time: number
+  /** 范围内全部桶的请求总数（不受 limit 截断影响），占比的分母。 */
+  total: number
+  /** `platform_version` 为空串表示该平台下没上报明细的那部分流量。 */
+  data: { platform: StatPlatform; platform_version: string; count: number }[]
 }
 
 export type RequestStatsHeatmap = {
@@ -77,14 +126,7 @@ export const ENDPOINT_LABELS: Record<PublicEndpoint, string> = {
   ACTION_RECORD: "行为记录",
 }
 
-export const PLATFORM_LABELS: Record<StatPlatform, string> = {
-  IOS: "iOS",
-  ANDROID: "Android",
-  WINDOWS: "Windows",
-  MAC: "macOS",
-  WEB: "Web",
-  UNKNOWN: "未知",
-}
+export { STAT_PLATFORM_LABELS as PLATFORM_LABELS } from "@/lib/platform"
 
 /** Sentinel country codes the backend records when an address cannot be placed. */
 export const UNKNOWN_REGION = "UNKNOWN"
@@ -166,6 +208,22 @@ export async function getClientVersionStats(
   )
 }
 
+export async function getPlatformVersionStats(
+  token: string,
+  projectKey: string,
+  range: RangeParams = {},
+  limit?: number,
+  signal?: AbortSignal,
+): Promise<PlatformVersionStats> {
+  return requestJson<PlatformVersionStats>(
+    `/admin/projects/${encodeURIComponent(projectKey)}/stats/requests/platform-versions${toSearchParams(
+      range,
+      { limit: limit === undefined ? undefined : String(limit) },
+    )}`,
+    { token, signal },
+  )
+}
+
 export async function getRequestStatsHeatmap(
   token: string,
   projectKey: string,
@@ -188,12 +246,63 @@ export async function getRequestStatsTimeseries(
   granularity: Granularity = "hour",
   endpoint?: PublicEndpoint,
   signal?: AbortSignal,
+  groupBy?: TimeseriesGroupBy,
 ): Promise<RequestStatsTimeseries> {
   return requestJson<RequestStatsTimeseries>(
     `/admin/projects/${encodeURIComponent(projectKey)}/stats/requests/timeseries${toSearchParams(
       range,
-      { granularity, endpoint, tz_offset_minutes: String(localTzOffsetMinutes()) },
+      {
+        granularity,
+        endpoint,
+        group_by: groupBy,
+        tz_offset_minutes: String(localTzOffsetMinutes()),
+      },
     )}`,
+    { token, signal },
+  )
+}
+
+export async function getVersionAdoptionStats(
+  token: string,
+  projectKey: string,
+  range: RangeParams = {},
+  granularity: Granularity = "day",
+  limit?: number,
+  signal?: AbortSignal,
+): Promise<VersionAdoptionStats> {
+  return requestJson<VersionAdoptionStats>(
+    `/admin/projects/${encodeURIComponent(projectKey)}/stats/requests/version-adoption${toSearchParams(
+      range,
+      {
+        granularity,
+        limit: limit === undefined ? undefined : String(limit),
+        tz_offset_minutes: String(localTzOffsetMinutes()),
+      },
+    )}`,
+    { token, signal },
+  )
+}
+
+export async function getLogLevelStats(
+  token: string,
+  projectKey: string,
+  range: RangeParams = {},
+  signal?: AbortSignal,
+): Promise<LogLevelStats> {
+  return requestJson<LogLevelStats>(
+    `/admin/projects/${encodeURIComponent(projectKey)}/stats/logs${toSearchParams(range)}`,
+    { token, signal },
+  )
+}
+
+export async function getFeedbackRatingStats(
+  token: string,
+  projectKey: string,
+  range: RangeParams = {},
+  signal?: AbortSignal,
+): Promise<FeedbackRatingStats> {
+  return requestJson<FeedbackRatingStats>(
+    `/admin/projects/${encodeURIComponent(projectKey)}/stats/feedbacks${toSearchParams(range)}`,
     { token, signal },
   )
 }

@@ -31,7 +31,7 @@ console.log(project)
 - getLatestPublicVersion(projectKey)
 - listPublicAnnouncements(projectKey, limit, offset)
 - getLatestPublicAnnouncement(projectKey)
-- createFeedback(projectKey, content, userId, rating, platform)
+- createFeedback(projectKey, content, userId, rating, platform, platformVersion)
 - createLog(projectKey, level, content, deviceInfo, customData)
 - createActionRecord(projectKey, actionId, http, customData)
 

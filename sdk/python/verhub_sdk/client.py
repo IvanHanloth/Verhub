@@ -265,20 +265,30 @@ class VerhubPublicApi:
         user_id: Optional[str] = None,
         rating: Optional[int] = None,
         platform: Optional[str] = None,
+        platform_version: Optional[str] = None,
     ) -> Any:
         """
         :param project_key: 项目标识
         :param content: 反馈内容
         :param user_id: 用户 ID
         :param rating: 评分
-        :param platform: 平台
+        :param platform: 平台（windows / linux / macos / ios / android / web / others）
+        :param platform_version: 系统版本，如 11 / ubuntu 24.04 / 26
         :return: 创建结果
         """
         return self._client.request(
             "POST",
             "/public/{projectKey}/feedbacks",
             path_params={"projectKey": project_key},
-            body=_compact_dict({"user_id": user_id, "rating": rating, "content": content, "platform": platform}),
+            body=_compact_dict(
+                {
+                    "user_id": user_id,
+                    "rating": rating,
+                    "content": content,
+                    "platform": platform,
+                    "platform_version": platform_version,
+                }
+            ),
         )
 
     def create_log(
@@ -568,6 +578,7 @@ class VerhubAdminApi:
         rating: Optional[int] = None,
         content: Optional[str] = None,
         platform: Optional[str] = None,
+        platform_version: Optional[str] = None,
     ) -> Any:
         """
         :return: 更新结果
@@ -577,7 +588,14 @@ class VerhubAdminApi:
             "/admin/projects/{projectKey}/feedbacks/{id}",
             auth="bearer",
             path_params={"projectKey": project_key, "id": feedback_id},
-            body=_compact_dict({"rating": rating, "content": content, "platform": platform}),
+            body=_compact_dict(
+                {
+                    "rating": rating,
+                    "content": content,
+                    "platform": platform,
+                    "platform_version": platform_version,
+                }
+            ),
         )
 
     def delete_feedback(self, project_key: str, feedback_id: str) -> Any:

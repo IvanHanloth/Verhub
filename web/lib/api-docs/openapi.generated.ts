@@ -2513,7 +2513,13 @@ export const openApiDocument: OpenApiDocument = {
           $ref: "#/components/parameters/ClientPlatformHeader",
         },
         {
+          $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
+        {
           $ref: "#/components/parameters/ClientPlatformQuery",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformVersionQuery",
         },
       ],
       get: {
@@ -2546,7 +2552,13 @@ export const openApiDocument: OpenApiDocument = {
           $ref: "#/components/parameters/ClientPlatformHeader",
         },
         {
+          $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
+        {
           $ref: "#/components/parameters/ClientPlatformQuery",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformVersionQuery",
         },
       ],
       get: {
@@ -2587,7 +2599,13 @@ export const openApiDocument: OpenApiDocument = {
           $ref: "#/components/parameters/ClientPlatformHeader",
         },
         {
+          $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
+        {
           $ref: "#/components/parameters/ClientPlatformQuery",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformVersionQuery",
         },
       ],
       get: {
@@ -2620,7 +2638,13 @@ export const openApiDocument: OpenApiDocument = {
           $ref: "#/components/parameters/ClientPlatformHeader",
         },
         {
+          $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
+        {
           $ref: "#/components/parameters/ClientPlatformQuery",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformVersionQuery",
         },
       ],
       get: {
@@ -2660,7 +2684,13 @@ export const openApiDocument: OpenApiDocument = {
           $ref: "#/components/parameters/ClientPlatformHeader",
         },
         {
+          $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
+        {
           $ref: "#/components/parameters/ClientPlatformQuery",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformVersionQuery",
         },
         {
           name: "version",
@@ -2700,6 +2730,9 @@ export const openApiDocument: OpenApiDocument = {
         },
         {
           $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformVersionHeader",
         },
       ],
       post: {
@@ -2746,7 +2779,13 @@ export const openApiDocument: OpenApiDocument = {
           $ref: "#/components/parameters/ClientPlatformHeader",
         },
         {
+          $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
+        {
           $ref: "#/components/parameters/ClientPlatformQuery",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformVersionQuery",
         },
       ],
       get: {
@@ -2766,7 +2805,7 @@ export const openApiDocument: OpenApiDocument = {
             in: "query",
             required: false,
             schema: {
-              $ref: "#/components/schemas/ClientPlatform",
+              $ref: "#/components/schemas/Platform",
             },
             description: "平台过滤（仅返回该平台或全平台公告）",
           },
@@ -2796,7 +2835,13 @@ export const openApiDocument: OpenApiDocument = {
           $ref: "#/components/parameters/ClientPlatformHeader",
         },
         {
+          $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
+        {
           $ref: "#/components/parameters/ClientPlatformQuery",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformVersionQuery",
         },
       ],
       get: {
@@ -2810,7 +2855,7 @@ export const openApiDocument: OpenApiDocument = {
             in: "query",
             required: false,
             schema: {
-              $ref: "#/components/schemas/ClientPlatform",
+              $ref: "#/components/schemas/Platform",
             },
             description: "平台过滤（仅返回该平台或全平台公告）",
           },
@@ -2838,6 +2883,9 @@ export const openApiDocument: OpenApiDocument = {
         },
         {
           $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformVersionHeader",
         },
       ],
       post: {
@@ -2974,6 +3022,16 @@ export const openApiDocument: OpenApiDocument = {
               $ref: "#/components/schemas/PublicEndpoint",
             },
           },
+          {
+            name: "group_by",
+            in: "query",
+            description:
+              "额外按维度拆出多条序列（响应的 `series`），用于堆叠面积图。\n总量 `data` 不受影响，始终返回。只开放低基数的枚举维度：\n自由文本维度拆出来的序列数没有上界。\n",
+            schema: {
+              type: "string",
+              enum: ["endpoint", "platform"],
+            },
+          },
         ],
         responses: {
           "200": {
@@ -2982,6 +3040,195 @@ export const openApiDocument: OpenApiDocument = {
               "application/json": {
                 schema: {
                   $ref: "#/components/schemas/RequestStatsTimeseries",
+                },
+              },
+            },
+          },
+          "400": {
+            description: "参数错误（如 start_time > end_time）",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/stats/requests/version-adoption": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Statistics"],
+        summary: "查询版本采纳曲线",
+        description:
+          "各客户端版本的上报量随时间变化，用于看新版本推广得多快、旧版本退得多干净。只返回区间内总量最大的 limit 个版本；被截掉的尾巴不单独成序列，用 client-versions 的 total 减去各序列即可还原。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/StartTime",
+          },
+          {
+            $ref: "#/components/parameters/EndTime",
+          },
+          {
+            $ref: "#/components/parameters/TzOffsetMinutes",
+          },
+          {
+            name: "granularity",
+            in: "query",
+            description: "聚合粒度，默认按天",
+            schema: {
+              type: "string",
+              enum: ["hour", "day"],
+              default: "day",
+            },
+          },
+          {
+            name: "limit",
+            in: "query",
+            description: "最多返回多少条版本序列",
+            schema: {
+              type: "integer",
+              minimum: 1,
+              maximum: 20,
+              default: 6,
+            },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "版本采纳曲线",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/VersionAdoptionStats",
+                },
+              },
+            },
+          },
+          "400": {
+            description: "参数错误（如 start_time > end_time）",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/stats/logs": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Statistics"],
+        summary: "查询日志等级分布",
+        description:
+          "范围内该项目各等级的日志条数。四个等级恒定返回（含 0 条的）——「这个范围内一条 ERROR 都没有」本身就是要传达的信息。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/StartTime",
+          },
+          {
+            $ref: "#/components/parameters/EndTime",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "日志等级分布",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/LogLevelStats",
+                },
+              },
+            },
+          },
+          "400": {
+            description: "参数错误（如 start_time > end_time）",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/stats/feedbacks": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Statistics"],
+        summary: "查询反馈评分分布",
+        description:
+          "范围内该项目的评分直方图与平均分。档位固定 1..5，缺档也会返回 0。未打分的反馈计入 unrated，不并入任何档位：混进 1 星会让平均分变成谎话，丢掉又会让 total 对不上反馈列表条数。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/StartTime",
+          },
+          {
+            $ref: "#/components/parameters/EndTime",
+          },
+        ],
+        responses: {
+          "200": {
+            description: "反馈评分分布",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/FeedbackRatingStats",
                 },
               },
             },
@@ -3048,6 +3295,72 @@ export const openApiDocument: OpenApiDocument = {
               "application/json": {
                 schema: {
                   $ref: "#/components/schemas/ClientVersionStats",
+                },
+              },
+            },
+          },
+          "400": {
+            description: "参数错误（如 start_time > end_time）",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/stats/requests/platform-versions": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Statistics"],
+        summary: "查询客户端系统版本分布",
+        description:
+          "统计调用方的操作系统版本，按次数降序返回，用于判断还有多少用户停留在旧系统上。与「客户端版本分布」的区别：那张表回答装的是本产品哪个版本，这张回答跑在什么系统上。平台取显式声明或 User-Agent 推断，版本明细取 platform_version（也接受混写在 platform 里的形式，服务端会拆开）。未上报版本的流量落在 platform_version 为空串的桶里，照常计入 total。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/StartTime",
+          },
+          {
+            $ref: "#/components/parameters/EndTime",
+          },
+          {
+            name: "limit",
+            in: "query",
+            description: "最多返回多少个系统版本桶，其余计入长尾",
+            schema: {
+              type: "integer",
+              minimum: 1,
+              maximum: 200,
+              default: 30,
+            },
+          },
+        ],
+        responses: {
+          "200": {
+            description: "客户端系统版本分布",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/PlatformVersionStats",
                 },
               },
             },
@@ -3244,6 +3557,9 @@ export const openApiDocument: OpenApiDocument = {
         },
         {
           $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformVersionHeader",
         },
       ],
       post: {
@@ -3632,6 +3948,9 @@ export const openApiDocument: OpenApiDocument = {
         {
           $ref: "#/components/parameters/ClientPlatformHeader",
         },
+        {
+          $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
       ],
       post: {
         tags: ["Actions"],
@@ -3748,22 +4067,22 @@ export const openApiDocument: OpenApiDocument = {
         in: "header",
         required: false,
         description:
-          "客户端平台声明，仅用于请求统计，不影响接口返回内容。\n识别优先级：本请求头 > query 参数 `platform` > 请求体 `platform` 字段 > User-Agent 推断。\n取值大小写不敏感，无法识别时统计为 UNKNOWN。\n建议 SDK 显式声明本请求头：服务端调用的 User-Agent 往往不可靠。\n",
+          "客户端平台声明，仅用于请求统计，不影响接口返回内容。\n识别优先级：本请求头 > query 参数 `platform` > 请求体 `platform` 字段 > User-Agent 推断。\n取值大小写不敏感，无法识别时统计为 OTHERS。\n具体系统版本请用 `x-verhub-platform-version` 单独提交；若把版本混在本字段里\n（如 `Windows 11`、`ubuntu 24.04`），服务端会拆开，平台与版本分别入库。\n建议 SDK 显式声明本请求头：服务端调用的 User-Agent 往往不可靠。\n",
         example: "windows",
         schema: {
+          $ref: "#/components/schemas/Platform",
+        },
+      },
+      ClientPlatformVersionHeader: {
+        name: "x-verhub-platform-version",
+        in: "header",
+        required: false,
+        description:
+          "客户端系统版本明细，仅用于请求统计，不影响接口返回内容。\n自由文本，如 `11`、`ubuntu 24.04`、`26`；超过 32 字符视为无效直接丢弃。\n识别优先级：本请求头 > query 参数 `platform_version` > 请求体 `platform_version`\n字段 > 从 `platform` 中拆出的版本 > User-Agent 推断。\n",
+        example: "11",
+        schema: {
           type: "string",
-          enum: [
-            "ios",
-            "ipados",
-            "android",
-            "windows",
-            "win32",
-            "mac",
-            "macos",
-            "darwin",
-            "web",
-            "browser",
-          ],
+          maxLength: 32,
         },
       },
       ClientPlatformQuery: {
@@ -3773,19 +4092,18 @@ export const openApiDocument: OpenApiDocument = {
         description:
           "客户端平台声明（等价于 `x-verhub-platform` 请求头，优先级低于请求头）。\n仅用于请求统计，不影响接口返回内容。\n",
         schema: {
+          $ref: "#/components/schemas/Platform",
+        },
+      },
+      ClientPlatformVersionQuery: {
+        name: "platform_version",
+        in: "query",
+        required: false,
+        description:
+          "客户端系统版本明细（等价于 `x-verhub-platform-version` 请求头，优先级低于请求头）。\n仅用于请求统计，不影响接口返回内容。\n",
+        schema: {
           type: "string",
-          enum: [
-            "ios",
-            "ipados",
-            "android",
-            "windows",
-            "win32",
-            "mac",
-            "macos",
-            "darwin",
-            "web",
-            "browser",
-          ],
+          maxLength: 32,
         },
       },
       EntityId: {
@@ -4814,8 +5132,8 @@ export const openApiDocument: OpenApiDocument = {
       StatPlatform: {
         type: "string",
         description:
-          "请求来源平台。优先取 SDK 显式声明（`x-verhub-platform` 请求头、\nquery 或 body 的 platform 字段），否则由 User-Agent 推断，\n无法识别时为 UNKNOWN。\n",
-        enum: ["IOS", "ANDROID", "WINDOWS", "MAC", "WEB", "UNKNOWN"],
+          "统计维度上的来源平台，取值同 `Platform` 但为大写形式。\n优先取 SDK 显式声明（`x-verhub-platform` 请求头、query 或 body 的\nplatform 字段），否则由 User-Agent 推断，无法识别时为 OTHERS。\n`WEB` 只在客户端显式声明时出现：浏览器 User-Agent 本身带真实系统，\n推断结果永远是具体系统而非 WEB。\n",
+        enum: ["WINDOWS", "LINUX", "MACOS", "IOS", "ANDROID", "WEB", "OTHERS"],
       },
       RequestStatsOverview: {
         type: "object",
@@ -4978,7 +5296,9 @@ export const openApiDocument: OpenApiDocument = {
           "granularity",
           "tz_offset_minutes",
           "endpoint",
+          "group_by",
           "data",
+          "series",
         ],
         properties: {
           start_time: {
@@ -5007,6 +5327,43 @@ export const openApiDocument: OpenApiDocument = {
               },
             ],
             description: "若查询时指定了接口则回显，否则为 null",
+          },
+          group_by: {
+            oneOf: [
+              {
+                type: "string",
+                enum: ["endpoint", "platform"],
+              },
+              {
+                type: "null",
+              },
+            ],
+            description: "若查询时指定了拆分维度则回显，否则为 null",
+          },
+          series: {
+            oneOf: [
+              {
+                type: "array",
+                items: {
+                  type: "object",
+                  required: ["key", "data"],
+                  properties: {
+                    key: {
+                      type: "string",
+                      description: "该序列的维度取值（端点名或平台名），按区间内总量降序",
+                    },
+                    data: {
+                      $ref: "#/components/schemas/TimeseriesPoints",
+                    },
+                  },
+                },
+              },
+              {
+                type: "null",
+              },
+            ],
+            description:
+              "仅在指定 group_by 时非空。各序列的时间桶与 `data` 逐一对齐（含 0 值桶），\n可直接用作堆叠图。序列之和小于总量的差额应归入「其他」。\n",
           },
           data: {
             type: "array",
@@ -5041,6 +5398,227 @@ export const openApiDocument: OpenApiDocument = {
             {
               bucket: 1760003600,
               count: 287,
+            },
+          ],
+        },
+      },
+      TimeseriesPoints: {
+        type: "array",
+        description: "按时间桶升序，范围内无数据的桶以 0 返回，便于直接绘制曲线。",
+        items: {
+          type: "object",
+          required: ["bucket", "count"],
+          properties: {
+            bucket: {
+              type: "integer",
+              format: "int64",
+              description: "时间桶起点（Unix 秒），口径同 RequestStatsTimeseries.data",
+            },
+            count: {
+              type: "integer",
+            },
+          },
+        },
+      },
+      VersionAdoptionStats: {
+        type: "object",
+        required: ["start_time", "end_time", "granularity", "tz_offset_minutes", "series"],
+        properties: {
+          start_time: {
+            type: "integer",
+            format: "int64",
+          },
+          end_time: {
+            type: "integer",
+            format: "int64",
+          },
+          granularity: {
+            type: "string",
+            enum: ["hour", "day"],
+          },
+          tz_offset_minutes: {
+            type: "integer",
+          },
+          series: {
+            type: "array",
+            description: "按区间内总上报量降序，最多 limit 条",
+            items: {
+              type: "object",
+              required: ["version", "data"],
+              properties: {
+                version: {
+                  type: "string",
+                  description: "客户端自报的版本号原文",
+                },
+                data: {
+                  $ref: "#/components/schemas/TimeseriesPoints",
+                },
+              },
+            },
+          },
+        },
+        example: {
+          start_time: 1760000000,
+          end_time: 1762000000,
+          granularity: "day",
+          tz_offset_minutes: 480,
+          series: [
+            {
+              version: "2.3.0",
+              data: [
+                {
+                  bucket: 1760000000,
+                  count: 120,
+                },
+                {
+                  bucket: 1760086400,
+                  count: 340,
+                },
+              ],
+            },
+            {
+              version: "2.2.1",
+              data: [
+                {
+                  bucket: 1760000000,
+                  count: 480,
+                },
+                {
+                  bucket: 1760086400,
+                  count: 260,
+                },
+              ],
+            },
+          ],
+        },
+      },
+      LogLevelStats: {
+        type: "object",
+        required: ["start_time", "end_time", "total", "by_level"],
+        properties: {
+          start_time: {
+            type: "integer",
+            format: "int64",
+          },
+          end_time: {
+            type: "integer",
+            format: "int64",
+          },
+          total: {
+            type: "integer",
+          },
+          by_level: {
+            type: "array",
+            description: "恒定四项，按等级升序；该等级没有日志时 count 为 0",
+            items: {
+              type: "object",
+              required: ["level", "count"],
+              properties: {
+                level: {
+                  type: "integer",
+                  enum: [0, 1, 2, 3],
+                  description: "0=DEBUG，1=INFO，2=WARN，3=ERROR，与日志上报接口取值一致",
+                },
+                count: {
+                  type: "integer",
+                },
+              },
+            },
+          },
+        },
+        example: {
+          start_time: 1760000000,
+          end_time: 1762000000,
+          total: 1840,
+          by_level: [
+            {
+              level: 0,
+              count: 120,
+            },
+            {
+              level: 1,
+              count: 1500,
+            },
+            {
+              level: 2,
+              count: 180,
+            },
+            {
+              level: 3,
+              count: 40,
+            },
+          ],
+        },
+      },
+      FeedbackRatingStats: {
+        type: "object",
+        required: ["start_time", "end_time", "total", "unrated", "average_rating", "by_rating"],
+        properties: {
+          start_time: {
+            type: "integer",
+            format: "int64",
+          },
+          end_time: {
+            type: "integer",
+            format: "int64",
+          },
+          total: {
+            type: "integer",
+            description: "范围内反馈总条数，含未打分的",
+          },
+          unrated: {
+            type: "integer",
+            description: "未打分的条数，不并入任何档位",
+          },
+          average_rating: {
+            type: ["number", "null"],
+            description: "仅按已打分的条数计算；无人打分时为 null",
+          },
+          by_rating: {
+            type: "array",
+            description: "恒定五项（1..5 星），缺档也返回 0",
+            items: {
+              type: "object",
+              required: ["rating", "count"],
+              properties: {
+                rating: {
+                  type: "integer",
+                  minimum: 1,
+                  maximum: 5,
+                },
+                count: {
+                  type: "integer",
+                },
+              },
+            },
+          },
+        },
+        example: {
+          start_time: 1760000000,
+          end_time: 1762000000,
+          total: 96,
+          unrated: 12,
+          average_rating: 4.3,
+          by_rating: [
+            {
+              rating: 1,
+              count: 3,
+            },
+            {
+              rating: 2,
+              count: 5,
+            },
+            {
+              rating: 3,
+              count: 9,
+            },
+            {
+              rating: 4,
+              count: 22,
+            },
+            {
+              rating: 5,
+              count: 45,
             },
           ],
         },
@@ -5091,6 +5669,71 @@ export const openApiDocument: OpenApiDocument = {
             {
               version: "2.2.1",
               count: 2380,
+            },
+          ],
+        },
+      },
+      PlatformVersionStats: {
+        type: "object",
+        required: ["start_time", "end_time", "total", "data"],
+        properties: {
+          start_time: {
+            type: "integer",
+            format: "int64",
+          },
+          end_time: {
+            type: "integer",
+            format: "int64",
+          },
+          total: {
+            type: "integer",
+            description: "范围内全部系统版本桶的请求总数（不受 limit 截断影响），用于计算占比",
+          },
+          data: {
+            type: "array",
+            description: "按请求数降序，最多返回 limit 条",
+            items: {
+              type: "object",
+              required: ["platform", "platform_version", "count"],
+              properties: {
+                platform: {
+                  $ref: "#/components/schemas/StatPlatform",
+                },
+                platform_version: {
+                  type: "string",
+                  description: "系统版本明细，已归一为小写；空串表示该平台下未上报明细的那部分流量",
+                },
+                count: {
+                  type: "integer",
+                },
+              },
+            },
+          },
+        },
+        example: {
+          start_time: 1760000000,
+          end_time: 1762000000,
+          total: 9600,
+          data: [
+            {
+              platform: "WINDOWS",
+              platform_version: "11",
+              count: 5120,
+            },
+            {
+              platform: "WINDOWS",
+              platform_version: "10",
+              count: 2380,
+            },
+            {
+              platform: "LINUX",
+              platform_version: "ubuntu 24.04",
+              count: 1400,
+            },
+            {
+              platform: "MACOS",
+              platform_version: "",
+              count: 700,
             },
           ],
         },
@@ -5172,9 +5815,11 @@ export const openApiDocument: OpenApiDocument = {
           },
         },
       },
-      ClientPlatform: {
+      Platform: {
         type: "string",
-        enum: ["ios", "android", "windows", "mac", "web"],
+        description:
+          "平台取值，发布目标（版本 / 公告）与来源统计共用一套。提交时大小写不敏感，\n返回时统一为小写。具体系统版本不进本字段，走 `platform_version`。\n`others` 是兜底：识别不出、未声明，或不属于上述分类的平台。\n",
+        enum: ["windows", "linux", "macos", "ios", "android", "web", "others"],
       },
       VersionDownloadLink: {
         type: "object",
@@ -5248,12 +5893,12 @@ export const openApiDocument: OpenApiDocument = {
             format: "int64",
           },
           platform: {
-            $ref: "#/components/schemas/ClientPlatform",
+            $ref: "#/components/schemas/Platform",
           },
           platforms: {
             type: "array",
             items: {
-              $ref: "#/components/schemas/ClientPlatform",
+              $ref: "#/components/schemas/Platform",
             },
           },
           custom_data: {
@@ -5345,12 +5990,12 @@ export const openApiDocument: OpenApiDocument = {
             format: "int64",
           },
           platform: {
-            $ref: "#/components/schemas/ClientPlatform",
+            $ref: "#/components/schemas/Platform",
           },
           platforms: {
             type: "array",
             items: {
-              $ref: "#/components/schemas/ClientPlatform",
+              $ref: "#/components/schemas/Platform",
             },
           },
           custom_data: {
@@ -5438,7 +6083,7 @@ export const openApiDocument: OpenApiDocument = {
           platform: {
             oneOf: [
               {
-                $ref: "#/components/schemas/ClientPlatform",
+                $ref: "#/components/schemas/Platform",
               },
               {
                 type: "null",
@@ -5448,7 +6093,7 @@ export const openApiDocument: OpenApiDocument = {
           platforms: {
             type: "array",
             items: {
-              $ref: "#/components/schemas/ClientPlatform",
+              $ref: "#/components/schemas/Platform",
             },
           },
           custom_data: {
@@ -5552,7 +6197,7 @@ export const openApiDocument: OpenApiDocument = {
           platform: {
             oneOf: [
               {
-                $ref: "#/components/schemas/ClientPlatform",
+                $ref: "#/components/schemas/Platform",
               },
               {
                 type: "null",
@@ -5562,7 +6207,7 @@ export const openApiDocument: OpenApiDocument = {
           platforms: {
             type: "array",
             items: {
-              $ref: "#/components/schemas/ClientPlatform",
+              $ref: "#/components/schemas/Platform",
             },
           },
           published_at: {
@@ -5786,7 +6431,7 @@ export const openApiDocument: OpenApiDocument = {
             type: "array",
             maxItems: 8,
             items: {
-              $ref: "#/components/schemas/ClientPlatform",
+              $ref: "#/components/schemas/Platform",
             },
           },
           author: {
@@ -5846,7 +6491,7 @@ export const openApiDocument: OpenApiDocument = {
             type: "array",
             maxItems: 8,
             items: {
-              $ref: "#/components/schemas/ClientPlatform",
+              $ref: "#/components/schemas/Platform",
             },
           },
           author: {
@@ -5896,7 +6541,7 @@ export const openApiDocument: OpenApiDocument = {
           platforms: {
             type: "array",
             items: {
-              $ref: "#/components/schemas/ClientPlatform",
+              $ref: "#/components/schemas/Platform",
             },
           },
           author: {
@@ -5962,7 +6607,12 @@ export const openApiDocument: OpenApiDocument = {
             maxLength: 4096,
           },
           platform: {
-            $ref: "#/components/schemas/ClientPlatform",
+            $ref: "#/components/schemas/Platform",
+          },
+          platform_version: {
+            type: "string",
+            maxLength: 32,
+            description: "具体系统版本，如 `11`、`ubuntu 24.04`、`26`；与 platform 分开提交。",
           },
           custom_data: {
             type: "object",
@@ -5974,6 +6624,7 @@ export const openApiDocument: OpenApiDocument = {
           rating: 5,
           content: "更新检查很好用。",
           platform: "windows",
+          platform_version: "11",
           custom_data: {
             app_version: "1.2.0",
           },
@@ -5996,7 +6647,12 @@ export const openApiDocument: OpenApiDocument = {
             maxLength: 4096,
           },
           platform: {
-            $ref: "#/components/schemas/ClientPlatform",
+            $ref: "#/components/schemas/Platform",
+          },
+          platform_version: {
+            type: "string",
+            maxLength: 32,
+            description: "具体系统版本，如 `11`、`ubuntu 24.04`、`26`；与 platform 分开提交。",
           },
           custom_data: {
             type: "object",
@@ -6016,6 +6672,7 @@ export const openApiDocument: OpenApiDocument = {
           "rating",
           "content",
           "platform",
+          "platform_version",
           "custom_data",
           "ip",
           "user_agent",
@@ -6041,13 +6698,18 @@ export const openApiDocument: OpenApiDocument = {
           platform: {
             oneOf: [
               {
-                $ref: "#/components/schemas/ClientPlatform",
+                $ref: "#/components/schemas/Platform",
               },
               {
                 type: "null",
               },
             ],
             description: "客户端提交时声明的平台；未声明则由 User-Agent 推断。",
+          },
+          platform_version: {
+            type: ["string", "null"],
+            description:
+              "具体系统版本，如 `11`、`ubuntu 24.04`；客户端未提交且无法从 User-Agent 解析时为 null。",
           },
           custom_data: {
             oneOf: [
@@ -6092,6 +6754,7 @@ export const openApiDocument: OpenApiDocument = {
           rating: 5,
           content: "更新检查很好用。",
           platform: "windows",
+          platform_version: "11",
           custom_data: {
             app_version: "1.2.0",
           },
@@ -6169,6 +6832,7 @@ export const openApiDocument: OpenApiDocument = {
           "region_name",
           "city",
           "platform",
+          "platform_version",
           "created_at",
         ],
         properties: {
@@ -6230,13 +6894,18 @@ export const openApiDocument: OpenApiDocument = {
           platform: {
             oneOf: [
               {
-                $ref: "#/components/schemas/ClientPlatform",
+                $ref: "#/components/schemas/Platform",
               },
               {
                 type: "null",
               },
             ],
             description: "由 User-Agent 推断，日志上报接口本身没有平台字段。",
+          },
+          platform_version: {
+            type: ["string", "null"],
+            description:
+              "具体系统版本，如 `11`、`ubuntu 24.04`；客户端未提交且无法从 User-Agent 解析时为 null。",
           },
           created_at: {
             type: "integer",
@@ -6431,6 +7100,7 @@ export const openApiDocument: OpenApiDocument = {
           "region_name",
           "city",
           "platform",
+          "platform_version",
         ],
         properties: {
           action_record_id: {
@@ -6489,13 +7159,18 @@ export const openApiDocument: OpenApiDocument = {
           platform: {
             oneOf: [
               {
-                $ref: "#/components/schemas/ClientPlatform",
+                $ref: "#/components/schemas/Platform",
               },
               {
                 type: "null",
               },
             ],
             description: "由 SDK 声明或 User-Agent 推断。",
+          },
+          platform_version: {
+            type: ["string", "null"],
+            description:
+              "具体系统版本，如 `11`、`ubuntu 24.04`；客户端未提交且无法从 User-Agent 解析时为 null。",
           },
         },
         example: {

@@ -259,7 +259,8 @@ export class VerhubPublicApi {
    * @param content 反馈内容
    * @param userId 用户 ID
    * @param rating 评分
-   * @param platform 平台
+   * @param platform 平台（windows / linux / macos / ios / android / web / others）
+   * @param platformVersion 系统版本，如 11 / ubuntu 24.04 / 26
    */
   createFeedback(
     projectKey: string,
@@ -267,10 +268,17 @@ export class VerhubPublicApi {
     userId?: string,
     rating?: number,
     platform?: string,
+    platformVersion?: string,
   ) {
     return this.client.request("POST", "/public/{projectKey}/feedbacks", {
       pathParams: { projectKey },
-      body: compact({ user_id: userId, rating, content, platform }),
+      body: compact({
+        user_id: userId,
+        rating,
+        content,
+        platform,
+        platform_version: platformVersion,
+      }),
     })
   }
 
@@ -545,7 +553,8 @@ export class VerhubAdminApi {
    * @param id 反馈 ID
    * @param rating 评分
    * @param content 内容
-   * @param platform 平台
+   * @param platform 平台（windows / linux / macos / ios / android / web / others）
+   * @param platformVersion 系统版本，如 11 / ubuntu 24.04 / 26
    */
   updateFeedback(
     projectKey: string,
@@ -553,11 +562,12 @@ export class VerhubAdminApi {
     rating?: number,
     content?: string,
     platform?: string,
+    platformVersion?: string,
   ) {
     return this.client.request("PATCH", "/admin/projects/{projectKey}/feedbacks/{id}", {
       auth: "bearer",
       pathParams: { projectKey, id },
-      body: compact({ rating, content, platform }),
+      body: compact({ rating, content, platform, platform_version: platformVersion }),
     })
   }
 

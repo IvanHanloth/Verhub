@@ -17,7 +17,8 @@ import { ExpandableMarkdown } from "@/components/markdown/expandable-markdown"
 import { MarkdownContent } from "@/components/markdown/markdown-content"
 import type { AnnouncementItem } from "@/lib/announcements-api"
 import type { ProjectItem } from "@/lib/projects-api"
-import type { ClientPlatform, VersionItem } from "@/lib/versions-api"
+import { platformLabel, type Platform } from "@/lib/platform"
+import type { VersionItem } from "@/lib/versions-api"
 
 type ProjectShowcaseViewProps = {
   project: ProjectItem
@@ -32,14 +33,6 @@ const VERSION_PAGE_SIZE = 12
 // 公告卡片堆叠的最大层数。实际层数还要对公告总数取小，否则同一条公告会被渲染
 // 多次并撞车成重复 key。
 const ANNOUNCEMENT_STACK_DEPTH = 3
-
-const PLATFORM_LABELS: Record<ClientPlatform, string> = {
-  ios: "iOS",
-  android: "Android",
-  windows: "Windows",
-  mac: "macOS",
-  web: "Web",
-}
 
 // Markdown 折叠高度（px）。渲染后是多个块级元素，无法用 line-clamp 计行，
 // 只能给一个视觉上合适的截断高度。
@@ -67,12 +60,12 @@ function toIsoString(timestamp: number): string {
   return new Date(timestamp * 1000).toISOString()
 }
 
-function resolvePlatformLabels(platforms: ClientPlatform[] | undefined | null): string[] {
+function resolvePlatformLabels(platforms: Platform[] | undefined | null): string[] {
   if (!platforms || platforms.length === 0) {
     return ["全部平台"]
   }
 
-  return platforms.map((platform) => PLATFORM_LABELS[platform] ?? platform)
+  return platforms.map((platform) => platformLabel(platform) ?? platform)
 }
 
 // 时间戳在服务端与客户端所处时区可能不同，直接渲染会触发 hydration 不一致，
@@ -113,7 +106,7 @@ function PlatformTags({ platforms, tone = "muted" }: PlatformTagsProps) {
 }
 
 type PlatformTagsProps = {
-  platforms: ClientPlatform[] | undefined | null
+  platforms: Platform[] | undefined | null
   tone?: "muted" | "accent"
 }
 
@@ -196,7 +189,7 @@ function DownloadLinks({ version }: { version: VersionItem }) {
           {link.name ?? "下载"}
           {link.platform ? (
             <span className="text-slate-400 dark:text-slate-500">
-              {PLATFORM_LABELS[link.platform as ClientPlatform] ?? link.platform}
+              {platformLabel(link.platform)}
             </span>
           ) : null}
           <Download className="size-3.5" />
@@ -347,7 +340,7 @@ export function ProjectShowcaseView({
               <div className="flex flex-wrap gap-3">
                 {project.website_url ? (
                   <HeroAction href={project.website_url} variant="primary">
-                    访问官网 <ExternalLink className="size-4" />
+                    <ExternalLink className="size-4" /> 访问官网
                   </HeroAction>
                 ) : null}
                 {project.docs_url ? (
@@ -357,7 +350,7 @@ export function ProjectShowcaseView({
                 ) : null}
                 {project.repo_url ? (
                   <HeroAction href={project.repo_url} variant="secondary">
-                    代码仓库 <ExternalLink className="size-4" />
+                    <ExternalLink className="size-4" /> 代码仓库
                   </HeroAction>
                 ) : null}
               </div>

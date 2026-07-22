@@ -1,11 +1,11 @@
 import { Injectable, NotFoundException } from "@nestjs/common"
 
-import { Prisma, ClientPlatform } from "@prisma/client"
+import { Prisma, Platform } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
 import { buildDedupHash, resolveDedupWindowSeconds, stableStringify } from "../common/dedup"
 import { normalizeProjectKey, nowSeconds } from "../common/utils"
-import { toClientPlatform, fromClientPlatform } from "../versions/version-mapping"
+import { fromPlatform, toPlatform, type PlatformValue } from "../common/platform"
 import type { ClientOrigin } from "../geo/client-origin.service"
 import { CreateFeedbackDto } from "./dto/create-feedback.dto"
 import { QueryFeedbacksDto } from "./dto/query-feedbacks.dto"
@@ -16,7 +16,8 @@ type FeedbackItem = {
   user_id: string | null
   rating: number | null
   content: string
-  platform: "ios" | "android" | "windows" | "mac" | "web" | null
+  platform: PlatformValue | null
+  platform_version: string | null
   custom_data: Prisma.JsonValue | null
   ip: string | null
   user_agent: string | null
@@ -32,7 +33,8 @@ type FeedbackRecord = {
   userId: string | null
   rating: number | null
   content: string
-  platform: ClientPlatform | null
+  platform: Platform | null
+  platformVersion: string | null
   customData: Prisma.JsonValue | null
   ip: string | null
   userAgent: string | null
@@ -151,7 +153,10 @@ export class FeedbacksService {
         rating: dto.rating,
         content: dto.content,
         // The client's own declaration wins; the User-Agent guess only fills a gap.
-        platform: toClientPlatform(dto.platform) ?? origin.platform,
+        platform: toPlatform(dto.platform) ?? origin.platform,
+        // 明细统一取 origin：它已经把 body / query / header / UA 四个来源按同一
+        // 优先级归一过，这里再解析一遍只会多出一条会漂移的规则。
+        platformVersion: origin.platformVersion,
         customData: dto.custom_data as Prisma.InputJsonValue | undefined,
         ip: origin.ip,
         userAgent: origin.userAgent,
@@ -184,7 +189,8 @@ export class FeedbacksService {
         userId: dto.user_id,
         rating: dto.rating,
         content: dto.content,
-        platform: toClientPlatform(dto.platform),
+        platform: toPlatform(dto.platform),
+        platformVersion: dto.platform_version,
         customData: dto.custom_data as Prisma.InputJsonValue | undefined,
       },
     })
@@ -254,7 +260,8 @@ export class FeedbacksService {
       user_id: feedback.userId,
       rating: feedback.rating,
       content: feedback.content,
-      platform: fromClientPlatform(feedback.platform),
+      platform: fromPlatform(feedback.platform),
+      platform_version: feedback.platformVersion,
       custom_data: feedback.customData,
       ip: feedback.ip,
       user_agent: feedback.userAgent,

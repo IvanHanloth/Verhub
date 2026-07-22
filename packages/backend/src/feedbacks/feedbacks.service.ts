@@ -3,8 +3,10 @@ import { Injectable, NotFoundException } from "@nestjs/common"
 import { Prisma, ClientPlatform } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
-import { normalizeProjectKey } from "../common/utils"
+import { buildDedupHash, resolveDedupWindowSeconds, stableStringify } from "../common/dedup"
+import { normalizeProjectKey, nowSeconds } from "../common/utils"
 import { toClientPlatform, fromClientPlatform } from "../versions/version-mapping"
+import type { ClientOrigin } from "../geo/client-origin.service"
 import { CreateFeedbackDto } from "./dto/create-feedback.dto"
 import { QueryFeedbacksDto } from "./dto/query-feedbacks.dto"
 import { UpdateFeedbackDto } from "./dto/update-feedback.dto"
@@ -16,7 +18,29 @@ type FeedbackItem = {
   content: string
   platform: "ios" | "android" | "windows" | "mac" | "web" | null
   custom_data: Prisma.JsonValue | null
+  ip: string | null
+  user_agent: string | null
+  country_code: string | null
+  country_name: string | null
+  region_name: string | null
+  city: string | null
   created_at: number
+}
+
+type FeedbackRecord = {
+  id: string
+  userId: string | null
+  rating: number | null
+  content: string
+  platform: ClientPlatform | null
+  customData: Prisma.JsonValue | null
+  ip: string | null
+  userAgent: string | null
+  countryCode: string | null
+  countryName: string | null
+  regionName: string | null
+  city: string | null
+  createdAt: number
 }
 
 type FeedbackListResponse = {
@@ -83,7 +107,11 @@ export class FeedbacksService {
     return this.toFeedbackItem(feedback)
   }
 
-  async createByProjectKey(projectKey: string, dto: CreateFeedbackDto): Promise<FeedbackItem> {
+  async createByProjectKey(
+    projectKey: string,
+    dto: CreateFeedbackDto,
+    origin: ClientOrigin,
+  ): Promise<FeedbackItem> {
     const normalizedProjectKey = normalizeProjectKey(projectKey)
     const project = await this.prisma.project.findUnique({
       where: { projectKey: normalizedProjectKey },
@@ -93,14 +121,45 @@ export class FeedbacksService {
       throw new NotFoundException("Project not found")
     }
 
+    const dedupHash = buildDedupHash([
+      project.projectKey,
+      dto.user_id,
+      dto.rating,
+      dto.content,
+      origin.ip,
+      stableStringify(dto.custom_data),
+    ])
+
+    // Double-tapped submit buttons and retried requests are the whole reason
+    // this exists; a user genuinely re-sending the same text a minute later
+    // still gets a second row.
+    const window = resolveDedupWindowSeconds()
+    if (window > 0) {
+      const duplicate = await this.prisma.feedback.findFirst({
+        where: { dedupHash, createdAt: { gte: nowSeconds() - window } },
+        orderBy: { createdAt: "desc" },
+      })
+      if (duplicate) {
+        return this.toFeedbackItem(duplicate)
+      }
+    }
+
     const created = await this.prisma.feedback.create({
       data: {
         projectKey: project.projectKey,
         userId: dto.user_id,
         rating: dto.rating,
         content: dto.content,
-        platform: toClientPlatform(dto.platform),
+        // The client's own declaration wins; the User-Agent guess only fills a gap.
+        platform: toClientPlatform(dto.platform) ?? origin.platform,
         customData: dto.custom_data as Prisma.InputJsonValue | undefined,
+        ip: origin.ip,
+        userAgent: origin.userAgent,
+        countryCode: origin.countryCode,
+        countryName: origin.countryName,
+        regionName: origin.regionName,
+        city: origin.city,
+        dedupHash,
       },
     })
 
@@ -189,15 +248,7 @@ export class FeedbacksService {
     }
   }
 
-  private toFeedbackItem(feedback: {
-    id: string
-    userId: string | null
-    rating: number | null
-    content: string
-    platform: ClientPlatform | null
-    customData: Prisma.JsonValue | null
-    createdAt: number
-  }): FeedbackItem {
+  private toFeedbackItem(feedback: FeedbackRecord): FeedbackItem {
     return {
       id: feedback.id,
       user_id: feedback.userId,
@@ -205,6 +256,12 @@ export class FeedbacksService {
       content: feedback.content,
       platform: fromClientPlatform(feedback.platform),
       custom_data: feedback.customData,
+      ip: feedback.ip,
+      user_agent: feedback.userAgent,
+      country_code: feedback.countryCode,
+      country_name: feedback.countryName,
+      region_name: feedback.regionName,
+      city: feedback.city,
       created_at: feedback.createdAt,
     }
   }

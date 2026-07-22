@@ -1,9 +1,22 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common"
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from "@nestjs/common"
+import type { Request } from "express"
 
 import { AdminOrApiKeyGuard } from "../auth/guards/admin-or-api-key.guard"
 import { RequireApiScope } from "../auth/guards/api-scope.decorator"
 import { PublicEndpoint } from "@prisma/client"
 
+import { ClientOriginService } from "../geo/client-origin.service"
 import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 
 import { CreateFeedbackDto } from "./dto/create-feedback.dto"
@@ -13,7 +26,10 @@ import { FeedbacksService } from "./feedbacks.service"
 
 @Controller()
 export class FeedbacksController {
-  constructor(private readonly feedbacksService: FeedbacksService) {}
+  constructor(
+    private readonly feedbacksService: FeedbacksService,
+    private readonly clientOriginService: ClientOriginService,
+  ) {}
 
   @Get("admin/projects/:projectKey/feedbacks")
   @UseGuards(AdminOrApiKeyGuard)
@@ -55,8 +71,10 @@ export class FeedbacksController {
   async createByProjectKey(
     @Param("projectKey") projectKey: string,
     @Body() dto: CreateFeedbackDto,
+    @Req() request: Request,
   ) {
-    return this.feedbacksService.createByProjectKey(projectKey, dto)
+    const origin = await this.clientOriginService.describe(request)
+    return this.feedbacksService.createByProjectKey(projectKey, dto, origin)
   }
 
   @Get("admin/feedbacks/statistics")

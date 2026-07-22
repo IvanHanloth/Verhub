@@ -2,12 +2,22 @@ import { requestJson } from "@/lib/api-client"
 
 export type LogLevel = 0 | 1 | 2 | 3
 
+export type ClientPlatform = "ios" | "android" | "windows" | "mac" | "web"
+
 export type LogItem = {
   id: string
   level: LogLevel
   content: string
   device_info: unknown
   custom_data: unknown
+  /** Server-observed caller origin; null on rows uploaded before it was captured. */
+  ip: string | null
+  user_agent: string | null
+  country_code: string | null
+  country_name: string | null
+  region_name: string | null
+  city: string | null
+  platform: ClientPlatform | null
   created_at: number
 }
 

@@ -18,6 +18,8 @@ import {
 import { getErrorMessage } from "@/lib/error-utils"
 import { AdminCard, AdminItemCard } from "@/components/admin/admin-card"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
+import { ClientOriginBadges } from "@/components/common/client-origin-badges"
+import { JsonField } from "@/components/common/json-viewer"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import { useAdminProjects } from "@/hooks/use-admin-projects"
 import {
@@ -328,15 +330,22 @@ export function ActionsDashboard() {
             <AdminItemCard
               key={record.action_record_id}
               as="div"
-              className="border-white/10 bg-white/5 p-3 text-xs"
+              className="space-y-2 border-white/10 bg-white/5 p-3 text-xs"
             >
-              <p>记录ID：{record.action_record_id}</p>
-              <p className="mt-1">时间：{new Date(record.created_time * 1000).toLocaleString()}</p>
-              {record.custom_data ? (
-                <pre className="mt-2 overflow-auto rounded bg-black/30 p-2">
-                  {JSON.stringify(record.custom_data, null, 2)}
-                </pre>
-              ) : null}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono">{record.action_record_id}</span>
+                <span className="text-slate-500 tabular-nums dark:text-slate-400">
+                  {new Date(record.created_time * 1000).toLocaleString()}
+                </span>
+              </div>
+
+              <ClientOriginBadges origin={record} />
+
+              {/* http 里是整套请求头，默认折叠：需要时才展开逐层看。 */}
+              <div className="grid gap-2 sm:grid-cols-2">
+                <JsonField label="custom_data" value={record.custom_data} />
+                <JsonField label="http" value={record.http} />
+              </div>
             </AdminItemCard>
           ))}
           {!records.length ? <p className="text-sm text-slate-400">暂无行为记录</p> : null}

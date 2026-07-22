@@ -1,9 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common"
 
-import { Prisma, LogLevel } from "@prisma/client"
+import { Prisma, ClientPlatform, LogLevel } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
-import { normalizeProjectKey } from "../common/utils"
+import { buildDedupHash, resolveDedupWindowSeconds, stableStringify } from "../common/dedup"
+import { normalizeProjectKey, nowSeconds } from "../common/utils"
+import { fromClientPlatform } from "../versions/version-mapping"
+import type { ClientOrigin } from "../geo/client-origin.service"
 import { QueryLogsDto } from "./dto/query-logs.dto"
 import { UploadLogDto } from "./dto/upload-log.dto"
 
@@ -13,7 +16,31 @@ type LogItem = {
   content: string
   device_info: Prisma.JsonValue | null
   custom_data: Prisma.JsonValue | null
+  ip: string | null
+  user_agent: string | null
+  country_code: string | null
+  country_name: string | null
+  region_name: string | null
+  city: string | null
+  platform: "ios" | "android" | "windows" | "mac" | "web" | null
   created_at: number
+}
+
+/** Server-observed origin columns shared by the create path and the mapper. */
+type LogRecord = {
+  id: string
+  level: LogLevel
+  content: string
+  deviceInfo: Prisma.JsonValue | null
+  customData: Prisma.JsonValue | null
+  ip: string | null
+  userAgent: string | null
+  countryCode: string | null
+  countryName: string | null
+  regionName: string | null
+  city: string | null
+  platform: ClientPlatform | null
+  createdAt: number
 }
 
 type LogListResponse = {
@@ -86,7 +113,11 @@ export class LogsService {
     }
   }
 
-  async createByProjectKey(projectKey: string, dto: UploadLogDto): Promise<LogItem> {
+  async createByProjectKey(
+    projectKey: string,
+    dto: UploadLogDto,
+    origin: ClientOrigin,
+  ): Promise<LogItem> {
     const normalizedProjectKey = normalizeProjectKey(projectKey)
     const project = await this.prisma.project.findUnique({
       where: { projectKey: normalizedProjectKey },
@@ -96,17 +127,56 @@ export class LogsService {
       throw new NotFoundException("Project not found")
     }
 
+    const level = this.toRequiredLogLevel(dto.level)
+    const dedupHash = buildDedupHash([
+      project.projectKey,
+      level,
+      dto.content,
+      origin.ip,
+      stableStringify(dto.device_info),
+      stableStringify(dto.custom_data),
+    ])
+
+    // A client stuck in a crash-retry loop uploads the same line every few
+    // seconds. Returning the row it already produced keeps the endpoint
+    // idempotent from the caller's side without storing the flood.
+    const duplicate = await this.findRecentDuplicate(dedupHash)
+    if (duplicate) {
+      return this.toLogItem(duplicate)
+    }
+
     const created = await this.prisma.log.create({
       data: {
         projectKey: project.projectKey,
-        level: this.toRequiredLogLevel(dto.level),
+        level,
         content: dto.content,
         deviceInfo: dto.device_info as Prisma.InputJsonValue | undefined,
         customData: dto.custom_data as Prisma.InputJsonValue | undefined,
+        ip: origin.ip,
+        userAgent: origin.userAgent,
+        countryCode: origin.countryCode,
+        countryName: origin.countryName,
+        regionName: origin.regionName,
+        city: origin.city,
+        platform: origin.platform,
+        dedupHash,
       },
     })
 
     return this.toLogItem(created)
+  }
+
+  /** The most recent identical upload inside the dedup window, if any. */
+  private async findRecentDuplicate(dedupHash: string): Promise<LogRecord | null> {
+    const window = resolveDedupWindowSeconds()
+    if (window <= 0) {
+      return null
+    }
+
+    return this.prisma.log.findFirst({
+      where: { dedupHash, createdAt: { gte: nowSeconds() - window } },
+      orderBy: { createdAt: "desc" },
+    })
   }
 
   getStatus(): { module: string; implemented: boolean } {
@@ -161,20 +231,20 @@ export class LogsService {
     return mapping[level]
   }
 
-  private toLogItem(log: {
-    id: string
-    level: LogLevel
-    content: string
-    deviceInfo: Prisma.JsonValue | null
-    customData: Prisma.JsonValue | null
-    createdAt: number
-  }): LogItem {
+  private toLogItem(log: LogRecord): LogItem {
     return {
       id: log.id,
       level: this.fromLogLevel(log.level),
       content: log.content,
       device_info: log.deviceInfo,
       custom_data: log.customData,
+      ip: log.ip,
+      user_agent: log.userAgent,
+      country_code: log.countryCode,
+      country_name: log.countryName,
+      region_name: log.regionName,
+      city: log.city,
+      platform: fromClientPlatform(log.platform),
       created_at: log.createdAt,
     }
   }

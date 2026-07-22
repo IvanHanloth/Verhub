@@ -1,8 +1,11 @@
 import { Injectable, NotFoundException } from "@nestjs/common"
-import { Prisma } from "@prisma/client"
+import { ClientPlatform, Prisma } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
+import { buildDedupHash, resolveDedupWindowSeconds, stableStringify } from "../common/dedup"
 import { normalizeProjectKey, nowSeconds } from "../common/utils"
+import { fromClientPlatform } from "../versions/version-mapping"
+import type { ClientOrigin } from "../geo/client-origin.service"
 import { CreateActionDto } from "./dto/create-action.dto"
 import { CreateActionRecordDto } from "./dto/create-action-record.dto"
 import { QueryActionsDto } from "./dto/query-actions.dto"
@@ -23,6 +26,28 @@ type ActionRecordItem = {
   created_time: number
   http: Prisma.JsonValue | null
   custom_data: Prisma.JsonValue | null
+  ip: string | null
+  user_agent: string | null
+  country_code: string | null
+  country_name: string | null
+  region_name: string | null
+  city: string | null
+  platform: "ios" | "android" | "windows" | "mac" | "web" | null
+}
+
+type ActionRecordRecord = {
+  id: string
+  actionId: string
+  http: Prisma.JsonValue | null
+  customData: Prisma.JsonValue | null
+  ip: string | null
+  userAgent: string | null
+  countryCode: string | null
+  countryName: string | null
+  regionName: string | null
+  city: string | null
+  platform: ClientPlatform | null
+  createdAt: number
 }
 
 type ActionListResponse = {
@@ -159,6 +184,7 @@ export class ActionsService {
     projectKey: string,
     dto: CreateActionRecordDto,
     http: Record<string, unknown>,
+    origin: ClientOrigin,
   ): Promise<ActionRecordItem> {
     const normalizedProjectKey = normalizeProjectKey(projectKey)
     const action = await this.prisma.action.findUnique({
@@ -169,11 +195,40 @@ export class ActionsService {
       throw new NotFoundException("Action not found")
     }
 
+    // `http` is excluded from the fingerprint on purpose: it carries the full
+    // header set, and a rotating header (trace id, cookie) would make every
+    // retry look distinct and defeat the whole check.
+    const dedupHash = buildDedupHash([
+      action.id,
+      origin.ip,
+      origin.userAgent,
+      stableStringify(dto.custom_data),
+    ])
+
+    const window = resolveDedupWindowSeconds()
+    if (window > 0) {
+      const duplicate = await this.prisma.actionRecord.findFirst({
+        where: { dedupHash, createdAt: { gte: nowSeconds() - window } },
+        orderBy: { createdAt: "desc" },
+      })
+      if (duplicate) {
+        return this.toActionRecordItem(duplicate)
+      }
+    }
+
     const created = await this.prisma.actionRecord.create({
       data: {
         actionId: action.id,
         http: http as Prisma.InputJsonValue,
         customData: dto.custom_data as Prisma.InputJsonValue | undefined,
+        ip: origin.ip,
+        userAgent: origin.userAgent,
+        countryCode: origin.countryCode,
+        countryName: origin.countryName,
+        regionName: origin.regionName,
+        city: origin.city,
+        platform: origin.platform,
+        dedupHash,
       },
     })
 
@@ -225,19 +280,20 @@ export class ActionsService {
     }
   }
 
-  private toActionRecordItem(record: {
-    id: string
-    actionId: string
-    http: Prisma.JsonValue | null
-    customData: Prisma.JsonValue | null
-    createdAt: number
-  }): ActionRecordItem {
+  private toActionRecordItem(record: ActionRecordRecord): ActionRecordItem {
     return {
       action_record_id: record.id,
       action_id: record.actionId,
       created_time: record.createdAt,
       http: record.http,
       custom_data: record.customData,
+      ip: record.ip,
+      user_agent: record.userAgent,
+      country_code: record.countryCode,
+      country_name: record.countryName,
+      region_name: record.regionName,
+      city: record.city,
+      platform: fromClientPlatform(record.platform),
     }
   }
 }

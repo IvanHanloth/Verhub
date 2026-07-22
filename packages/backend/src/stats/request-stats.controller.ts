@@ -24,11 +24,12 @@ export class RequestStatsController {
   async getOverview(@Param("projectKey") projectKey: string, @Query() query: QueryRequestStatsDto) {
     const range = this.resolveRange(query)
 
-    const [total, byEndpoint, byPlatform, byRegion] = await Promise.all([
+    const [total, byEndpoint, byPlatform, byRegion, byProvince] = await Promise.all([
       this.requestStatsService.getTotal(projectKey, range),
       this.requestStatsService.getEndpointBreakdown(projectKey, range),
       this.requestStatsService.getPlatformBreakdown(projectKey, range),
       this.requestStatsService.getRegionBreakdown(projectKey, range),
+      this.requestStatsService.getProvinceBreakdown(projectKey, range),
     ])
 
     return {
@@ -38,6 +39,12 @@ export class RequestStatsController {
       by_endpoint: byEndpoint.map((item) => ({ endpoint: item.endpoint, count: item.count })),
       by_platform: byPlatform.map((item) => ({ platform: item.platform, count: item.count })),
       by_region: byRegion.map((item) => ({ region: item.region, count: item.count })),
+      // 国内省份分布，仅有 CN 流量时非空。前端据此渲染中国省级热力地图。
+      by_province: byProvince.map((item) => ({
+        code: item.code,
+        name: item.name,
+        count: item.count,
+      })),
     }
   }
 
@@ -53,12 +60,14 @@ export class RequestStatsController {
       range,
       query.granularity,
       query.endpoint,
+      query.tz_offset_minutes,
     )
 
     return {
       start_time: range.startTime,
       end_time: range.endTime,
       granularity: query.granularity,
+      tz_offset_minutes: query.tz_offset_minutes,
       endpoint: query.endpoint ?? null,
       data: points.map((point) => ({ bucket: point.bucket, count: point.count })),
     }
@@ -91,16 +100,28 @@ export class RequestStatsController {
     }
   }
 
-  /** Request volume folded onto a weekday × hour grid; always 168 cells. */
+  /**
+   * Request volume folded onto a weekday × hour grid; always 168 cells.
+   *
+   * The fold happens in each request's *source* timezone (by country code), so
+   * the grid answers "when are my users awake in their own local time".
+   * `tz_offset_minutes` is only the fallback for sources that cannot be placed
+   * (UNKNOWN / LOCAL / countries absent from the timezone table).
+   */
   @Get("heatmap")
   @RequireApiScope("stats:read")
   async getHeatmap(@Param("projectKey") projectKey: string, @Query() query: QueryRequestStatsDto) {
     const range = this.resolveRange(query)
-    const cells = await this.requestStatsService.getHeatmap(projectKey, range)
+    const cells = await this.requestStatsService.getHeatmap(
+      projectKey,
+      range,
+      query.tz_offset_minutes,
+    )
 
     return {
       start_time: range.startTime,
       end_time: range.endTime,
+      tz_offset_minutes: query.tz_offset_minutes,
       data: cells.map((cell) => ({ weekday: cell.weekday, hour: cell.hour, count: cell.count })),
     }
   }

@@ -10,10 +10,22 @@ function createPrismaMock() {
     log: {
       count: jest.fn(),
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       create: jest.fn(),
     },
     $transaction: jest.fn(),
   }
+}
+
+/** No-origin baseline: what the service sees when nothing could be observed. */
+const emptyOrigin = {
+  ip: null,
+  userAgent: null,
+  countryCode: null,
+  countryName: null,
+  regionName: null,
+  city: null,
+  platform: null,
 }
 
 describe("LogsService", () => {
@@ -30,15 +42,79 @@ describe("LogsService", () => {
     })
 
     const service = new LogsService(prisma as never)
-    const result = await service.createByProjectKey("verhub", {
-      level: 3,
-      content: "fatal issue",
-      device_info: { os: "windows" },
-      custom_data: { build: "1.0.0" },
-    })
+    const result = await service.createByProjectKey(
+      "verhub",
+      {
+        level: 3,
+        content: "fatal issue",
+        device_info: { os: "windows" },
+        custom_data: { build: "1.0.0" },
+      },
+      emptyOrigin,
+    )
 
     expect(result.id).toBe("log-1")
     expect(result.level).toBe(3)
+  })
+
+  it("stores the observed caller origin alongside the payload", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "verhub" })
+    prisma.log.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+      ...data,
+      id: "log-2",
+      createdAt: 1767225600,
+    }))
+
+    const service = new LogsService(prisma as never)
+    const result = await service.createByProjectKey(
+      "verhub",
+      { level: 1, content: "hello" },
+      {
+        ip: "203.0.113.9",
+        userAgent: "verhub-sdk/1.0",
+        countryCode: "JP",
+        countryName: "Japan",
+        regionName: "Tokyo",
+        city: "Tokyo",
+        platform: "WINDOWS" as never,
+      },
+    )
+
+    expect(result.ip).toBe("203.0.113.9")
+    expect(result.user_agent).toBe("verhub-sdk/1.0")
+    expect(result.country_code).toBe("JP")
+    expect(result.platform).toBe("windows")
+  })
+
+  it("returns the existing row for an identical upload inside the dedup window", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "verhub" })
+    prisma.log.findFirst.mockResolvedValue({
+      id: "log-original",
+      level: "ERROR",
+      content: "fatal issue",
+      deviceInfo: null,
+      customData: null,
+      ip: null,
+      userAgent: null,
+      countryCode: null,
+      countryName: null,
+      regionName: null,
+      city: null,
+      platform: null,
+      createdAt: 1767225600,
+    })
+
+    const service = new LogsService(prisma as never)
+    const result = await service.createByProjectKey(
+      "verhub",
+      { level: 3, content: "fatal issue" },
+      emptyOrigin,
+    )
+
+    expect(result.id).toBe("log-original")
+    expect(prisma.log.create).not.toHaveBeenCalled()
   })
 
   it("throws bad request when time range is invalid", async () => {
@@ -64,10 +140,14 @@ describe("LogsService", () => {
     const service = new LogsService(prisma as never)
 
     await expect(
-      service.createByProjectKey("unknown", {
-        level: 1,
-        content: "hello",
-      }),
+      service.createByProjectKey(
+        "unknown",
+        {
+          level: 1,
+          content: "hello",
+        },
+        emptyOrigin,
+      ),
     ).rejects.toBeInstanceOf(NotFoundException)
   })
 
@@ -147,7 +227,7 @@ describe("LogsService", () => {
 
     const service = new LogsService(prisma as never)
     await expect(
-      service.createByProjectKey("proj", { level: 99, content: "bad" }),
+      service.createByProjectKey("proj", { level: 99, content: "bad" }, emptyOrigin),
     ).rejects.toBeInstanceOf(BadRequestException)
   })
 

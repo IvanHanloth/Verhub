@@ -44,7 +44,22 @@ describe("RequestStatsInterceptor", () => {
       projectKey: "verhub",
       endpoint: PublicEndpoint.VERSION_LATEST,
       platform: StatPlatform.WINDOWS,
+      ip: null,
     })
+  })
+
+  it("passes the forwarded client address on for region resolution", async () => {
+    const { interceptor, statsService } = createInterceptor(PublicEndpoint.VERSION_LATEST)
+    const context = createContext({
+      params: { projectKey: "verhub" },
+      headers: { "x-forwarded-for": "203.0.113.9, 10.0.0.1" },
+    })
+
+    await lastValueFrom(interceptor.intercept(context, createHandler()))
+
+    expect(statsService.recordRequestSafely).toHaveBeenCalledWith(
+      expect.objectContaining({ ip: "203.0.113.9" }),
+    )
   })
 
   it("prefers the SDK platform header over the User-Agent", async () => {

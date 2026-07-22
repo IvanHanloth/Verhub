@@ -22,6 +22,8 @@ import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
+import { ClientOriginBadges } from "@/components/common/client-origin-badges"
+import { JsonField } from "@/components/common/json-viewer"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import { useAdminProjects } from "@/hooks/use-admin-projects"
 import {
@@ -453,20 +455,29 @@ export function FeedbacksDashboard() {
                   <tr className="border-b border-white/10 text-left text-slate-300">
                     <th className="px-3 py-2 font-medium">内容</th>
                     <th className="px-3 py-2 font-medium">用户/评分</th>
-                    <th className="px-3 py-2 font-medium">平台</th>
+                    <th className="px-3 py-2 font-medium">来源</th>
                     <th className="px-3 py-2 font-medium">操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   {feedbacks.map((item) => (
                     <tr key={item.id} className="border-b border-white/5 align-top">
-                      <td className="px-3 py-2 text-slate-200">{item.content}</td>
+                      <td className="px-3 py-2 text-slate-200">
+                        <p>{item.content}</p>
+                        {item.custom_data ? (
+                          <div className="mt-2 max-w-md">
+                            <JsonField label="custom_data" value={item.custom_data} />
+                          </div>
+                        ) : null}
+                      </td>
                       <td className="px-3 py-2 text-xs text-slate-300">
                         <p>{item.user_id ?? "匿名"}</p>
                         <p>评分：{item.rating ?? "未评分"}</p>
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">
-                        {item.platform ?? "未指定"}
+                      {/* 平台已并入来源徽章，避免同一信息占两列。 */}
+                      <td className="max-w-xs px-3 py-2 text-xs text-slate-300">
+                        <ClientOriginBadges origin={item} />
+                        {!item.ip && !item.platform ? <span>未采集</span> : null}
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex flex-wrap gap-2">

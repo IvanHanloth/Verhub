@@ -4,6 +4,7 @@ import { PublicEndpoint } from "@prisma/client"
 import type { Request } from "express"
 import { Observable, tap } from "rxjs"
 
+import { extractClientIp } from "../common/client-context"
 import { PLATFORM_HEADER, resolvePlatform } from "./platform-detection"
 import { RequestStatsService } from "./request-stats.service"
 import { TRACK_ENDPOINT_KEY } from "./track-endpoint.decorator"
@@ -47,7 +48,11 @@ export class RequestStatsInterceptor implements NestInterceptor {
           request.headers["user-agent"],
         )
 
-        this.requestStatsService.recordRequestSafely({ projectKey, endpoint, platform })
+        // The address is only a lookup key for the country bucket — the rollup
+        // is aggregate by design and never stores it.
+        const ip = extractClientIp(request)
+
+        this.requestStatsService.recordRequestSafely({ projectKey, endpoint, platform, ip })
 
         // check-update is the one public route where the client tells us which
         // version it is running, so it is the only place field-version share

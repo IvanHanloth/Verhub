@@ -9,6 +9,13 @@ export type FeedbackItem = {
   content: string
   platform: ClientPlatform | null
   custom_data: unknown
+  /** Server-observed caller origin; null on rows submitted before it was captured. */
+  ip: string | null
+  user_agent: string | null
+  country_code: string | null
+  country_name: string | null
+  region_name: string | null
+  city: string | null
   created_at: number
 }
 

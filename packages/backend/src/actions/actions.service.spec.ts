@@ -14,6 +14,7 @@ type PrismaMock = {
   actionRecord: {
     count: jest.Mock
     create: jest.Mock
+    findFirst: jest.Mock
     findMany: jest.Mock
     findUnique: jest.Mock
   }
@@ -36,6 +37,7 @@ function createPrismaMock(): PrismaMock {
     actionRecord: {
       count: jest.fn(),
       create: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
     },
@@ -45,6 +47,17 @@ function createPrismaMock(): PrismaMock {
     $transaction: jest.fn(),
   }
   return mock
+}
+
+/** No-origin baseline: what the service sees when nothing could be observed. */
+const emptyOrigin = {
+  ip: null,
+  userAgent: null,
+  countryCode: null,
+  countryName: null,
+  regionName: null,
+  city: null,
+  platform: null,
 }
 
 describe("ActionsService", () => {
@@ -157,6 +170,13 @@ describe("ActionsService", () => {
       actionId: "action-1",
       http: { ip: "127.0.0.1" },
       customData: null,
+      ip: "127.0.0.1",
+      userAgent: "verhub-sdk/1.0",
+      countryCode: null,
+      countryName: null,
+      regionName: null,
+      city: null,
+      platform: null,
       createdAt: 2000,
     })
 
@@ -165,6 +185,7 @@ describe("ActionsService", () => {
       "My-App",
       { action_id: "action-1" },
       { ip: "127.0.0.1" },
+      { ...emptyOrigin, ip: "127.0.0.1", userAgent: "verhub-sdk/1.0" },
     )
 
     expect(result).toEqual({
@@ -173,6 +194,13 @@ describe("ActionsService", () => {
       created_time: 2000,
       http: { ip: "127.0.0.1" },
       custom_data: null,
+      ip: "127.0.0.1",
+      user_agent: "verhub-sdk/1.0",
+      country_code: null,
+      country_name: null,
+      region_name: null,
+      city: null,
+      platform: null,
     })
   })
 
@@ -186,7 +214,7 @@ describe("ActionsService", () => {
     const service = new ActionsService(prisma as never)
 
     await expect(
-      service.createRecordByProjectKey("my-app", { action_id: "action-1" }, {}),
+      service.createRecordByProjectKey("my-app", { action_id: "action-1" }, {}, emptyOrigin),
     ).rejects.toBeInstanceOf(NotFoundException)
   })
 
@@ -325,7 +353,7 @@ describe("ActionsService", () => {
 
     const service = new ActionsService(prisma as never)
     await expect(
-      service.createRecordByProjectKey("my-app", { action_id: "missing" }, {}),
+      service.createRecordByProjectKey("my-app", { action_id: "missing" }, {}, emptyOrigin),
     ).rejects.toBeInstanceOf(NotFoundException)
   })
 })

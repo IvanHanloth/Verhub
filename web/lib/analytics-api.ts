@@ -26,13 +26,20 @@ export type RequestStatsOverview = {
   by_endpoint: { endpoint: PublicEndpoint; count: number }[]
   by_platform: { platform: StatPlatform; count: number }[]
   by_region: { region: string; count: number }[]
+  /**
+   * 国内省份分布：省级行政区划码（GB/T 2260）+ 标准中文省名 + 计数。仅有中国大陆
+   * 流量时非空，驱动中国省级热力地图。境外流量只体现在 `by_region` 的国家分布。
+   */
+  by_province: { code: string; name: string; count: number }[]
 }
 
 export type RequestStatsTimeseries = {
   start_time: number
   end_time: number
   granularity: Granularity
+  tz_offset_minutes: number
   endpoint: PublicEndpoint | null
+  /** For `day` granularity the bucket is the instant local midnight started. */
   data: { bucket: number; count: number }[]
 }
 
@@ -47,7 +54,11 @@ export type ClientVersionStats = {
 export type RequestStatsHeatmap = {
   start_time: number
   end_time: number
-  /** Always 168 cells: weekday 0=Sunday..6, hour 0..23, both UTC. */
+  tz_offset_minutes: number
+  /**
+   * Always 168 cells: weekday 0=Sunday..6, hour 0..23，按每条请求的**来源当地时区**
+   * （由国家码推定）折叠；`tz_offset_minutes` 仅作无法定位来源时的兜底。
+   */
   data: { weekday: number; hour: number; count: number }[]
 }
 
@@ -73,6 +84,39 @@ export const PLATFORM_LABELS: Record<StatPlatform, string> = {
   MAC: "macOS",
   WEB: "Web",
   UNKNOWN: "未知",
+}
+
+/** Sentinel country codes the backend records when an address cannot be placed. */
+export const UNKNOWN_REGION = "UNKNOWN"
+export const LOCAL_REGION = "LOCAL"
+
+/**
+ * Minutes east of UTC for the viewer's browser.
+ *
+ * `getTimezoneOffset` reports minutes *west*, so the sign is flipped — sending
+ * it unflipped mirrors every heatmap around UTC, which looks plausible and is
+ * completely wrong.
+ */
+export function localTzOffsetMinutes(): number {
+  return -new Date().getTimezoneOffset()
+}
+
+/**
+ * Localized country name for a region bucket.
+ *
+ * `Intl.DisplayNames` ships with the browser, so a full ISO-3166 table does not
+ * have to live in the bundle. Unsupported environments and unknown codes fall
+ * back to the raw code, which is still readable.
+ */
+export function regionLabel(code: string): string {
+  if (code === UNKNOWN_REGION) return "未知"
+  if (code === LOCAL_REGION) return "内网/本机"
+
+  try {
+    return new Intl.DisplayNames(["zh-CN"], { type: "region" }).of(code) ?? code
+  } catch {
+    return code
+  }
 }
 
 type RangeParams = {
@@ -129,7 +173,10 @@ export async function getRequestStatsHeatmap(
   signal?: AbortSignal,
 ): Promise<RequestStatsHeatmap> {
   return requestJson<RequestStatsHeatmap>(
-    `/admin/projects/${encodeURIComponent(projectKey)}/stats/requests/heatmap${toSearchParams(range)}`,
+    `/admin/projects/${encodeURIComponent(projectKey)}/stats/requests/heatmap${toSearchParams(
+      range,
+      { tz_offset_minutes: String(localTzOffsetMinutes()) },
+    )}`,
     { token, signal },
   )
 }
@@ -145,7 +192,7 @@ export async function getRequestStatsTimeseries(
   return requestJson<RequestStatsTimeseries>(
     `/admin/projects/${encodeURIComponent(projectKey)}/stats/requests/timeseries${toSearchParams(
       range,
-      { granularity, endpoint },
+      { granularity, endpoint, tz_offset_minutes: String(localTzOffsetMinutes()) },
     )}`,
     { token, signal },
   )

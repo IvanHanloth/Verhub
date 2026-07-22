@@ -66,6 +66,12 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       BOOTSTRAP_SECRET_DIR: /bootstrap
       API_KEY_SALT: ${API_KEY_SALT}
+      # 来源地区解析与上报去重，见 doc/guide/deployment.md
+      VERHUB_GEO_ENABLED: ${VERHUB_GEO_ENABLED:-true}
+      VERHUB_GEO_PROVIDERS: ${VERHUB_GEO_PROVIDERS:-}
+      VERHUB_GEO_TTL_DAYS: ${VERHUB_GEO_TTL_DAYS:-30}
+      VERHUB_GEO_TIMEOUT_MS: ${VERHUB_GEO_TIMEOUT_MS:-2500}
+      VERHUB_DEDUP_WINDOW_SECONDS: ${VERHUB_DEDUP_WINDOW_SECONDS:-60}
     depends_on:
       postgres:
         condition: service_healthy

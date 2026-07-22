@@ -1,14 +1,18 @@
 "use client"
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import {
   Activity,
   AlertTriangle,
   BarChart3,
   CalendarDays,
+  ChartPie,
   Flame,
+  Globe2,
   Layers,
   Loader2,
+  MapPin,
   RefreshCw,
 } from "lucide-react"
 import {
@@ -46,6 +50,7 @@ import {
   getRequestStatsHeatmap,
   getRequestStatsOverview,
   getRequestStatsTimeseries,
+  regionLabel,
   type ClientVersionStats,
   type Granularity,
   type PublicEndpoint,
@@ -57,6 +62,12 @@ import {
 
 import { ActivityCalendar } from "./activity-calendar"
 import { RequestHeatmap } from "./request-heatmap"
+
+// echarts 较重，懒加载以免进主 bundle；地图仅在统计大屏出现。
+const ChinaProvinceMap = dynamic(
+  () => import("./china-province-map").then((mod) => mod.ChinaProvinceMap),
+  { ssr: false },
+)
 
 const DAY_SECONDS = 86400
 
@@ -97,6 +108,23 @@ const PLATFORM_COLORS: Record<StatPlatform, string> = {
   UNKNOWN: "var(--series-8)",
 }
 
+/**
+ * Slots for charts whose categories come from the data (versions, countries)
+ * rather than a fixed enum. Assigned by rank and cycled once exhausted: past
+ * eight categories a repeated hue is unavoidable, and every one of these charts
+ * is paired with a table that carries the identity as text.
+ */
+const SERIES_VARS = Array.from({ length: 8 }, (_, index) => `var(--series-${index + 1})`)
+
+function seriesColor(index: number): string {
+  return SERIES_VARS[index % SERIES_VARS.length]!
+}
+
+/** How many slices a pie stays readable at; the rest collapses into 其他. */
+const PIE_SLICE_LIMIT = 8
+
+type ChartView = "bar" | "pie"
+
 function formatBucket(bucket: number, granularity: Granularity): string {
   const date = new Date(bucket * 1000)
   if (granularity === "hour") {
@@ -119,6 +147,38 @@ function percent(value: number, total: number): string {
   return `${((value / total) * 100).toFixed(1)}%`
 }
 
+type PieSlice = { key: string; label: string; count: number; fill: string }
+
+/**
+ * Keep the largest slices and fold everything else into one 其他 wedge.
+ *
+ * A pie stops communicating anything past a handful of slices, but dropping the
+ * tail outright would leave a chart whose wedges do not add up to the total the
+ * card claims — so the tail becomes a wedge of its own.
+ */
+function collapsePieTail(
+  items: Array<{ key: string; label: string; count: number }>,
+  extraTail = 0,
+): PieSlice[] {
+  const head = items.slice(0, PIE_SLICE_LIMIT)
+  const tail =
+    items.slice(PIE_SLICE_LIMIT).reduce((sum, item) => sum + item.count, 0) + Math.max(extraTail, 0)
+
+  const slices: PieSlice[] = head.map((item, index) => ({ ...item, fill: seriesColor(index) }))
+
+  if (tail > 0) {
+    slices.push({
+      key: "__other__",
+      label: "其他",
+      count: tail,
+      // Neutral, so the aggregate wedge does not read as another category.
+      fill: "var(--muted-foreground)",
+    })
+  }
+
+  return slices
+}
+
 export function AnalyticsDashboard() {
   const { selectedProject, selectedProjectKey, error: projectsError } = useAdminProjects()
   const [rangeIndex, setRangeIndex] = React.useState(1)
@@ -130,6 +190,8 @@ export function AnalyticsDashboard() {
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [reloadToken, setReloadToken] = React.useState(0)
+  const [versionView, setVersionView] = React.useState<ChartView>("bar")
+  const [regionView, setRegionView] = React.useState<ChartView>("bar")
 
   const range = RANGE_OPTIONS[rangeIndex] ?? RANGE_OPTIONS[1]!
 
@@ -238,18 +300,61 @@ export function AnalyticsDashboard() {
   const versionTotal = clientVersions?.total ?? 0
   const versionData = React.useMemo(
     () =>
-      (clientVersions?.data ?? []).map((item) => ({
+      (clientVersions?.data ?? []).map((item, index) => ({
         version: item.version,
         count: item.count,
         share: versionTotal > 0 ? item.count / versionTotal : 0,
+        fill: seriesColor(index),
       })),
     [clientVersions, versionTotal],
   )
+
+  const regionData = React.useMemo(
+    () =>
+      (overview?.by_region ?? []).map((item, index) => ({
+        region: item.region,
+        label: regionLabel(item.region),
+        count: item.count,
+        fill: seriesColor(index),
+      })),
+    [overview],
+  )
+
+  const provinceData = React.useMemo(() => overview?.by_province ?? [], [overview])
 
   // The API caps the rows it returns; the remainder is still part of the total,
   // so show it explicitly rather than letting the shares silently not add up.
   const versionTailCount = versionTotal - versionData.reduce((sum, item) => sum + item.count, 0)
   const topVersion = versionData[0] ?? null
+
+  const versionPieData = React.useMemo(
+    () =>
+      collapsePieTail(
+        versionData.map((item) => ({ key: item.version, label: item.version, count: item.count })),
+        // The rows the API already truncated belong in the same 其他 wedge, or
+        // the pie would claim a total it is not drawing.
+        versionTailCount,
+      ).map((item) => ({
+        version: item.key,
+        label: item.label,
+        count: item.count,
+        fill: item.fill,
+      })),
+    [versionData, versionTailCount],
+  )
+
+  const regionPieData = React.useMemo(
+    () =>
+      collapsePieTail(
+        regionData.map((item) => ({ key: item.region, label: item.label, count: item.count })),
+      ).map((item) => ({
+        region: item.key,
+        label: item.label,
+        count: item.count,
+        fill: item.fill,
+      })),
+    [regionData],
+  )
 
   const checkUpdateCount =
     overview?.by_endpoint.find((item) => item.endpoint === "VERSION_CHECK_UPDATE")?.count ?? 0
@@ -264,7 +369,6 @@ export function AnalyticsDashboard() {
   // one color rather than a redundant hue per bar.
   const endpointConfig: ChartConfig = { count: { label: "请求数", color: "var(--series-1)" } }
   const trendConfig: ChartConfig = { count: { label: "请求数", color: "var(--series-1)" } }
-  const versionConfig: ChartConfig = { count: { label: "上报数", color: "var(--series-2)" } }
   const platformConfig: ChartConfig = React.useMemo(() => {
     const config: ChartConfig = { count: { label: "请求数" } }
     for (const item of platformData) {
@@ -272,6 +376,31 @@ export function AnalyticsDashboard() {
     }
     return config
   }, [platformData])
+
+  // The bar view carries identity on the axis and needs one measure color; the
+  // pie needs a per-slice entry so the legend and tooltip can name each wedge.
+  const versionConfig: ChartConfig = React.useMemo(() => {
+    if (versionView === "bar") {
+      return { count: { label: "上报数", color: "var(--series-2)" } }
+    }
+    const config: ChartConfig = { count: { label: "上报数" } }
+    for (const item of versionPieData) {
+      // item.label, not item.version: the tail slice's key is a sentinel.
+      config[item.version] = { label: item.label, color: item.fill }
+    }
+    return config
+  }, [versionView, versionPieData])
+
+  const regionConfig: ChartConfig = React.useMemo(() => {
+    if (regionView === "bar") {
+      return { count: { label: "请求数", color: "var(--series-4)" } }
+    }
+    const config: ChartConfig = { count: { label: "请求数" } }
+    for (const item of regionPieData) {
+      config[item.region] = { label: item.label, color: item.fill }
+    }
+    return config
+  }, [regionView, regionPieData])
 
   return (
     <div className="space-y-6">
@@ -395,19 +524,22 @@ export function AnalyticsDashboard() {
         {/* 客户端版本分布：图表与明细并排，左看形态、右看具体占比。 */}
         <div className="grid min-w-0 gap-6 xl:grid-cols-2">
           <AdminCard className="min-w-0 space-y-4">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold">客户端版本分布</h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   来自 check-update 上报的 current_version · 共 {formatNumber(versionTotal)} 次上报
                 </p>
               </div>
-              <Layers className="size-4 text-slate-400" />
+              <div className="flex items-center gap-2">
+                <ChartViewToggle value={versionView} onChange={setVersionView} label="版本分布" />
+                <Layers className="size-4 text-slate-400" />
+              </div>
             </div>
 
             {versionData.length === 0 ? (
               <EmptyHint loading={loading} emptyText="所选范围内没有客户端上报版本。" />
-            ) : (
+            ) : versionView === "bar" ? (
               <ChartContainer config={versionConfig} className="aspect-[4/3] w-full">
                 <BarChart
                   data={versionData}
@@ -428,6 +560,23 @@ export function AnalyticsDashboard() {
                   <ChartTooltip content={<ChartTooltipContent hideLabel />} />
                   <Bar dataKey="count" fill="var(--color-count)" radius={4} barSize={14} />
                 </BarChart>
+              </ChartContainer>
+            ) : (
+              <ChartContainer config={versionConfig} className="aspect-square max-h-[300px] w-full">
+                <PieChart>
+                  <ChartTooltip content={<ChartTooltipContent nameKey="version" hideLabel />} />
+                  {/* isAnimationActive={false}: see the platform pie below. */}
+                  <Pie
+                    data={versionPieData}
+                    dataKey="count"
+                    nameKey="version"
+                    innerRadius={48}
+                    outerRadius={96}
+                    strokeWidth={2}
+                    isAnimationActive={false}
+                  />
+                  <ChartLegend content={<ChartLegendContent nameKey="version" />} />
+                </PieChart>
               </ChartContainer>
             )}
           </AdminCard>
@@ -554,6 +703,79 @@ export function AnalyticsDashboard() {
           </AdminCard>
         </div>
 
+        {/* 来源地区：图表看形态，右侧表格给出可读的国家名与占比。 */}
+        <div className="grid min-w-0 gap-6 xl:grid-cols-2">
+          <AdminCard className="min-w-0 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">来源地区</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  按调用方 IP 解析的国家/地区
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <ChartViewToggle value={regionView} onChange={setRegionView} label="地区分布" />
+                <Globe2 className="size-4 text-slate-400" />
+              </div>
+            </div>
+
+            {regionData.length === 0 ? (
+              <EmptyHint loading={loading} />
+            ) : regionView === "bar" ? (
+              <ChartContainer config={regionConfig} className="aspect-[4/3] w-full">
+                <BarChart
+                  data={regionData}
+                  layout="vertical"
+                  margin={{ left: 8, right: 40, top: 4, bottom: 4 }}
+                >
+                  <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+                  <XAxis type="number" dataKey="count" hide allowDecimals={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    width={92}
+                    interval={0}
+                  />
+                  <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+                  <Bar dataKey="count" fill="var(--color-count)" radius={4} barSize={14} />
+                </BarChart>
+              </ChartContainer>
+            ) : (
+              <ChartContainer config={regionConfig} className="aspect-square max-h-[300px] w-full">
+                <PieChart>
+                  <ChartTooltip content={<ChartTooltipContent nameKey="region" hideLabel />} />
+                  <Pie
+                    data={regionPieData}
+                    dataKey="count"
+                    nameKey="region"
+                    innerRadius={48}
+                    outerRadius={96}
+                    strokeWidth={2}
+                    isAnimationActive={false}
+                  />
+                  <ChartLegend content={<ChartLegendContent nameKey="region" />} />
+                </PieChart>
+              </ChartContainer>
+            )}
+          </AdminCard>
+
+          <AdminCard className="min-w-0 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">国内省份分布</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  按省份请求量着色，悬停查看省名与占比
+                </p>
+              </div>
+              <MapPin className="size-4 text-slate-400" />
+            </div>
+
+            <ChinaProvinceMap data={provinceData} loading={loading} />
+          </AdminCard>
+        </div>
+
         <AdminCard className="min-w-0 space-y-4">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -572,7 +794,7 @@ export function AnalyticsDashboard() {
             <div>
               <h2 className="text-lg font-semibold">访问热力图</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {range.label}内按「星期 × 小时」折叠的请求量，用于定位高峰时段
+                {range.label}内按「星期 × 小时」折叠的请求量（按来源当地时区），用于定位用户活跃时段
               </p>
             </div>
             <Flame className="size-4 text-slate-400" />
@@ -588,6 +810,58 @@ export function AnalyticsDashboard() {
           <EndpointTable rows={endpointData} total={total} />
         </AdminCard>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Bar/pie switch for a single card.
+ *
+ * Bar is the default because it ranks reliably at any category count; the pie
+ * is there for the "what share of the fleet" reading, which a bar chart makes
+ * you compute yourself.
+ */
+function ChartViewToggle({
+  value,
+  onChange,
+  label,
+}: {
+  value: ChartView
+  onChange: (next: ChartView) => void
+  label: string
+}) {
+  const options: Array<{ view: ChartView; icon: typeof BarChart3; title: string }> = [
+    { view: "bar", icon: BarChart3, title: "柱状图" },
+    { view: "pie", icon: ChartPie, title: "饼状图" },
+  ]
+
+  return (
+    <div
+      role="group"
+      aria-label={`${label}视图切换`}
+      className="flex rounded-full border border-slate-900/15 p-0.5 dark:border-white/20"
+    >
+      {options.map((option) => {
+        const Icon = option.icon
+        const active = value === option.view
+        return (
+          <button
+            key={option.view}
+            type="button"
+            title={option.title}
+            aria-label={option.title}
+            aria-pressed={active}
+            onClick={() => onChange(option.view)}
+            className={`rounded-full px-2.5 py-1 transition ${
+              active
+                ? "bg-sky-500/20 text-sky-900 dark:text-sky-100"
+                : "text-slate-500 hover:bg-slate-900/5 dark:text-slate-400 dark:hover:bg-white/10"
+            }`}
+          >
+            <Icon className="size-3.5" />
+          </button>
+        )
+      })}
     </div>
   )
 }

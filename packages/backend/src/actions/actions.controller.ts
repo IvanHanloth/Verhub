@@ -15,6 +15,7 @@ import { AdminOrApiKeyGuard } from "../auth/guards/admin-or-api-key.guard"
 import { RequireApiScope } from "../auth/guards/api-scope.decorator"
 import { PublicEndpoint } from "@prisma/client"
 
+import { ClientOriginService } from "../geo/client-origin.service"
 import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 import { CreateActionDto } from "./dto/create-action.dto"
 import { CreateActionRecordDto } from "./dto/create-action-record.dto"
@@ -25,12 +26,17 @@ import { ActionsService } from "./actions.service"
 type PublicActionRequest = {
   headers: Record<string, string | string[] | undefined>
   method?: string
-  body?: unknown
+  body?: Record<string, unknown>
+  socket?: { remoteAddress?: string }
+  ip?: string
 }
 
 @Controller()
 export class ActionsController {
-  constructor(private readonly actionsService: ActionsService) {}
+  constructor(
+    private readonly actionsService: ActionsService,
+    private readonly clientOriginService: ClientOriginService,
+  ) {}
 
   @Get("admin/projects/:projectKey/actions")
   @UseGuards(AdminOrApiKeyGuard)
@@ -96,14 +102,16 @@ export class ActionsController {
     @Body() dto: CreateActionRecordDto,
     @Req() request: PublicActionRequest,
   ) {
+    const origin = await this.clientOriginService.describe(request)
     const httpPayload = {
       method: request.method ?? null,
-      ua: request.headers["user-agent"] ?? null,
+      ua: origin.userAgent,
+      ip: origin.ip,
       header: request.headers,
       body: request.body ?? null,
     }
 
-    return this.actionsService.createRecordByProjectKey(projectKey, dto, httpPayload)
+    return this.actionsService.createRecordByProjectKey(projectKey, dto, httpPayload, origin)
   }
 
   @Get("actions/_status")

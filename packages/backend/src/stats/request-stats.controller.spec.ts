@@ -75,7 +75,23 @@ describe("RequestStatsController.getHeatmap", () => {
     await expect(controller.getHeatmap("verhub", query)).resolves.toEqual({
       start_time: 100,
       end_time: 200,
+      tz_offset_minutes: 0,
       data: [{ weekday: 1, hour: 9, count: 12 }],
     })
+  })
+
+  it("forwards the caller's timezone offset to the service", async () => {
+    const service = createService()
+    service.getHeatmap.mockResolvedValue([])
+    const controller = new RequestStatsController(service as never)
+    const query = Object.assign(new QueryRequestStatsDto(), {
+      start_time: 100,
+      end_time: 200,
+      tz_offset_minutes: 480,
+    })
+
+    await controller.getHeatmap("verhub", query)
+
+    expect(service.getHeatmap).toHaveBeenCalledWith("verhub", { startTime: 100, endTime: 200 }, 480)
   })
 })

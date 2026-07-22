@@ -16,6 +16,14 @@ export type ActionRecordItem = {
   created_time: number
   http: Record<string, unknown> | null
   custom_data: Record<string, unknown> | null
+  /** Server-observed caller origin; null on rows recorded before it was captured. */
+  ip: string | null
+  user_agent: string | null
+  country_code: string | null
+  country_name: string | null
+  region_name: string | null
+  city: string | null
+  platform: "ios" | "android" | "windows" | "mac" | "web" | null
 }
 
 export type ListActionsResponse = {

@@ -66,20 +66,20 @@ model User {
 }
 
 model ApiKey {
-  id          String   @id @default(cuid())
-  name        String
-  keyHash     String   @unique
+  id                   String   @id @default(cuid())
+  name                 String
+  keyHash              String   @unique
   previousKeyHash      String?
   previousKeyExpiresAt Int?
-  scopes      String[] @default([])
-  allProjects Boolean  @default(true)
-  projectIds  String[] @default([])
-  isActive    Boolean  @default(true)
-  lastUsedAt  Int?
-  expiresAt   Int?
-  createdAt   Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  revokedAt   Int?
-  createdById String?
+  scopes               String[] @default([])
+  allProjects          Boolean  @default(true)
+  projectIds           String[] @default([])
+  isActive             Boolean  @default(true)
+  lastUsedAt           Int?
+  expiresAt            Int?
+  createdAt            Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  revokedAt            Int?
+  createdById          String?
 
   createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
 
@@ -87,46 +87,47 @@ model ApiKey {
 }
 
 model Project {
-  projectKey    String         @id
-  name          String
-  repoUrl       String?
-  description   String?
-  author        String?
-  authorHomepageUrl String?
-  iconUrl       String?
-  websiteUrl    String?
-  docsUrl       String?
-  publishedAt   Int?
+  projectKey                         String              @id
+  name                               String
+  repoUrl                            String?
+  description                        String?
+  author                             String?
+  authorHomepageUrl                  String?
+  iconUrl                            String?
+  websiteUrl                         String?
+  docsUrl                            String?
+  publishedAt                        Int?
   optionalUpdateMinComparableVersion String?
   optionalUpdateMaxComparableVersion String?
   /// Shared secret for this project's GitHub release webhook. Stored in
   /// plaintext because HMAC-SHA256 verification needs the original value —
   /// a hash cannot reproduce the signature GitHub sends. Null disables the
   /// webhook endpoint: unsigned deliveries are never accepted.
-  githubWebhookSecret String?
+  githubWebhookSecret                String?
   /// When the webhook secret was last set or regenerated, in Unix seconds.
-  githubWebhookSecretUpdatedAt Int?
+  githubWebhookSecretUpdatedAt       Int?
   /// How long hourly request statistics are kept, in days. Capped at 365.
-  statsRetentionDays Int         @default(365)
-  createdAt     Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  updatedAt     Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  versions      Version[]
-  announcements Announcement[]
-  feedbacks     Feedback[]
-  logs          Log[]
-  actions       Action[]
-  requestStats  ApiRequestStat[]
-  clientVersionStats ClientVersionStat[]
+  statsRetentionDays                 Int                 @default(365)
+  createdAt                          Int                 @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt                          Int                 @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  versions                           Version[]
+  announcements                      Announcement[]
+  feedbacks                          Feedback[]
+  logs                               Log[]
+  actions                            Action[]
+  requestStats                       ApiRequestStat[]
+  clientVersionStats                 ClientVersionStat[]
 }
 
 /// Hourly rollup of public API requests, one row per
-/// (project, endpoint, hour, platform, region) combination.
+/// (project, endpoint, hour, platform, region, regionCode, cityCode) combination.
 ///
-/// `region` is reserved for a future GeoIP lookup and is always "UNKNOWN" today.
-/// It stays in the unique constraint so that populating it later does not
-/// require a table rewrite. Dimension columns are NOT NULL with an explicit
-/// UNKNOWN sentinel: Postgres treats NULLs as distinct in unique indexes, which
-/// would silently break the upsert-increment.
+/// `region` holds the ISO-3166 alpha-2 country code resolved from the caller's
+/// IP, or one of the sentinels `UNKNOWN` (no IP, or every lookup provider
+/// failed) / `LOCAL` (private or loopback address, never sent to a provider).
+/// Dimension columns are NOT NULL with an explicit sentinel: Postgres treats
+/// NULLs as distinct in unique indexes, which would silently break the
+/// upsert-increment.
 model ApiRequestStat {
   id         String         @id @default(cuid())
   projectKey String
@@ -135,13 +136,17 @@ model ApiRequestStat {
   hourBucket Int
   platform   StatPlatform   @default(UNKNOWN)
   region     String         @default("UNKNOWN")
+  /// 省/市级行政区划码（GB/T 2260），仅 region=CN 时非空；境外/未定位为空串。
+  /// 空串而非 NULL：Postgres unique 视 NULL 互异，会破坏 upsert-increment（同 region/platform 的理由）。
+  regionCode String         @default("")
+  cityCode   String         @default("")
   count      Int            @default(0)
   createdAt  Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   updatedAt  Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
-  @@unique([projectKey, endpoint, hourBucket, platform, region])
+  @@unique([projectKey, endpoint, hourBucket, platform, region, regionCode, cityCode])
   @@index([projectKey, hourBucket])
   @@index([hourBucket])
 }
@@ -174,6 +179,36 @@ model ClientVersionStat {
   @@index([hourBucket])
 }
 
+/// Persistent IP → origin cache, shared by every collection point.
+///
+/// The public geo APIs are rate limited (tens of calls per minute) and are the
+/// slowest thing in a request path that is otherwise pure database work, so a
+/// lookup must happen once per address rather than once per request. Persisted
+/// rather than in-memory only because a restart would otherwise replay the
+/// whole working set against the provider and trip its limiter.
+///
+/// Failures are cached too, as `source = "NONE"` with a short `expiresAt`: an
+/// address no provider can place must not be retried on every single request.
+model IpGeoCache {
+  /// Normalized address (IPv4-mapped IPv6 unwrapped), the natural key.
+  ip          String  @id
+  /// ISO-3166 alpha-2, or `UNKNOWN` / `LOCAL`. Mirrors ApiRequestStat.region.
+  countryCode String  @default("UNKNOWN")
+  countryName String?
+  regionName  String?
+  city        String?
+  /// 省/市级行政区划码（GB/T 2260），仅国内 provider 命中时非空。聚合按码分组以规避各家中文名不一致。
+  regionCode  String?
+  cityCode    String?
+  /// Provider that answered, or "NONE" for a negative entry.
+  source      String
+  resolvedAt  Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  /// Unix seconds after which the entry must be resolved again.
+  expiresAt   Int
+
+  @@index([expiresAt])
+}
+
 model Action {
   id          String         @id @default(cuid())
   projectKey  String
@@ -190,36 +225,48 @@ model Action {
 }
 
 model ActionRecord {
-  id         String   @id @default(cuid())
-  actionId   String
-  http       Json?
-  customData Json?
-  createdAt  Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  id          String          @id @default(cuid())
+  actionId    String
+  http        Json?
+  customData  Json?
+  /// Caller origin, captured at submit time. See the `Log` model for why these
+  /// are columns rather than keys inside `http`.
+  ip          String?
+  userAgent   String?
+  countryCode String?
+  countryName String?
+  regionName  String?
+  city        String?
+  platform    ClientPlatform?
+  /// Fingerprint for near-duplicate suppression; see `Log.dedupHash`.
+  dedupHash   String?
+  createdAt   Int             @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   action Action @relation(fields: [actionId], references: [id], onDelete: Cascade)
 
   @@index([actionId, createdAt])
+  @@index([dedupHash, createdAt])
 }
 
 model Version {
-  id          String         @id @default(cuid())
-  projectKey  String
-  version     String
+  id                String           @id @default(cuid())
+  projectKey        String
+  version           String
   comparableVersion String?
-  title       String?
-  content     String?
-  downloadUrl String?
-  downloadLinks Json?
-  forced      Boolean        @default(false)
-  isLatest    Boolean        @default(false)
-  isPreview   Boolean        @default(false)
-  isMilestone Boolean        @default(false)
-  isDeprecated Boolean       @default(false)
-  platforms   ClientPlatform[] @default([])
-  platform    ClientPlatform?
-  customData  Json?
-  publishedAt Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  createdAt   Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  title             String?
+  content           String?
+  downloadUrl       String?
+  downloadLinks     Json?
+  forced            Boolean          @default(false)
+  isLatest          Boolean          @default(false)
+  isPreview         Boolean          @default(false)
+  isMilestone       Boolean          @default(false)
+  isDeprecated      Boolean          @default(false)
+  platforms         ClientPlatform[] @default([])
+  platform          ClientPlatform?
+  customData        Json?
+  publishedAt       Int              @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  createdAt         Int              @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
@@ -228,17 +275,17 @@ model Version {
 }
 
 model Announcement {
-  id        String   @id @default(cuid())
-  projectKey String
-  title     String
-  content   String
-  isPinned  Boolean  @default(false)
-  isHidden  Boolean  @default(false)
-  platforms ClientPlatform[] @default([])
-  author    String?
-  publishedAt Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  createdAt   Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  updatedAt   Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  id          String           @id @default(cuid())
+  projectKey  String
+  title       String
+  content     String
+  isPinned    Boolean          @default(false)
+  isHidden    Boolean          @default(false)
+  platforms   ClientPlatform[] @default([])
+  author      String?
+  publishedAt Int              @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  createdAt   Int              @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt   Int              @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
@@ -246,31 +293,61 @@ model Announcement {
 }
 
 model Feedback {
-  id         String   @id @default(cuid())
-  projectKey String
-  userId     String?
-  rating     Int?
-  content    String
-  platform   ClientPlatform?
-  customData Json?
-  createdAt  Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  id          String          @id @default(cuid())
+  projectKey  String
+  userId      String?
+  rating      Int?
+  content     String
+  /// Declared by the client when it submits, else inferred from the User-Agent.
+  platform    ClientPlatform?
+  customData  Json?
+  /// Caller origin, captured at submit time. See the `Log` model.
+  ip          String?
+  userAgent   String?
+  countryCode String?
+  countryName String?
+  regionName  String?
+  city        String?
+  /// Fingerprint for near-duplicate suppression; see `Log.dedupHash`.
+  dedupHash   String?
+  createdAt   Int             @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
   @@index([projectKey, createdAt])
+  @@index([dedupHash, createdAt])
 }
 
 model Log {
-  id         String   @id @default(cuid())
-  projectKey String
-  level      LogLevel
-  content    String
-  deviceInfo Json?
-  customData Json?
-  createdAt  Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  id          String          @id @default(cuid())
+  projectKey  String
+  level       LogLevel
+  content     String
+  deviceInfo  Json?
+  customData  Json?
+  /// Caller origin, captured at submit time. Stored as columns rather than
+  /// inside `deviceInfo` because that field is client-supplied and therefore
+  /// forgeable, while these are observed server-side — mixing the two would
+  /// make it impossible to tell which is which when triaging.
+  ip          String?
+  userAgent   String?
+  /// ISO-3166 alpha-2 / `LOCAL`; null when the address could not be placed.
+  countryCode String?
+  countryName String?
+  /// Sub-national area (province/state), as reported by the geo provider.
+  regionName  String?
+  city        String?
+  /// Inferred from the User-Agent; the log upload API has no platform field.
+  platform    ClientPlatform?
+  /// Fingerprint of the payload plus caller, for near-duplicate suppression.
+  /// A crashing client retries the same line every few seconds; keeping only
+  /// the first within a short window preserves the signal without the flood.
+  dedupHash   String?
+  createdAt   Int             @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
   @@index([projectKey, createdAt])
   @@index([level, createdAt])
+  @@index([dedupHash, createdAt])
 }

@@ -143,6 +143,22 @@ API_KEY_SALT=please-change-this-api-key-salt
 JWT_EXPIRES_IN=2h
 ADMIN_PASSWORD=
 
+# 来源地区解析（统计大屏的「来源地区」）。解析走公开免费接口，默认按
+# pconline.com.cn（太平洋科技）→ cz88.net（纯真网络）→ ipwho.is
+# → freeipapi.com → ipapi.co → ip-api.com 顺序回退（国内两家优先，
+# 境外 IP 自动落到后面的国际供应商）。结果持久缓存在数据库，同一 IP 只解析一次。
+# 内网部署或不允许后端出网时设为 false，届时地区一律记为 UNKNOWN。
+VERHUB_GEO_ENABLED=true
+# 逗号分隔，覆盖默认顺序；留空即用全部
+VERHUB_GEO_PROVIDERS=
+VERHUB_GEO_TTL_DAYS=30
+# 整条回退链的总超时（不是每家的超时），超预算即记为 UNKNOWN
+VERHUB_GEO_TIMEOUT_MS=2500
+
+# 上报去重窗口（秒）。窗口内同一调用方提交完全相同的日志/反馈/行为记录
+# 只保留第一条，用于挡住崩溃重试循环与重复点击。设为 0 关闭。
+VERHUB_DEDUP_WINDOW_SECONDS=60
+
 # 暴露端口
 VERHUB_HTTP_PORT=80
 VERHUB_HTTPS_PORT=443

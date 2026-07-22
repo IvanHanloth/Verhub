@@ -31,9 +31,10 @@ Verhub 采用 Monorepo + 模块化单体架构：
 - `logs`：日志上报与日志查询
 - `actions`：行为定义管理与行为记录上报
 - `webhooks`：GitHub Release 推送接收（`GithubWebhookService`）与项目级 webhook secret 管理（`GithubWebhookSecretService`）
+- `geo`：调用方来源解析。`GeoLocationService` 做 IP → 国家/地区解析与缓存，`ClientOriginService` 把请求拼装成各上报表要写入的来源字段。模块声明为 `@Global`，因为四个采集点都要用，且服务持有进程级缓存，不能被重复实例化
 - `database`：PrismaService 与数据库连接能力
 - `health`：服务健康检查
-- `common`：跨模块共享工具函数（`nowSeconds`、`normalizeProjectKey`、`isUniqueViolation`）
+- `common`：跨模块共享工具函数（`nowSeconds`、`normalizeProjectKey`、`isUniqueViolation`）、请求上下文提取（`client-context`）与上报去重指纹（`dedup`）
 
 边界约束：
 
@@ -107,6 +108,23 @@ Webhook 鉴权（Project）：
 - 新增可选字段：`author`、`authorHomepageUrl`、`iconUrl`、`websiteUrl`、`docsUrl`、`publishedAt`。
 - 用于公共项目展示页与客户端启动信息补全；GitHub 仓库预览可自动回填上述信息（`docsUrl` 除外，仓库接口无对应字段，需手动填写）。
 - 展示页的项目描述、版本更新内容与公告正文按 Markdown（GFM）渲染，渲染前经白名单清洗；管理端对应表单提供编写/预览切换。
+
+调用方来源采集（Geo）：
+
+- IP 取 `X-Forwarded-For` 最左项，其次 `CF-Connecting-IP` / `True-Client-IP` / `X-Real-IP`，最后回退到连接地址。左值可被客户端伪造，这里可以接受：它是遥测而非鉴权；换成 socket 地址反而会把所有请求都记成反向代理的地址。写库前统一归一化（去端口、解包 `::ffff:` 形式的 IPv4）。
+- 地区解析走公开免费接口，默认按 `pconline.com.cn（太平洋科技）→ cz88.net（纯真网络）→ ipwho.is → freeipapi.com → ipapi.co → ip-api.com` 顺序回退。前两家是国内接口，返回本土化中文省市名、对国内 IP 命中率更高，排在最前；它们只覆盖国内线路，境外 IP 解析不出来会自动落到后面的国际供应商。国际部分 HTTPS 优先，`ip-api.com` 免费档只有明文 HTTP 所以排最后。pconline 返回 GBK，须按 `charset` 解码否则中文乱码。自托管场景不应要求运维去注册任何账号，代价是每家都有限流、都可能消失，所以没有任何一家是必需的。
+- 解析结果持久化在 `IpGeoCache`（按 IP 主键），命中顺序为：私网短路 → 进程内 Map → `IpGeoCache` 表 → 供应商链。失败同样入缓存（`source = "NONE"`，TTL 15 分钟），否则每个请求都会重放整条链。进程内缓存有条数上限：它以客户端 IP 为键，而这个键由不可信调用方控制。
+- `VERHUB_GEO_TIMEOUT_MS` 是**整条链**的预算而非单家的超时。上报接口会等待解析完成（写入的那一行需要带上地区），若按单家计时，四家都慢就会在客户端的一次日志上报上叠成十秒。超预算即记为 UNKNOWN——缺个地区远比请求挂住轻。
+- 其余环境变量：`VERHUB_GEO_ENABLED`（`false` 关闭出网解析）、`VERHUB_GEO_PROVIDERS`（逗号分隔，覆盖顺序）、`VERHUB_GEO_TTL_DAYS`。
+- 国家码写入 `ApiRequestStat.region`（聚合表不存 IP），并作为独立列写入 `Log` / `Feedback` / `ActionRecord`。这些列刻意不塞进 `deviceInfo` / `http` 这类客户端自报的 JSON：一个可伪造、一个是服务端观测，混在一起排障时就分不清了。
+- 国内来源精确到省市：`ApiRequestStat` 除国家码外还存省/市级行政区划码（`regionCode`/`cityCode`，GB/T 2260），聚合按**码**分组而非中文名——太平洋科技返回「辽宁省/大连市」、纯真网络返回「辽宁/大连」，按名分组会把同一省劈成两桶，而两家的码一致（`210000`/`210200`）。境外与未定位无国标码，落空串 sentinel（NULL 会被 Postgres unique 视为互异，破坏 upsert-increment）。省份分布只取 `region=CN` 且省码非空的行，中文省名由后端静态表 `province-names.ts`（`Intl.DisplayNames` 不含中国省级）给出，随 overview 的 `by_province` 返回，前端据此渲染中国省级热力地图。市级码已入库，暂不在 UI 展开。
+- 热力图（星期 × 小时）按**来源当地时区**折叠，而非查询者时区：回答的是「用户在其当地几点活跃」。聚合表只到国家码，故用 `region-timezone.ts` 的国家→代表时区静态表平移（中国全境 UTC+8 精确，美/俄等跨时区国家取代表时区近似），无法定位（UNKNOWN/LOCAL/表外）回退到查询者时区兜底。趋势图 timeseries 仍按查询者时区——那是给管理员看的绝对时间轴，两者口径不同是有意为之。
+
+上报去重：
+
+- `Log` / `Feedback` / `ActionRecord` 各有 `dedupHash` 列，指纹取「项目 + 载荷 + 调用方」。窗口内命中则直接返回已存在的那条记录，不新建行。
+- 窗口由 `VERHUB_DEDUP_WINDOW_SECONDS` 控制，默认 60 秒，设为 0 或非法值即关闭。
+- 语义刻意粗糙，不是精确一次投递：超过窗口的重试会被保留，因为真正在反复发生的事件本身就值得看见。行为记录的指纹不含 `http`——它带整套请求头，任何轮换字段（trace id、cookie）都会让每次重试看起来都不一样，整个检查就失效了。
 
 ## 4. 前端架构
 

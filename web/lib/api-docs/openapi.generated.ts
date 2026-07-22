@@ -2705,7 +2705,8 @@ export const openApiDocument: OpenApiDocument = {
       post: {
         tags: ["Versions"],
         summary: "提交当前版本并检查更新",
-        description: "返回是否有更新、是否必须更新、里程碑约束与目标版本。",
+        description:
+          "提交客户端当前版本，返回是否有更新、是否必须更新、里程碑约束与目标版本。 请求体须提交 current_version 与 current_comparable_version 中的至少一个： 仅提交 current_version 时依赖该版本已在服务端登记且配置了 comparable_version， 否则应改为（或同时）提交 current_comparable_version。详见 CheckVersionUpdateDto。",
         "x-verhub-doc": true,
         requestBody: {
           required: true,
@@ -2842,7 +2843,8 @@ export const openApiDocument: OpenApiDocument = {
       post: {
         tags: ["Feedbacks"],
         summary: "提交用户反馈",
-        description: "客户端提交评分与反馈内容。",
+        description:
+          "客户端提交评分与反馈内容。服务端会额外记录调用方 IP、User-Agent 与解析出的地区；未声明 platform 时按 User-Agent 推断。短时间内（默认 60 秒，可用 VERHUB_DEDUP_WINDOW_SECONDS 调整）同一调用方提交完全相同的内容会被判为重复提交，直接返回已存在的那条记录而不新建。",
         "x-verhub-doc": true,
         requestBody: {
           required: true,
@@ -2935,7 +2937,7 @@ export const openApiDocument: OpenApiDocument = {
         tags: ["Statistics"],
         summary: "查询接口请求时间序列",
         description:
-          "按小时或按天返回请求数序列。统计始终以小时为最小粒度存储，granularity=day 时在查询阶段汇总；范围内无请求的时间桶以 0 返回，便于直接绘制曲线。",
+          "按小时或按天返回请求数序列。统计始终以小时为最小粒度存储，granularity=day 时在查询阶段汇总；范围内无请求的时间桶以 0 返回，便于直接绘制曲线。granularity=day 时按 tz_offset_minutes 所指时区的午夜切分，返回的 bucket 即该本地日开始的时刻。",
         "x-verhub-doc": true,
         security: [
           {
@@ -2951,6 +2953,9 @@ export const openApiDocument: OpenApiDocument = {
           },
           {
             $ref: "#/components/parameters/EndTime",
+          },
+          {
+            $ref: "#/components/parameters/TzOffsetMinutes",
           },
           {
             name: "granularity",
@@ -3073,7 +3078,7 @@ export const openApiDocument: OpenApiDocument = {
         tags: ["Statistics"],
         summary: "查询请求活跃度热力图",
         description:
-          "把范围内的请求量折叠到「星期 × 小时」网格上，用于观察一周内的访问高峰时段。固定返回 168 个格子，无流量的格子为 0。",
+          "把范围内的请求量折叠到「星期 × 小时」网格上，用于观察用户在其当地一周内的访问高峰时段。固定返回 168 个格子，无流量的格子为 0。折叠按每条请求的来源当地时区进行（由国家码推定，中国精确为 UTC+8，跨时区国家取代表时区近似）；tz_offset_minutes 仅作无法定位来源（UNKNOWN/LOCAL/表外国家）时的兜底，省略即按 UTC 兜底。",
         "x-verhub-doc": true,
         security: [
           {
@@ -3089,6 +3094,9 @@ export const openApiDocument: OpenApiDocument = {
           },
           {
             $ref: "#/components/parameters/EndTime",
+          },
+          {
+            $ref: "#/components/parameters/TzOffsetMinutes",
           },
         ],
         responses: {
@@ -3241,7 +3249,8 @@ export const openApiDocument: OpenApiDocument = {
       post: {
         tags: ["Logs"],
         summary: "上报日志",
-        description: "客户端上报日志用于排障。",
+        description:
+          "客户端上报日志用于排障。服务端会额外记录调用方 IP、User-Agent、由 UA 推断的平台与解析出的地区。短时间内（默认 60 秒，可用 VERHUB_DEDUP_WINDOW_SECONDS 调整）同一调用方上报完全相同的日志会被判为重复上报，直接返回已存在的那条记录而不新建——崩溃重试循环因此不会淹没列表。",
         "x-verhub-doc": true,
         requestBody: {
           required: true,
@@ -3627,7 +3636,8 @@ export const openApiDocument: OpenApiDocument = {
       post: {
         tags: ["Actions"],
         summary: "上报行为记录",
-        description: "客户端上报行为埋点记录。",
+        description:
+          "客户端上报行为埋点记录。服务端会额外记录调用方 IP、User-Agent、平台与解析出的地区。短时间内（默认 60 秒，可用 VERHUB_DEDUP_WINDOW_SECONDS 调整）同一调用方上报同一 action 且 custom_data 完全相同会被判为重复上报，直接返回已存在的那条记录而不新建。",
         "x-verhub-doc": true,
         requestBody: {
           required: true,
@@ -3809,6 +3819,20 @@ export const openApiDocument: OpenApiDocument = {
         },
         description: "Unix 时间戳（秒）",
         example: 1762000000,
+      },
+      TzOffsetMinutes: {
+        name: "tz_offset_minutes",
+        in: "query",
+        required: false,
+        schema: {
+          type: "integer",
+          minimum: -840,
+          maximum: 900,
+          default: 0,
+        },
+        description:
+          "相对 UTC 的分钟偏移，即浏览器的 `-new Date().getTimezoneOffset()`。\n统计桶按 UTC 小时存储，但「几点最忙」问的是受众的墙上时间，因此\n「星期 × 小时」与「按天」的折叠都以该偏移为准。省略时为 0（等同 UTC）。\n",
+        example: 480,
       },
       LogLevel: {
         name: "level",
@@ -4795,7 +4819,15 @@ export const openApiDocument: OpenApiDocument = {
       },
       RequestStatsOverview: {
         type: "object",
-        required: ["start_time", "end_time", "total", "by_endpoint", "by_platform", "by_region"],
+        required: [
+          "start_time",
+          "end_time",
+          "total",
+          "by_endpoint",
+          "by_platform",
+          "by_region",
+          "by_province",
+        ],
         properties: {
           start_time: {
             type: "integer",
@@ -4843,13 +4875,36 @@ export const openApiDocument: OpenApiDocument = {
           },
           by_region: {
             type: "array",
-            description: "按地区汇总。地区解析尚未实现，当前恒为单个 UNKNOWN 分组。",
+            description:
+              "按地区汇总，按请求数降序。取值为调用方 IP 解析出的 ISO-3166 alpha-2\n国家代码，另有两个哨兵值：`UNKNOWN`（无 IP，或所有解析服务均失败）、\n`LOCAL`（私有网段/回环地址，不会送去外部解析）。\n",
             items: {
               type: "object",
               required: ["region", "count"],
               properties: {
                 region: {
                   type: "string",
+                },
+                count: {
+                  type: "integer",
+                },
+              },
+            },
+          },
+          by_province: {
+            type: "array",
+            description:
+              "国内省份分布，按请求数降序。取值为省级行政区划码（GB/T 2260，如\n`210000`）+ 标准中文省名。仅有中国大陆流量时非空；按行政区划码聚合以\n规避不同解析服务省市命名不一致导致的分桶碎片。境外流量只体现在\n`by_region` 的国家分布中。\n",
+            items: {
+              type: "object",
+              required: ["code", "name", "count"],
+              properties: {
+                code: {
+                  type: "string",
+                  description: "省级行政区划码（GB/T 2260）",
+                },
+                name: {
+                  type: "string",
+                  description: "标准中文省名",
                 },
                 count: {
                   type: "integer",
@@ -4884,15 +4939,47 @@ export const openApiDocument: OpenApiDocument = {
           ],
           by_region: [
             {
+              region: "CN",
+              count: 9600,
+            },
+            {
+              region: "US",
+              count: 2100,
+            },
+            {
               region: "UNKNOWN",
-              count: 12840,
+              count: 1140,
+            },
+          ],
+          by_province: [
+            {
+              code: "440000",
+              name: "广东省",
+              count: 4200,
+            },
+            {
+              code: "310000",
+              name: "上海市",
+              count: 2600,
+            },
+            {
+              code: "210000",
+              name: "辽宁省",
+              count: 1800,
             },
           ],
         },
       },
       RequestStatsTimeseries: {
         type: "object",
-        required: ["start_time", "end_time", "granularity", "endpoint", "data"],
+        required: [
+          "start_time",
+          "end_time",
+          "granularity",
+          "tz_offset_minutes",
+          "endpoint",
+          "data",
+        ],
         properties: {
           start_time: {
             type: "integer",
@@ -4905,6 +4992,10 @@ export const openApiDocument: OpenApiDocument = {
           granularity: {
             type: "string",
             enum: ["hour", "day"],
+          },
+          tz_offset_minutes: {
+            type: "integer",
+            description: "回显本次折叠所用的时区偏移",
           },
           endpoint: {
             oneOf: [
@@ -4926,7 +5017,8 @@ export const openApiDocument: OpenApiDocument = {
                 bucket: {
                   type: "integer",
                   format: "int64",
-                  description: "时间桶起点（Unix 秒，UTC 对齐到整点或整天）",
+                  description:
+                    "时间桶起点（Unix 秒）。granularity=hour 时对齐到 UTC 整点；\ngranularity=day 时为 tz_offset_minutes 所指时区当天零点对应的时刻，\n直接用本地时间格式化即可得到正确日期。\n",
                 },
                 count: {
                   type: "integer",
@@ -4939,6 +5031,7 @@ export const openApiDocument: OpenApiDocument = {
           start_time: 1760000000,
           end_time: 1760086400,
           granularity: "hour",
+          tz_offset_minutes: 480,
           endpoint: "VERSION_CHECK_UPDATE",
           data: [
             {
@@ -5004,7 +5097,7 @@ export const openApiDocument: OpenApiDocument = {
       },
       RequestStatsHeatmap: {
         type: "object",
-        required: ["start_time", "end_time", "data"],
+        required: ["start_time", "end_time", "tz_offset_minutes", "data"],
         properties: {
           start_time: {
             type: "integer",
@@ -5013,6 +5106,10 @@ export const openApiDocument: OpenApiDocument = {
           end_time: {
             type: "integer",
             format: "int64",
+          },
+          tz_offset_minutes: {
+            type: "integer",
+            description: "回显无法定位来源时的兜底时区偏移",
           },
           data: {
             type: "array",
@@ -5025,13 +5122,14 @@ export const openApiDocument: OpenApiDocument = {
                   type: "integer",
                   minimum: 0,
                   maximum: 6,
-                  description: "0=周日 … 6=周六（UTC）",
+                  description:
+                    "0=周日 … 6=周六，按来源当地时区（无法定位则按 tz_offset_minutes 兜底）",
                 },
                 hour: {
                   type: "integer",
                   minimum: 0,
                   maximum: 23,
-                  description: "UTC 小时",
+                  description: "小时，按来源当地时区（无法定位则按 tz_offset_minutes 兜底）",
                 },
                 count: {
                   type: "integer",
@@ -5043,6 +5141,7 @@ export const openApiDocument: OpenApiDocument = {
         example: {
           start_time: 1760000000,
           end_time: 1762000000,
+          tz_offset_minutes: 480,
           data: [
             {
               weekday: 1,
@@ -5562,16 +5661,20 @@ export const openApiDocument: OpenApiDocument = {
       },
       CheckVersionUpdateDto: {
         type: "object",
+        description:
+          "current_version 与 current_comparable_version 至少提交一个，否则返回 400。 二者的取舍见字段说明；最终服务端必须能拿到一个可比较版本号用于判定。",
         properties: {
           current_version: {
             type: "string",
             maxLength: 64,
-            description: "当前语义化版本号（可选，与 current_comparable_version 二选一）",
+            description:
+              "当前语义化版本号。仅提交该字段时，服务端会按此版本查库并取其登记的 comparable_version 进行比较；若该版本未登记或未配置 comparable_version，则返回 400。",
           },
           current_comparable_version: {
             type: "string",
             maxLength: 64,
-            description: "当前可比较版本号（可选；当两者同时提交时优先使用该字段）",
+            description:
+              "当前可比较版本号，须符合可比较版本规范（如 1.20.326、2.0.0-rc.1）。 提交后直接用于比较，无需依赖服务端已登记该版本；两者同时提交时以此字段为准。",
           },
           include_preview: {
             type: "boolean",
@@ -5907,7 +6010,21 @@ export const openApiDocument: OpenApiDocument = {
       },
       FeedbackItem: {
         type: "object",
-        required: ["id", "user_id", "rating", "content", "platform", "custom_data", "created_at"],
+        required: [
+          "id",
+          "user_id",
+          "rating",
+          "content",
+          "platform",
+          "custom_data",
+          "ip",
+          "user_agent",
+          "country_code",
+          "country_name",
+          "region_name",
+          "city",
+          "created_at",
+        ],
         properties: {
           id: {
             type: "string",
@@ -5930,6 +6047,7 @@ export const openApiDocument: OpenApiDocument = {
                 type: "null",
               },
             ],
+            description: "客户端提交时声明的平台；未声明则由 User-Agent 推断。",
           },
           custom_data: {
             oneOf: [
@@ -5941,6 +6059,27 @@ export const openApiDocument: OpenApiDocument = {
                 type: "null",
               },
             ],
+          },
+          ip: {
+            type: ["string", "null"],
+            description: "服务端观测到的调用方地址；提交时采集，历史数据为 null。",
+          },
+          user_agent: {
+            type: ["string", "null"],
+          },
+          country_code: {
+            type: ["string", "null"],
+            description: "ISO-3166 alpha-2；私有网段为 LOCAL，无法定位时为 null。",
+          },
+          country_name: {
+            type: ["string", "null"],
+          },
+          region_name: {
+            type: ["string", "null"],
+            description: "省/州级区域，取决于解析服务返回的粒度。",
+          },
+          city: {
+            type: ["string", "null"],
           },
           created_at: {
             type: "integer",
@@ -5956,6 +6095,12 @@ export const openApiDocument: OpenApiDocument = {
           custom_data: {
             app_version: "1.2.0",
           },
+          ip: "203.0.113.9",
+          user_agent: "verhub-sdk/1.0",
+          country_code: "CN",
+          country_name: "中国",
+          region_name: "广东省",
+          city: "深圳",
           created_at: 1760000000,
         },
       },
@@ -6011,7 +6156,21 @@ export const openApiDocument: OpenApiDocument = {
       },
       LogItem: {
         type: "object",
-        required: ["id", "level", "content", "device_info", "custom_data", "created_at"],
+        required: [
+          "id",
+          "level",
+          "content",
+          "device_info",
+          "custom_data",
+          "ip",
+          "user_agent",
+          "country_code",
+          "country_name",
+          "region_name",
+          "city",
+          "platform",
+          "created_at",
+        ],
         properties: {
           id: {
             type: "string",
@@ -6034,6 +6193,7 @@ export const openApiDocument: OpenApiDocument = {
                 type: "null",
               },
             ],
+            description: "客户端自报，内容不可信；服务端观测到的信息见下方独立字段。",
           },
           custom_data: {
             oneOf: [
@@ -6045,6 +6205,38 @@ export const openApiDocument: OpenApiDocument = {
                 type: "null",
               },
             ],
+          },
+          ip: {
+            type: ["string", "null"],
+            description: "服务端观测到的调用方地址；上报时采集，历史数据为 null。",
+          },
+          user_agent: {
+            type: ["string", "null"],
+          },
+          country_code: {
+            type: ["string", "null"],
+            description: "ISO-3166 alpha-2；私有网段为 LOCAL，无法定位时为 null。",
+          },
+          country_name: {
+            type: ["string", "null"],
+          },
+          region_name: {
+            type: ["string", "null"],
+            description: "省/州级区域，取决于解析服务返回的粒度。",
+          },
+          city: {
+            type: ["string", "null"],
+          },
+          platform: {
+            oneOf: [
+              {
+                $ref: "#/components/schemas/ClientPlatform",
+              },
+              {
+                type: "null",
+              },
+            ],
+            description: "由 User-Agent 推断，日志上报接口本身没有平台字段。",
           },
           created_at: {
             type: "integer",
@@ -6062,6 +6254,13 @@ export const openApiDocument: OpenApiDocument = {
           custom_data: {
             app_version: "1.2.0",
           },
+          ip: "203.0.113.9",
+          user_agent: "verhub-sdk/1.0",
+          country_code: "CN",
+          country_name: "中国",
+          region_name: "广东省",
+          city: "深圳",
+          platform: "windows",
           created_at: 1760000000,
         },
       },
@@ -6219,7 +6418,20 @@ export const openApiDocument: OpenApiDocument = {
       },
       ActionRecordItem: {
         type: "object",
-        required: ["action_record_id", "action_id", "created_time", "http", "custom_data"],
+        required: [
+          "action_record_id",
+          "action_id",
+          "created_time",
+          "http",
+          "custom_data",
+          "ip",
+          "user_agent",
+          "country_code",
+          "country_name",
+          "region_name",
+          "city",
+          "platform",
+        ],
         properties: {
           action_record_id: {
             type: "string",
@@ -6240,6 +6452,7 @@ export const openApiDocument: OpenApiDocument = {
                 type: "null",
               },
             ],
+            description: "原始请求快照（方法、完整请求头、请求体）。常用字段已提升为下方独立列。",
           },
           custom_data: {
             oneOf: [
@@ -6252,18 +6465,58 @@ export const openApiDocument: OpenApiDocument = {
               },
             ],
           },
+          ip: {
+            type: ["string", "null"],
+            description: "服务端观测到的调用方地址；提交时采集，历史数据为 null。",
+          },
+          user_agent: {
+            type: ["string", "null"],
+          },
+          country_code: {
+            type: ["string", "null"],
+            description: "ISO-3166 alpha-2；私有网段为 LOCAL，无法定位时为 null。",
+          },
+          country_name: {
+            type: ["string", "null"],
+          },
+          region_name: {
+            type: ["string", "null"],
+            description: "省/州级区域，取决于解析服务返回的粒度。",
+          },
+          city: {
+            type: ["string", "null"],
+          },
+          platform: {
+            oneOf: [
+              {
+                $ref: "#/components/schemas/ClientPlatform",
+              },
+              {
+                type: "null",
+              },
+            ],
+            description: "由 SDK 声明或 User-Agent 推断。",
+          },
         },
         example: {
           action_record_id: "rec-001",
           action_id: "act-001",
           created_time: 1760000000,
           http: {
+            method: "POST",
             ip: "203.0.113.7",
-            user_agent: "Verhub-SDK/1.2.0",
+            ua: "Verhub-SDK/1.2.0",
           },
           custom_data: {
             app_version: "1.2.0",
           },
+          ip: "203.0.113.7",
+          user_agent: "Verhub-SDK/1.2.0",
+          country_code: "CN",
+          country_name: "中国",
+          region_name: "广东省",
+          city: "深圳",
+          platform: "windows",
         },
       },
       ActionRecordListResponse: {

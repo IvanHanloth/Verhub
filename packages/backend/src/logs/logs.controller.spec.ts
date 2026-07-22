@@ -8,11 +8,23 @@ describe("LogsController", () => {
     getStatus: jest.fn(),
   }
 
+  const origin = {
+    ip: "203.0.113.9",
+    userAgent: "verhub-sdk/1.0",
+    countryCode: "JP",
+    countryName: "Japan",
+    regionName: "Tokyo",
+    city: "Tokyo",
+    platform: null,
+  }
+  const mockOriginService = { describe: jest.fn().mockResolvedValue(origin) }
+
   let controller: LogsController
 
   beforeEach(() => {
     jest.clearAllMocks()
-    controller = new LogsController(mockService as never)
+    mockOriginService.describe.mockResolvedValue(origin)
+    controller = new LogsController(mockService as never, mockOriginService as never)
   })
 
   it("findAll delegates projectKey and query", async () => {
@@ -22,11 +34,15 @@ describe("LogsController", () => {
     expect(mockService.findAll).toHaveBeenCalledWith("proj", { limit: 10 })
   })
 
-  it("createByProjectKey delegates projectKey and dto", async () => {
+  it("createByProjectKey passes the observed origin through to the service", async () => {
     const dto = { level: 1, content: "Log message" }
+    const request = { headers: {} }
     mockService.createByProjectKey.mockResolvedValue({ id: "l1" })
-    await controller.createByProjectKey("proj", dto as never)
-    expect(mockService.createByProjectKey).toHaveBeenCalledWith("proj", dto)
+
+    await controller.createByProjectKey("proj", dto as never, request as never)
+
+    expect(mockOriginService.describe).toHaveBeenCalledWith(request)
+    expect(mockService.createByProjectKey).toHaveBeenCalledWith("proj", dto, origin)
   })
 
   it("getStatistics delegates to service", async () => {

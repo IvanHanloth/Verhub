@@ -2,19 +2,28 @@ import { Injectable, Logger } from "@nestjs/common"
 import { Prisma, PublicEndpoint, StatPlatform } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
+import { GeoLocationService } from "../geo/geo-location.service"
 import { normalizeProjectKey, nowSeconds } from "../common/utils"
+import { provinceName } from "./province-names"
+import { resolveTzOffset } from "./region-timezone"
 
 export const HOUR_SECONDS = 3600
 export const DAY_SECONDS = 86400
 
-/** Reserved until GeoIP lookup lands; every row records this today. */
+/** Recorded when no IP was available or every geo provider failed. */
 export const UNKNOWN_REGION = "UNKNOWN"
 
 export type RecordRequestInput = {
   projectKey: string
   endpoint: PublicEndpoint
   platform: StatPlatform
+  /** ISO-3166 alpha-2, or a sentinel. Resolved from `ip` when omitted. */
   region?: string
+  /** 省/市级行政区划码，仅国内命中时非空；与 region 一起从 `ip` 解析。 */
+  regionCode?: string
+  cityCode?: string
+  /** Caller address, used only to derive `region`; never stored on the rollup. */
+  ip?: string | null
   occurredAt?: number
 }
 
@@ -39,9 +48,15 @@ export type StatsRange = {
 export type EndpointBucket = { endpoint: PublicEndpoint; count: number }
 export type PlatformBucket = { platform: StatPlatform; count: number }
 export type RegionBucket = { region: string; count: number }
+/** 国内省份分布桶：省级码 + 标准中文省名 + 计数。 */
+export type ProvinceBucket = { code: string; name: string; count: number }
 export type TimeseriesPoint = { bucket: number; count: number }
 export type ClientVersionBucket = { version: string; count: number }
-/** `weekday` is 0=Sunday..6=Saturday, `hour` is 0..23, both in UTC. */
+/**
+ * `weekday` is 0=Sunday..6=Saturday and `hour` is 0..23, folded in each
+ * request's *source* timezone (by country code); `tz_offset_minutes` is only the
+ * fallback for sources that cannot be placed.
+ */
 export type HeatmapCell = { weekday: number; hour: number; count: number }
 
 /** Truncate a Unix-seconds timestamp to the start of its UTC hour. */
@@ -53,7 +68,10 @@ export function toHourBucket(timestamp: number): number {
 export class RequestStatsService {
   private readonly logger = new Logger(RequestStatsService.name)
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly geoLocationService: GeoLocationService,
+  ) {}
 
   /**
    * Increment the hourly counter for one request.
@@ -67,10 +85,20 @@ export class RequestStatsService {
     const projectKey = normalizeProjectKey(input.projectKey)
     const hourBucket = toHourBucket(input.occurredAt ?? nowSeconds())
     const platform = input.platform
-    const region = input.region ?? UNKNOWN_REGION
+
+    // 一次解析同时拿国家码与省市码；显式传入时不再解析（省市随之为空串）。
+    let region = input.region
+    let regionCode = input.regionCode
+    let cityCode = input.cityCode
+    if (region === undefined) {
+      const geo = await this.geoLocationService.resolve(input.ip)
+      region = geo.countryCode
+      regionCode = geo.regionCode ?? ""
+      cityCode = geo.cityCode ?? ""
+    }
 
     await this.prisma.$executeRaw`
-      INSERT INTO "ApiRequestStat" ("id", "projectKey", "endpoint", "hourBucket", "platform", "region", "count")
+      INSERT INTO "ApiRequestStat" ("id", "projectKey", "endpoint", "hourBucket", "platform", "region", "regionCode", "cityCode", "count")
       VALUES (
         gen_random_uuid()::text,
         ${projectKey},
@@ -78,9 +106,11 @@ export class RequestStatsService {
         ${hourBucket},
         ${platform}::"StatPlatform",
         ${region},
+        ${regionCode ?? ""},
+        ${cityCode ?? ""},
         1
       )
-      ON CONFLICT ("projectKey", "endpoint", "hourBucket", "platform", "region")
+      ON CONFLICT ("projectKey", "endpoint", "hourBucket", "platform", "region", "regionCode", "cityCode")
       DO UPDATE SET
         "count" = "ApiRequestStat"."count" + 1,
         "updatedAt" = CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)
@@ -182,7 +212,10 @@ export class RequestStatsService {
       .sort((a, b) => b.count - a.count)
   }
 
-  /** Per-region totals, descending. Always a single UNKNOWN bucket until GeoIP lands. */
+  /**
+   * Per-country totals, descending. Buckets are ISO-3166 alpha-2 codes plus the
+   * `UNKNOWN` / `LOCAL` sentinels.
+   */
   async getRegionBreakdown(projectKey: string, range: StatsRange): Promise<RegionBucket[]> {
     const rows = await this.prisma.apiRequestStat.groupBy({
       by: ["region"],
@@ -192,6 +225,33 @@ export class RequestStatsService {
 
     return rows
       .map((row) => ({ region: row.region, count: row._sum.count ?? 0 }))
+      .sort((a, b) => b.count - a.count)
+  }
+
+  /**
+   * 国内省份分布，降序。只统计 region=CN 且有省级码的行——境外与未定位没有国标码。
+   * 按省级码聚合（同一省份不同 provider 命名不一致，按码归并），码归一到省级
+   * （市码前两位 + "0000"）再累加，中文省名由静态表给出。
+   */
+  async getProvinceBreakdown(projectKey: string, range: StatsRange): Promise<ProvinceBucket[]> {
+    const rows = await this.prisma.apiRequestStat.groupBy({
+      by: ["regionCode"],
+      _sum: { count: true },
+      where: {
+        ...this.rangeWhere(projectKey, range),
+        region: "CN",
+        regionCode: { not: "" },
+      },
+    })
+
+    const totals = new Map<string, number>()
+    for (const row of rows) {
+      const code = `${row.regionCode.slice(0, 2)}0000`
+      totals.set(code, (totals.get(code) ?? 0) + (row._sum.count ?? 0))
+    }
+
+    return [...totals.entries()]
+      .map(([code, count]) => ({ code, name: provinceName(code), count }))
       .sort((a, b) => b.count - a.count)
   }
 
@@ -206,8 +266,14 @@ export class RequestStatsService {
     range: StatsRange,
     granularity: "hour" | "day",
     endpoint?: PublicEndpoint,
+    tzOffsetMinutes = 0,
   ): Promise<TimeseriesPoint[]> {
     const step = granularity === "hour" ? HOUR_SECONDS : DAY_SECONDS
+    // Daily buckets must break at the viewer's midnight, not UTC's, or a busy
+    // evening in UTC+8 lands on the following day. Hourly buckets are already
+    // aligned to the hour, which every real offset preserves closely enough.
+    const shift = granularity === "day" ? tzOffsetMinutes * 60 : 0
+
     const where: Prisma.ApiRequestStatWhereInput = this.rangeWhere(projectKey, range)
     if (endpoint) {
       where.endpoint = endpoint
@@ -221,18 +287,28 @@ export class RequestStatsService {
 
     const totals = new Map<number, number>()
     for (const row of rows) {
-      const bucket = Math.floor(row.hourBucket / step) * step
+      const bucket = this.floorTo(row.hourBucket, step, shift)
       totals.set(bucket, (totals.get(bucket) ?? 0) + (row._sum.count ?? 0))
     }
 
     const points: TimeseriesPoint[] = []
-    const first = Math.floor(range.startTime / step) * step
-    const last = Math.floor(range.endTime / step) * step
+    const first = this.floorTo(range.startTime, step, shift)
+    const last = this.floorTo(range.endTime, step, shift)
     for (let bucket = first; bucket <= last; bucket += step) {
       points.push({ bucket, count: totals.get(bucket) ?? 0 })
     }
 
     return points
+  }
+
+  /**
+   * Floor a timestamp to a bucket boundary in the shifted timezone, then map it
+   * back to real Unix seconds. The returned value is the instant the local
+   * bucket started, so formatting it with local-time getters reproduces the
+   * label the viewer expects.
+   */
+  private floorTo(timestamp: number, step: number, shift: number): number {
+    return Math.floor((timestamp + shift) / step) * step - shift
   }
 
   /**
@@ -272,16 +348,26 @@ export class RequestStatsService {
    * All 168 cells are materialized, including empty ones: the grid is a fixed
    * shape and a missing cell would render as a hole rather than a quiet hour.
    */
-  async getHeatmap(projectKey: string, range: StatsRange): Promise<HeatmapCell[]> {
+  async getHeatmap(
+    projectKey: string,
+    range: StatsRange,
+    tzOffsetMinutes = 0,
+  ): Promise<HeatmapCell[]> {
+    // 按国家码一并分组：每个来源的请求要折到它自己的当地时区，才能回答「用户在
+    // 当地几点活跃」。这也是热力图与趋势图口径的关键差异——趋势图是给管理员看的
+    // 绝对时间轴，统一用查询者时区；热力图是行为节律，按来源时区。
     const rows = await this.prisma.apiRequestStat.groupBy({
-      by: ["hourBucket"],
+      by: ["hourBucket", "region"],
       _sum: { count: true },
       where: this.rangeWhere(projectKey, range),
     })
 
     const totals = new Map<string, number>()
     for (const row of rows) {
-      const date = new Date(row.hourBucket * 1000)
+      // 每行按其来源国家的代表时区平移；无法定位（UNKNOWN/LOCAL/表外）回退到查询者
+      // 时区，避免这类流量凭空聚到 UTC。平移后读 UTC 字段即得来源当地的星期/小时。
+      const offset = resolveTzOffset(row.region, tzOffsetMinutes)
+      const date = new Date((row.hourBucket + offset * 60) * 1000)
       const key = `${date.getUTCDay()}:${date.getUTCHours()}`
       totals.set(key, (totals.get(key) ?? 0) + (row._sum.count ?? 0))
     }

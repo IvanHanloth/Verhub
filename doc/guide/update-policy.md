@@ -38,11 +38,19 @@
 
 公开接口：`POST /api/v1/public/{projectKey}/versions/check-update`
 
-输入建议：
+提交内容（请求体 JSON）：
 
-- 优先传 `current_version`
-- 若当前语义化版本无法映射或不标准，再传 `current_comparable_version`
-- 若两者同时提交，服务端会优先使用 `current_comparable_version` 进行匹配与判定
+- `current_version`（可选）：当前语义化版本号
+- `current_comparable_version`（可选）：当前可比较版本号
+- `include_preview`（可选，布尔）：是否把 preview 版本纳入比较候选
+
+必填约束：`current_version` 与 `current_comparable_version` **至少提交一个**，否则返回 400。二选一并非完全等价：
+
+- 仅传 `current_comparable_version`：直接用于判定，不要求服务端已登记该版本，最稳妥。
+- 仅传 `current_version`：服务端按此版本查库并取其登记的 `comparable_version` 参与判定；若该版本未登记，或已登记但未配置 `comparable_version`，则返回 400。
+- 两者同时提交：优先使用 `current_comparable_version` 进行匹配与判定。
+
+因此若不能保证客户端上报的版本一定已在服务端登记并配好 `comparable_version`，建议客户端始终带上 `current_comparable_version`。
 
 输出核心字段：
 

@@ -20,6 +20,17 @@ function createPrismaMock() {
   }
 }
 
+/** No-origin baseline: what the service sees when nothing could be observed. */
+const emptyOrigin = {
+  ip: null,
+  userAgent: null,
+  countryCode: null,
+  countryName: null,
+  regionName: null,
+  city: null,
+  platform: null,
+}
+
 describe("FeedbacksService", () => {
   it("creates feedback from project key", async () => {
     const prisma = createPrismaMock()
@@ -35,13 +46,17 @@ describe("FeedbacksService", () => {
     })
 
     const service = new FeedbacksService(prisma as never)
-    const result = await service.createByProjectKey("verhub", {
-      user_id: "user-1",
-      rating: 5,
-      content: "great release",
-      platform: "web",
-      custom_data: { channel: "web" },
-    })
+    const result = await service.createByProjectKey(
+      "verhub",
+      {
+        user_id: "user-1",
+        rating: 5,
+        content: "great release",
+        platform: "web",
+        custom_data: { channel: "web" },
+      },
+      emptyOrigin,
+    )
 
     expect(result.id).toBe("feedback-1")
     expect(result.platform).toBe("web")
@@ -55,10 +70,34 @@ describe("FeedbacksService", () => {
     const service = new FeedbacksService(prisma as never)
 
     await expect(
-      service.createByProjectKey("unknown", {
-        content: "feedback",
-      }),
+      service.createByProjectKey(
+        "unknown",
+        {
+          content: "feedback",
+        },
+        emptyOrigin,
+      ),
     ).rejects.toBeInstanceOf(NotFoundException)
+  })
+
+  it("falls back to the inferred platform when the client declares none", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "verhub" })
+    prisma.feedback.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+      ...data,
+      id: "feedback-2",
+      createdAt: 1767225600,
+    }))
+
+    const service = new FeedbacksService(prisma as never)
+    const result = await service.createByProjectKey(
+      "verhub",
+      { content: "nice" },
+      { ...emptyOrigin, ip: "203.0.113.9", platform: "ANDROID" as never },
+    )
+
+    expect(result.platform).toBe("android")
+    expect(result.ip).toBe("203.0.113.9")
   })
 
   it("getStatistics returns count, rate_count, rate_avg", async () => {

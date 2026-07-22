@@ -8,8 +8,13 @@ import { heatLevel } from "./heat-scale"
 
 const DAY = 86400
 
-/** 2026-01-04T00:00:00Z is a Sunday, so the first week needs no leading padding. */
-const SUNDAY = Date.parse("2026-01-04T00:00:00.000Z") / 1000
+/**
+ * Local midnight on Sunday 2026-01-04, so the first week needs no leading
+ * padding. Built in local time, not parsed from a Z-suffixed string, because
+ * the calendar buckets days in the viewer's timezone — a UTC instant would land
+ * on Saturday for anyone west of Greenwich and shift the whole grid.
+ */
+const SUNDAY = new Date(2026, 0, 4).getTime() / 1000
 
 function days(count: number, at: (index: number) => number) {
   return Array.from({ length: count }, (_, index) => ({
@@ -72,10 +77,10 @@ describe("RequestHeatmap", () => {
     expect(screen.getAllByRole("button")).toHaveLength(168)
   })
 
-  it("reports the peak and states that hours are UTC", () => {
+  it("reports the peak and states that hours are in the source timezone", () => {
     render(<RequestHeatmap cells={cells} loading={false} />)
 
-    expect(screen.getByText(/峰值 23 次 · 小时为 UTC/)).toBeInTheDocument()
+    expect(screen.getByText(/峰值 23 次 · 按来源当地时区/)).toBeInTheDocument()
   })
 
   it("shows the empty state when no cells are returned", () => {

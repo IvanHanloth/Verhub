@@ -14,11 +14,23 @@ describe("ActionsController", () => {
     getStatus: jest.fn(),
   }
 
+  const origin = {
+    ip: "203.0.113.9",
+    userAgent: "TestAgent/1.0",
+    countryCode: "JP",
+    countryName: "Japan",
+    regionName: "Tokyo",
+    city: "Tokyo",
+    platform: null,
+  }
+  const mockOriginService = { describe: jest.fn() }
+
   let controller: ActionsController
 
   beforeEach(() => {
     jest.clearAllMocks()
-    controller = new ActionsController(mockService as never)
+    mockOriginService.describe.mockResolvedValue(origin)
+    controller = new ActionsController(mockService as never, mockOriginService as never)
   })
 
   it("findAllByProject delegates projectKey and query", async () => {
@@ -80,27 +92,40 @@ describe("ActionsController", () => {
 
     await controller.createRecordByProjectKey("proj", dto as never, request as never)
 
-    expect(mockService.createRecordByProjectKey).toHaveBeenCalledWith("proj", dto, {
-      method: "POST",
-      ua: "TestAgent/1.0",
-      header: request.headers,
-      body: { some: "data" },
-    })
+    expect(mockService.createRecordByProjectKey).toHaveBeenCalledWith(
+      "proj",
+      dto,
+      {
+        method: "POST",
+        ua: "TestAgent/1.0",
+        ip: "203.0.113.9",
+        header: request.headers,
+        body: { some: "data" },
+      },
+      origin,
+    )
   })
 
   it("createRecordByProjectKey handles missing method and user-agent", async () => {
     const dto = { action_id: "a1" }
     const request = { headers: {}, body: undefined }
+    mockOriginService.describe.mockResolvedValue({ ...origin, ip: null, userAgent: null })
     mockService.createRecordByProjectKey.mockResolvedValue({ action_record_id: "r1" })
 
     await controller.createRecordByProjectKey("proj", dto as never, request as never)
 
-    expect(mockService.createRecordByProjectKey).toHaveBeenCalledWith("proj", dto, {
-      method: null,
-      ua: null,
-      header: {},
-      body: null,
-    })
+    expect(mockService.createRecordByProjectKey).toHaveBeenCalledWith(
+      "proj",
+      dto,
+      {
+        method: null,
+        ua: null,
+        ip: null,
+        header: {},
+        body: null,
+      },
+      { ...origin, ip: null, userAgent: null },
+    )
   })
 
   it("getModuleStatus returns status", () => {

@@ -9,6 +9,14 @@ function NumberTransform() {
   )
 }
 
+/**
+ * Real-world UTC offsets span UTC-12 to UTC+14; the bounds are widened by one
+ * hour on each side so a client that adds its own DST correction cannot be
+ * rejected for a value that is still physically meaningful.
+ */
+export const MIN_TZ_OFFSET_MINUTES = -840
+export const MAX_TZ_OFFSET_MINUTES = 900
+
 export class QueryRequestStatsDto {
   @IsOptional()
   @NumberTransform()
@@ -21,6 +29,21 @@ export class QueryRequestStatsDto {
   @IsInt()
   @Min(0)
   end_time?: number
+
+  /**
+   * Minutes east of UTC, i.e. `-new Date().getTimezoneOffset()`.
+   *
+   * Buckets are stored in UTC, but "which hour is busy" is a question about the
+   * audience's wall clock, so the fold into weekday × hour (and into calendar
+   * days) happens against this offset. Defaults to 0, which reproduces the
+   * previous UTC-only behaviour for callers that do not send it.
+   */
+  @IsOptional()
+  @NumberTransform()
+  @IsInt()
+  @Min(MIN_TZ_OFFSET_MINUTES)
+  @Max(MAX_TZ_OFFSET_MINUTES)
+  tz_offset_minutes: number = 0
 }
 
 export class QueryRequestTimeseriesDto extends QueryRequestStatsDto {

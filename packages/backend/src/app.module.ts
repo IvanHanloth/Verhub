@@ -7,6 +7,7 @@ import { AnnouncementsModule } from "./announcements/announcements.module"
 import { AuthModule } from "./auth/auth.module"
 import { DatabaseModule } from "./database/database.module"
 import { FeedbacksModule } from "./feedbacks/feedbacks.module"
+import { GeoModule } from "./geo/geo.module"
 import { HealthModule } from "./health/health.module"
 import { LogsModule } from "./logs/logs.module"
 import { ProjectsModule } from "./projects/projects.module"
@@ -21,6 +22,7 @@ import { WebhooksModule } from "./webhooks/webhooks.module"
     }),
     ScheduleModule.forRoot(),
     DatabaseModule,
+    GeoModule,
     HealthModule,
     AuthModule,
     ProjectsModule,

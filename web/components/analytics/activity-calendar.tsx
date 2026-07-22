@@ -27,9 +27,17 @@ function formatCount(value: number): string {
   return value.toLocaleString("zh-CN")
 }
 
+/**
+ * Local-time getters throughout this file, not the UTC ones.
+ *
+ * The backend buckets daily counts at the viewer's midnight (it is sent the
+ * browser's UTC offset), so each `bucket` is already the instant a local day
+ * began — reading it back in UTC would shift the whole calendar by a day for
+ * anyone far enough from Greenwich.
+ */
 function formatDate(date: Date): string {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(
-    date.getUTCDate(),
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
   ).padStart(2, "0")}`
 }
 
@@ -50,10 +58,7 @@ function toWeeks(points: DayPoint[]): (CalendarDay | null)[][] {
   }))
 
   const weeks: (CalendarDay | null)[][] = []
-  let current: (CalendarDay | null)[] = Array.from(
-    { length: days[0]!.date.getUTCDay() },
-    () => null,
-  )
+  let current: (CalendarDay | null)[] = Array.from({ length: days[0]!.date.getDay() }, () => null)
 
   for (const day of days) {
     current.push(day)
@@ -111,13 +116,12 @@ export function ActivityCalendar({ points, loading }: { points: DayPoint[]; load
               // Label a column only where the month actually turns over.
               const showMonth =
                 firstReal !== undefined &&
-                (previous === undefined ||
-                  previous.date.getUTCMonth() !== firstReal.date.getUTCMonth())
+                (previous === undefined || previous.date.getMonth() !== firstReal.date.getMonth())
 
               return (
                 <div key={weekIndex} className="flex flex-col gap-1">
                   <div className="h-3 w-3 text-[10px] leading-3 whitespace-nowrap text-slate-400 dark:text-slate-500">
-                    {showMonth ? MONTH_LABELS[firstReal.date.getUTCMonth()] : ""}
+                    {showMonth ? MONTH_LABELS[firstReal.date.getMonth()] : ""}
                   </div>
                   {week.map((day, dayIndex) =>
                     day ? (

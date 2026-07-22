@@ -15,8 +15,10 @@ function formatCount(value: number): string {
 /**
  * Weekday × hour request density.
  *
- * Hours are UTC because that is the bucket the backend stores; relabeling them
- * as local time would silently shift every cell for anyone outside UTC.
+ * Cells arrive already folded in each request's *source* timezone (the backend
+ * shifts by the caller's country), so "18:00" means six in the evening where
+ * the user is — which is the only reading that answers "when are my users
+ * active in their own local time".
  */
 export function RequestHeatmap({ cells, loading }: { cells: Cell[]; loading: boolean }) {
   const [hovered, setHovered] = React.useState<Cell | null>(null)
@@ -66,7 +68,7 @@ export function RequestHeatmap({ cells, loading }: { cells: Cell[]; loading: boo
                   // ring is the hover affordance, not a permanent border.
                   className="h-6 w-full min-w-3 rounded-[3px] ring-slate-900/40 transition hover:ring-2 dark:ring-white/50"
                   style={{ backgroundColor: heatColor(cell.count, max) }}
-                  title={`${WEEKDAY_LABELS[weekday]} ${String(cell.hour).padStart(2, "0")}:00 UTC · ${formatCount(cell.count)} 次`}
+                  title={`${WEEKDAY_LABELS[weekday]} ${String(cell.hour).padStart(2, "0")}:00 · ${formatCount(cell.count)} 次`}
                   onMouseEnter={() => setHovered(cell)}
                   onFocus={() => setHovered(cell)}
                   onMouseLeave={() => setHovered(null)}
@@ -85,8 +87,8 @@ export function RequestHeatmap({ cells, loading }: { cells: Cell[]; loading: boo
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
         <span className="tabular-nums">
           {hovered
-            ? `${WEEKDAY_LABELS[hovered.weekday]} ${String(hovered.hour).padStart(2, "0")}:00 UTC · ${formatCount(hovered.count)} 次`
-            : `峰值 ${formatCount(max)} 次 · 小时为 UTC`}
+            ? `${WEEKDAY_LABELS[hovered.weekday]} ${String(hovered.hour).padStart(2, "0")}:00 · ${formatCount(hovered.count)} 次`
+            : `峰值 ${formatCount(max)} 次 · 按来源当地时区`}
         </span>
         <span className="flex items-center gap-1.5">
           少

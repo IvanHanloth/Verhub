@@ -45,6 +45,13 @@ export class FeedbacksController {
     return this.feedbacksService.findOne(projectKey, id)
   }
 
+  @Post("admin/projects/:projectKey/feedbacks")
+  @UseGuards(AdminOrApiKeyGuard)
+  @RequireApiScope("feedbacks:write")
+  async createByAdmin(@Param("projectKey") projectKey: string, @Body() dto: CreateFeedbackDto) {
+    return this.feedbacksService.createByAdmin(projectKey, dto)
+  }
+
   @Patch("admin/projects/:projectKey/feedbacks/:id")
   @UseGuards(AdminOrApiKeyGuard)
   @RequireApiScope("feedbacks:write")

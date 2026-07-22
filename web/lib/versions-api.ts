@@ -121,6 +121,23 @@ export async function createVersion(
   })
 }
 
+/** 按版本号写入：已存在则更新，不存在则新建。同步单个 Release 走这条，避免重复。 */
+export async function upsertVersionByVersion(
+  token: string,
+  projectKey: string,
+  version: string,
+  input: Partial<CreateVersionInput>,
+): Promise<VersionItem> {
+  return requestJson<VersionItem>(
+    `/admin/projects/${projectKey}/versions/by-version/${encodeURIComponent(version)}`,
+    {
+      method: "PUT",
+      token,
+      body: input,
+    },
+  )
+}
+
 export async function updateVersion(
   token: string,
   projectKey: string,

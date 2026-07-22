@@ -8,6 +8,7 @@ import {
   Loader2,
   PencilLine,
   Plus,
+  RefreshCcw,
   Sparkles,
   Star,
   Trash2,
@@ -20,9 +21,9 @@ import { isAuthError } from "@/lib/api-client"
 import { getSessionToken } from "@/lib/auth-session"
 import { getErrorMessage } from "@/lib/error-utils"
 import { AdminCard } from "@/components/admin/admin-card"
+import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
-import { MarkdownEditor } from "@/components/markdown/markdown-editor"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import { useAdminProjects } from "@/hooks/use-admin-projects"
 import { usePagination } from "@/hooks/use-pagination"
@@ -38,18 +39,19 @@ import {
   listVersions,
   previewVersionFromGithubRelease,
   updateVersion,
+  upsertVersionByVersion,
   type CheckVersionUpdateResponse,
   type VersionItem,
 } from "@/lib/versions-api"
 import {
   emptyVersionForm,
-  platformOptions,
   toCreateInput,
   toDateTimeLocal,
   validateVersionRules,
   type VersionFormState,
 } from "./version-form-utils"
 import { VersionEditDialog } from "./version-edit-dialog"
+import { VersionFormFields } from "./version-form-fields"
 
 const VERSION_PAGE_SIZE = 10
 
@@ -77,8 +79,10 @@ export function VersionsDashboard() {
   const [versionsError, setVersionsError] = React.useState<string | null>(null)
 
   const [form, setForm] = React.useState<VersionFormState>(emptyVersionForm)
+  const [createDialogOpen, setCreateDialogOpen] = React.useState(false)
   const [submitLoading, setSubmitLoading] = React.useState(false)
   const [githubLoading, setGithubLoading] = React.useState(false)
+  const [syncLoading, setSyncLoading] = React.useState(false)
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
   const [editingVersionId, setEditingVersionId] = React.useState<string | null>(null)
   const [editForm, setEditForm] = React.useState<VersionFormState>(emptyVersionForm)
@@ -149,9 +153,12 @@ export function VersionsDashboard() {
     resetVersionsOffset()
   }, [selectedProjectKey, resetVersionsOffset])
 
-  async function handleCreateVersion(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  function openCreateDialog() {
+    setForm(emptyVersionForm)
+    setCreateDialogOpen(true)
+  }
 
+  async function handleCreateVersion() {
     if (!token) {
       toast.error("请先登录后再操作。")
       return
@@ -196,6 +203,7 @@ export function VersionsDashboard() {
         toast.success("版本已发布。")
       }
       setForm(emptyVersionForm)
+      setCreateDialogOpen(false)
       resetVersionsOffset()
       await loadVersions(0)
     } catch (error) {
@@ -301,6 +309,7 @@ export function VersionsDashboard() {
             : [],
       custom_data: version.custom_data ? JSON.stringify(version.custom_data, null, 2) : "",
     })
+    setCreateDialogOpen(true)
     toast.success("已复制配置到表单，可直接发布新版本。")
   }
 
@@ -354,6 +363,55 @@ export function VersionsDashboard() {
     }
   }
 
+  /**
+   * 一键把 GitHub 上最新的 Release 落库。
+   *
+   * 走 upsert 而不是 create：同一个 Release 反复同步是常态（改了发布说明再点一次），
+   * create 只会撞版本号唯一约束。
+   */
+  async function handleSyncLatestGithubRelease() {
+    if (!token) {
+      toast.error("请先登录后再操作。")
+      return
+    }
+    if (!selectedProjectKey) {
+      toast.error("请先选择一个项目。")
+      return
+    }
+
+    setSyncLoading(true)
+    try {
+      const release = await previewVersionFromGithubRelease(token, selectedProjectKey)
+      await upsertVersionByVersion(token, selectedProjectKey, release.version, {
+        version: release.version,
+        comparable_version: release.comparable_version ?? release.version,
+        title: release.title,
+        content: release.content,
+        download_url: release.download_url,
+        download_links: release.download_links,
+        is_latest: release.is_latest,
+        is_preview: release.is_preview,
+        is_milestone: release.is_milestone,
+        is_deprecated: release.is_deprecated,
+        platforms: release.platforms,
+        platform: release.platform,
+        custom_data: release.custom_data,
+        published_at: release.published_at,
+      })
+      toast.success(`已同步最新 Release ${release.version}。`)
+      resetVersionsOffset()
+      await loadVersions(0)
+    } catch (error) {
+      if (isAuthError(error)) {
+        setToken("")
+        setAuthError("登录状态已过期，请重新登录。")
+      }
+      toast.error(`同步最新 Release 失败：${getErrorMessage(error)}`)
+    } finally {
+      setSyncLoading(false)
+    }
+  }
+
   async function handleDelete(versionId: string) {
     if (!token || !selectedProjectKey) {
       setVersionsError("请先登录并选择项目。")
@@ -384,7 +442,7 @@ export function VersionsDashboard() {
       return
     }
 
-    setGithubLoading(true)
+    setSyncLoading(true)
     try {
       const result = await importVersionsFromGithubReleases(token, selectedProjectKey)
       toast.success(
@@ -395,7 +453,7 @@ export function VersionsDashboard() {
     } catch (error) {
       toast.error(`GitHub 历史版本导入失败：${getErrorMessage(error)}`)
     } finally {
-      setGithubLoading(false)
+      setSyncLoading(false)
     }
   }
 
@@ -447,13 +505,63 @@ export function VersionsDashboard() {
         description="发布和维护项目版本，统一管理平台范围、更新策略和下载信息。"
         badge="Verhub Versions"
         actions={
-          <ApiReferenceDrawer
-            tag="Versions"
-            title="版本接口文档"
-            projectKey={selectedProject?.project_key}
-          />
+          <>
+            <ApiReferenceDrawer
+              tag="Versions"
+              title="版本接口文档"
+              projectKey={selectedProject?.project_key}
+            />
+            {/* GitHub 同步是整库级操作，不属于某一条新建记录，所以留在弹窗外。 */}
+            {selectedProject?.repo_url ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-white/30 bg-white/10 hover:bg-white/20"
+                  disabled={syncLoading}
+                  onClick={() => void handleImportFromGithubReleaseHistory()}
+                >
+                  {syncLoading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <DownloadCloud className="size-4" />
+                  )}
+                  同步历史版本
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-white/30 bg-white/10 hover:bg-white/20"
+                  disabled={syncLoading}
+                  onClick={() => void handleSyncLatestGithubRelease()}
+                >
+                  {syncLoading ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <RefreshCcw className="size-4" />
+                  )}
+                  同步最新 Release
+                </Button>
+              </>
+            ) : null}
+            <Button
+              type="button"
+              className="bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
+              disabled={!selectedProjectKey}
+              onClick={openCreateDialog}
+            >
+              <Plus className="size-4" />
+              新增版本
+            </Button>
+          </>
         }
       />
+
+      {!selectedProject?.repo_url ? (
+        <p className="px-1 text-xs text-slate-500 dark:text-slate-400">
+          当前项目未配置 GitHub 仓库地址，无法同步 Release。
+        </p>
+      ) : null}
 
       {authError || projectsError ? (
         <AdminCard className="flex items-center gap-2 text-sm text-rose-500 dark:text-rose-300">
@@ -461,254 +569,6 @@ export function VersionsDashboard() {
           {authError ?? projectsError}
         </AdminCard>
       ) : null}
-
-      <AdminCard className="space-y-6">
-        <div className="space-y-2">
-          <h2 className="text-lg font-semibold">发布新版本</h2>
-          <p className="text-sm text-slate-700 dark:text-slate-300">
-            填写版本号和发布信息，可从 GitHub Release 导入已有内容。
-          </p>
-          {selectedProject?.repo_url ? (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="border-cyan-300/40 bg-cyan-200/10 text-cyan-900 hover:bg-cyan-200/20 dark:text-cyan-100"
-                disabled={githubLoading}
-                onClick={() => void handlePrefillFromGithubRelease()}
-              >
-                {githubLoading ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <DownloadCloud className="size-4" />
-                )}
-                从 GitHub Release 获取
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="border-cyan-300/40 bg-cyan-200/10 text-cyan-900 hover:bg-cyan-200/20 dark:text-cyan-100"
-                disabled={githubLoading}
-                onClick={() => void handleImportFromGithubReleaseHistory()}
-              >
-                {githubLoading ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <DownloadCloud className="size-4" />
-                )}
-                从 GitHub 导入历史版本
-              </Button>
-            </div>
-          ) : (
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              当前项目未配置 GitHub 仓库地址，无法自动拉取 Release。
-            </p>
-          )}
-        </div>
-
-        <form className="grid gap-3" onSubmit={handleCreateVersion}>
-          <label className="space-y-1 text-sm">
-            <span className="text-slate-700 dark:text-slate-300">版本号</span>
-            <input
-              type="text"
-              placeholder="例如：2.3.0"
-              value={form.version}
-              onChange={(event) => setForm((prev) => ({ ...prev, version: event.target.value }))}
-              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-              required
-              maxLength={64}
-            />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-slate-700 dark:text-slate-300">可比较版本号</span>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="例如：2.3.0-rc.1"
-                value={form.comparable_version}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, comparable_version: event.target.value }))
-                }
-                className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-                required
-                maxLength={64}
-              />
-              <Button type="button" variant="outline" onClick={handleExtractComparableVersion}>
-                提取
-              </Button>
-            </div>
-            {comparableVersionError ? (
-              <p className="text-xs text-rose-500">{comparableVersionError}</p>
-            ) : (
-              <p className="text-xs text-emerald-600 dark:text-emerald-300">格式校验通过</p>
-            )}
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-slate-700 dark:text-slate-300">下载地址</span>
-            <input
-              type="url"
-              placeholder="https://example.com/download"
-              value={form.download_url}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, download_url: event.target.value }))
-              }
-              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-              maxLength={2048}
-            />
-          </label>
-          <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-            <input
-              type="checkbox"
-              checked={form.is_milestone}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, is_milestone: event.target.checked }))
-              }
-              className="size-4 rounded border-white/30 bg-white/10"
-            />
-            标记为里程碑版本
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-slate-700 dark:text-slate-300">版本标题（创建）</span>
-            <input
-              type="text"
-              placeholder="例如：稳定版更新"
-              value={form.title}
-              onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-              maxLength={128}
-            />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-slate-700 dark:text-slate-300">下载链接列表 JSON</span>
-            <textarea
-              placeholder='例如：[{"url":"https://example.com/app.zip","name":"Windows 包","platform":"windows"}]'
-              value={form.download_links_json}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, download_links_json: event.target.value }))
-              }
-              rows={4}
-              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-            />
-          </label>
-          <MarkdownEditor
-            label="更新内容"
-            placeholder="描述本次版本的主要变化"
-            value={form.content}
-            onChange={(value) => setForm((prev) => ({ ...prev, content: value }))}
-            rows={4}
-            className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-            maxLength={4096}
-          />
-
-          <label className="space-y-1 text-sm">
-            <span className="text-slate-700 dark:text-slate-300">发布时间</span>
-            <input
-              type="datetime-local"
-              value={form.published_at}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, published_at: event.target.value }))
-              }
-              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-              aria-label="发布时间"
-            />
-          </label>
-
-          <div className="grid gap-3 sm:grid-cols-2 sm:items-center">
-            <div className="rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10">
-              <p className="mb-2 text-slate-700 dark:text-slate-300">
-                平台范围（多选，空表示全部）
-              </p>
-              <div className="flex flex-wrap gap-3">
-                {platformOptions.map((item) => (
-                  <label
-                    key={item.value}
-                    className="inline-flex items-center gap-2 text-xs text-slate-700 dark:text-slate-300"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={form.platforms.includes(item.value)}
-                      onChange={() =>
-                        setForm((prev) => ({
-                          ...prev,
-                          platforms: prev.platforms.includes(item.value)
-                            ? prev.platforms.filter((platform) => platform !== item.value)
-                            : [...prev.platforms, item.value],
-                        }))
-                      }
-                      className="size-4"
-                    />
-                    {item.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-              <input
-                type="checkbox"
-                checked={form.is_deprecated}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, is_deprecated: event.target.checked }))
-                }
-                className="size-4 rounded border-white/30 bg-white/10"
-              />
-              标记为废弃版本（客户端必更）
-            </label>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-              <input
-                type="checkbox"
-                checked={form.is_latest}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, is_latest: event.target.checked }))
-                }
-                className="size-4 rounded border-white/30 bg-white/10"
-                aria-label="设为 latest"
-              />
-              设为 latest
-            </label>
-            <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
-              <input
-                type="checkbox"
-                checked={form.is_preview}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, is_preview: event.target.checked }))
-                }
-                className="size-4 rounded border-white/30 bg-white/10"
-                aria-label="预发布版本"
-              />
-              预发布版本
-            </label>
-          </div>
-
-          <label className="space-y-1 text-sm">
-            <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
-            <textarea
-              placeholder='例如：{"channel":"beta"}'
-              value={form.custom_data}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, custom_data: event.target.value }))
-              }
-              rows={4}
-              className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs ring-cyan-300 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/10"
-            />
-          </label>
-
-          <Button
-            type="submit"
-            className="bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
-            disabled={submitLoading || !selectedProjectKey}
-          >
-            {submitLoading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Plus className="size-4" />
-            )}
-            发布版本
-          </Button>
-        </form>
-      </AdminCard>
 
       <AdminCard className="space-y-4">
         <div className="space-y-1">
@@ -825,7 +685,7 @@ export function VersionsDashboard() {
         !versionsError &&
         versions.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-slate-300">
-            暂无版本，使用上方表单发布第一条版本记录。
+            暂无版本，点击右上角“新增版本”发布第一条版本记录。
           </div>
         ) : null}
 
@@ -906,32 +766,39 @@ export function VersionsDashboard() {
                         )}
                       </td>
                       <td className="px-3 py-2 align-top">
+                        {/* 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。 */}
                         <div className="flex flex-wrap gap-2">
                           <Button
                             type="button"
+                            size="icon"
                             variant="outline"
                             className="border-white/20 bg-white/5"
+                            title="复制配置"
+                            aria-label="复制配置"
                             onClick={() => copyFromVersion(version)}
                           >
                             <Copy className="size-4" />
-                            复制配置
                           </Button>
                           <Button
                             type="button"
+                            size="icon"
                             variant="outline"
                             className="border-white/20 bg-white/5"
+                            title="编辑版本"
+                            aria-label="编辑版本"
                             onClick={() => beginEdit(version)}
                           >
                             <PencilLine className="size-4" />
-                            编辑版本
                           </Button>
                           <Button
                             type="button"
+                            size="icon"
                             variant="destructive"
+                            title="删除版本"
+                            aria-label="删除版本"
                             onClick={() => void handleDelete(version.id)}
                           >
                             <Trash2 className="size-4" />
-                            删除版本
                           </Button>
                         </div>
                       </td>
@@ -950,6 +817,47 @@ export function VersionsDashboard() {
           </div>
         ) : null}
       </AdminCard>
+
+      <AdminFormDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        title="发布新版本"
+        description="填写版本号和发布信息，可按版本号从 GitHub Release 拉取内容。"
+        submitLabel="发布版本"
+        submitIcon={<Plus className="size-4" />}
+        submitting={submitLoading}
+        submitDisabled={!selectedProjectKey}
+        onSubmit={() => void handleCreateVersion()}
+        footerExtra={
+          <Button type="button" variant="outline" onClick={() => setForm(emptyVersionForm)}>
+            清空表单
+          </Button>
+        }
+      >
+        <VersionFormFields
+          form={form}
+          setForm={setForm}
+          comparableVersionError={comparableVersionError}
+          onExtractComparableVersion={handleExtractComparableVersion}
+          versionFieldAction={
+            selectedProject?.repo_url ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={githubLoading}
+                onClick={() => void handlePrefillFromGithubRelease()}
+              >
+                {githubLoading ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <DownloadCloud className="size-4" />
+                )}
+                按版本号获取 Release 信息
+              </Button>
+            ) : null
+          }
+        />
+      </AdminFormDialog>
 
       <VersionEditDialog
         open={editDialogOpen}

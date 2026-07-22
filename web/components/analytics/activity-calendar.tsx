@@ -97,7 +97,11 @@ export function ActivityCalendar({ points, loading }: { points: DayPoint[]; load
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto pb-1">
-        <div className="flex gap-1">
+        {/* relative 不能去掉：这一层若是 static，周格的溢出会穿过上面的
+            overflow-x-auto 传给祖先，把整个文档撑出横向滚动条——而背景是 fixed 的，
+            滚出去就是一片空白。验证方式：看外层 article.admin-card 的
+            scrollWidth 是否大于 clientWidth。 */}
+        <div className="relative flex gap-1">
           <div className="flex w-6 shrink-0 flex-col gap-1 pt-4">
             {WEEKDAY_LABELS.map((label, index) => (
               <div

@@ -90,6 +90,37 @@ describe("LogsService", () => {
     expect(result.platform_version).toBe("11")
   })
 
+  it("skips dedup and origin capture when an admin backfills a log", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "verhub" })
+    prisma.log.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+      ...data,
+      id: "log-manual",
+      deviceInfo: null,
+      customData: null,
+      ip: null,
+      userAgent: null,
+      countryCode: null,
+      countryName: null,
+      regionName: null,
+      city: null,
+      createdAt: 1767225600,
+    }))
+
+    const service = new LogsService(prisma as never)
+    const result = await service.createByAdmin("verhub", {
+      level: 2,
+      content: "手动补录",
+      platform: "windows",
+      platform_version: "11",
+    })
+
+    expect(prisma.log.findFirst).not.toHaveBeenCalled()
+    expect(result.ip).toBeNull()
+    expect(result.platform).toBe("windows")
+    expect(result.platform_version).toBe("11")
+  })
+
   it("returns the existing row for an identical upload inside the dedup window", async () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue({ projectKey: "verhub" })

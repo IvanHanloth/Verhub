@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { BookOpen, ChevronLeft, ChevronRight, Download, ExternalLink, Pin } from "lucide-react"
+import { BookOpen, ChevronLeft, ChevronRight, Download, Pin, House, CodeXml } from "lucide-react"
 
 import {
   Dialog,
@@ -340,7 +340,7 @@ export function ProjectShowcaseView({
               <div className="flex flex-wrap gap-3">
                 {project.website_url ? (
                   <HeroAction href={project.website_url} variant="primary">
-                    <ExternalLink className="size-4" /> 访问官网
+                    <House className="size-4" /> 访问官网
                   </HeroAction>
                 ) : null}
                 {project.docs_url ? (
@@ -350,7 +350,7 @@ export function ProjectShowcaseView({
                 ) : null}
                 {project.repo_url ? (
                   <HeroAction href={project.repo_url} variant="secondary">
-                    <ExternalLink className="size-4" /> 代码仓库
+                    <CodeXml className="size-4" /> 代码仓库
                   </HeroAction>
                 ) : null}
               </div>

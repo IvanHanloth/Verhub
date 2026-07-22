@@ -3,6 +3,7 @@ import { LogsController } from "./logs.controller"
 describe("LogsController", () => {
   const mockService = {
     findAll: jest.fn(),
+    createByAdmin: jest.fn(),
     createByProjectKey: jest.fn(),
     getStatistics: jest.fn(),
     getStatus: jest.fn(),
@@ -32,6 +33,16 @@ describe("LogsController", () => {
     mockService.findAll.mockResolvedValue(result)
     expect(await controller.findAll("proj", { limit: 10 } as never)).toBe(result)
     expect(mockService.findAll).toHaveBeenCalledWith("proj", { limit: 10 })
+  })
+
+  it("createByAdmin never attaches the caller origin", async () => {
+    const dto = { level: 2, content: "手动补录" }
+    mockService.createByAdmin.mockResolvedValue({ id: "l2" })
+
+    await controller.createByAdmin("proj", dto as never)
+
+    expect(mockOriginService.describe).not.toHaveBeenCalled()
+    expect(mockService.createByAdmin).toHaveBeenCalledWith("proj", dto)
   })
 
   it("createByProjectKey passes the observed origin through to the service", async () => {

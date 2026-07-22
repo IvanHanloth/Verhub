@@ -43,7 +43,9 @@ export function RequestHeatmap({ cells, loading }: { cells: Cell[]; loading: boo
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto">
-        <div className="min-w-[560px] space-y-1">
+        {/* relative 不能去掉，理由同活跃度日历：static 时格子的溢出会越过
+            overflow-x-auto 撑宽整个文档。 */}
+        <div className="relative min-w-[560px] space-y-1">
           <div className="flex gap-1 pl-10">
             {Array.from({ length: 24 }, (_, hour) => (
               <div

@@ -31,12 +31,12 @@ import { notifyAdminProjectsChanged, useAdminProjects } from "@/hooks/use-admin-
 import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
+import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { MarkdownEditor } from "@/components/markdown/markdown-editor"
 import { GithubWebhookSettings } from "@/components/projects/github-webhook-settings"
 import { validateComparableVersion } from "@/lib/comparable-version"
-import { scrollToPageTop } from "@/lib/scroll"
 import {
   createProject,
   deleteProject,
@@ -363,6 +363,7 @@ export function ProjectsDashboard() {
   const [authError, setAuthError] = React.useState<string | null>(null)
 
   const [form, setForm] = React.useState<FormState>(emptyForm)
+  const [createDialogOpen, setCreateDialogOpen] = React.useState(false)
   const [submitLoading, setSubmitLoading] = React.useState(false)
   const [githubLoading, setGithubLoading] = React.useState(false)
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
@@ -477,16 +478,20 @@ export function ProjectsDashboard() {
       optional_update_max_comparable_version: project.optional_update_max_comparable_version ?? "",
       stats_retention_days: String(project.stats_retention_days ?? DEFAULT_STATS_RETENTION_DAYS),
     })
+    setCreateDialogOpen(true)
     toast.success("已复制配置到表单，可直接创建新项目。")
-    scrollToPageTop()
   }
 
   function resetForm() {
     setForm(emptyForm)
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  function openCreateDialog() {
+    setForm(emptyForm)
+    setCreateDialogOpen(true)
+  }
+
+  async function handleSubmit() {
     if (!token) {
       toast.error("请先登录后再操作。")
       return
@@ -514,6 +519,7 @@ export function ProjectsDashboard() {
       notifyAdminProjectsChanged()
 
       resetForm()
+      setCreateDialogOpen(false)
       resetOffset()
       await loadProjects(0)
     } catch (submitError) {
@@ -635,81 +641,34 @@ export function ProjectsDashboard() {
         description="维护项目基础信息，包括标识、名称、仓库、官网与发布时间。"
         badge="Verhub Projects"
         actions={
-          <Button
-            type="button"
-            variant="outline"
-            className="border-white/30 bg-white/10 hover:bg-white/20"
-            onClick={() => void loadProjects(offset)}
-            disabled={!hasToken || loading}
-          >
-            {loading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <RefreshCcw className="size-4" />
-            )}
-            刷新
-          </Button>
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-white/30 bg-white/10 hover:bg-white/20"
+              onClick={() => void loadProjects(offset)}
+              disabled={!hasToken || loading}
+            >
+              {loading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RefreshCcw className="size-4" />
+              )}
+              刷新
+            </Button>
+            <Button
+              type="button"
+              className="bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
+              onClick={openCreateDialog}
+            >
+              <Plus className="size-4" />
+              新增项目
+            </Button>
+          </>
         }
       />
 
-      <section className="space-y-6">
-        <AdminCard className="space-y-6">
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold">创建项目</h2>
-            <p className="text-sm text-slate-200/90">project_key 与 name 为必填项。</p>
-          </div>
-
-          {authError ? <p className="text-sm text-rose-300">{authError}</p> : null}
-
-          <form className="grid gap-3" onSubmit={handleSubmit}>
-            <ProjectFormFields
-              form={form}
-              setForm={setForm}
-              minComparableError={minComparableError}
-              maxComparableError={maxComparableError}
-              theme="dark"
-            />
-            <div>
-              <Button
-                type="button"
-                variant="outline"
-                className="border-white/25 bg-white/5"
-                disabled={githubLoading}
-                onClick={() => void handlePrefillFromGithubRepo()}
-              >
-                {githubLoading ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <RefreshCcw className="size-4" />
-                )}
-                从 GitHub 获取项目信息
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="submit"
-                className="bg-emerald-300 text-emerald-950 hover:bg-emerald-200"
-                disabled={submitLoading}
-              >
-                {submitLoading ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Plus className="size-4" />
-                )}
-                创建项目
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="border-white/25 bg-white/5"
-                onClick={resetForm}
-              >
-                清空表单
-              </Button>
-            </div>
-          </form>
-        </AdminCard>
-      </section>
+      {authError ? <p className="text-sm text-rose-300">{authError}</p> : null}
 
       <AdminCard as="section">
         <AdminListHeader title="项目列表" total={total} page={page} totalPages={totalPages} />
@@ -735,7 +694,7 @@ export function ProjectsDashboard() {
 
         {hasToken && !loading && !error && projects.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-slate-300">
-            暂无项目，使用上方表单创建第一条项目记录。
+            暂无项目，点击右上角“新增项目”创建第一条项目记录。
           </div>
         ) : null}
 
@@ -808,10 +767,12 @@ export function ProjectsDashboard() {
                         {project.optional_update_max_comparable_version ?? "+∞"}
                       </td>
                       <td className="px-3 py-2 align-top">
+                        {/* 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。 */}
                         <div className="flex flex-wrap gap-2">
                           <Button
                             asChild
                             type="button"
+                            size="icon"
                             variant="outline"
                             className="border-white/20 bg-white/5"
                           >
@@ -819,36 +780,43 @@ export function ProjectsDashboard() {
                               href={`/projects/${project.project_key}`}
                               target="_blank"
                               rel="noreferrer"
+                              title="项目展示页"
+                              aria-label="项目展示页"
                             >
                               <ExternalLink className="size-4" />
-                              项目展示页
                             </Link>
                           </Button>
                           <Button
                             type="button"
+                            size="icon"
                             variant="outline"
                             className="border-white/20 bg-white/5"
+                            title="复制配置"
+                            aria-label="复制配置"
                             onClick={() => copyFromProject(project)}
                           >
                             <Copy className="size-4" />
-                            复制配置
                           </Button>
                           <Button
                             type="button"
+                            size="icon"
                             variant="outline"
                             className="border-white/20 bg-white/5"
+                            title="编辑"
+                            aria-label="编辑"
                             onClick={() => beginEdit(project)}
                           >
                             <PencilLine className="size-4" />
-                            编辑
                           </Button>
                           <Button
                             type="button"
+                            size="icon"
                             variant="destructive"
+                            title="删除"
+                            aria-label="删除"
                             onClick={() => void handleDelete(project.project_key)}
                           >
                             <Trash2 className="size-4" />
-                            删除
                           </Button>
                         </div>
                       </td>
@@ -862,6 +830,45 @@ export function ProjectsDashboard() {
           </div>
         ) : null}
       </AdminCard>
+
+      <AdminFormDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        title="创建项目"
+        description="project_key 与 name 为必填项，可先填仓库地址再从 GitHub 拉取其余信息。"
+        submitLabel="创建项目"
+        submitIcon={<Plus className="size-4" />}
+        submitting={submitLoading}
+        onSubmit={() => void handleSubmit()}
+        footerExtra={
+          <Button type="button" variant="outline" onClick={resetForm}>
+            清空表单
+          </Button>
+        }
+      >
+        <ProjectFormFields
+          form={form}
+          setForm={setForm}
+          minComparableError={minComparableError}
+          maxComparableError={maxComparableError}
+          theme="light"
+        />
+        <div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={githubLoading}
+            onClick={() => void handlePrefillFromGithubRepo()}
+          >
+            {githubLoading ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCcw className="size-4" />
+            )}
+            从 GitHub 获取项目信息
+          </Button>
+        </div>
+      </AdminFormDialog>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="sm:max-w-4xl">

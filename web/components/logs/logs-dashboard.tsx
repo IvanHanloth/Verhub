@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { AlertTriangle, ChevronRight, Clock3, Loader2 } from "lucide-react"
+import { AlertTriangle, ChevronRight, Clock3, Loader2, Plus } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
 
@@ -10,13 +11,15 @@ import { getErrorMessage } from "@/lib/error-utils"
 import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
+import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { ClientOriginBadges } from "@/components/common/client-origin-badges"
 import { JsonField } from "@/components/common/json-viewer"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import { useAdminProjects } from "@/hooks/use-admin-projects"
-import { listLogs, type LogItem, type LogLevel } from "@/lib/logs-api"
+import { createLog, listLogs, type LogItem, type LogLevel } from "@/lib/logs-api"
+import { PLATFORM_OPTIONS, type Platform } from "@/lib/platform"
 
 const PAGE_SIZE = 10
 
@@ -43,6 +46,39 @@ const emptyFilters: FilterState = {
   level: "",
   startTime: "",
   endTime: "",
+}
+
+type LogFormState = {
+  level: `${LogLevel}`
+  content: string
+  platform: "" | Platform
+  platform_version: string
+  device_info: string
+  custom_data: string
+}
+
+const emptyLogForm: LogFormState = {
+  level: "1",
+  content: "",
+  platform: "",
+  platform_version: "",
+  device_info: "",
+  custom_data: "",
+}
+
+/** 空串视为未填；非法 JSON 直接抛出，由提交流程转成提示。 */
+function parseJsonObject(value: string, field: string): Record<string, unknown> | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return undefined
+  }
+
+  const parsed = JSON.parse(trimmed) as unknown
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`${field} 必须是 JSON 对象。`)
+  }
+
+  return parsed as Record<string, unknown>
 }
 
 /**
@@ -215,6 +251,10 @@ export function LogsDashboard() {
   const [draftFilters, setDraftFilters] = React.useState<FilterState>(emptyFilters)
   const [appliedFilters, setAppliedFilters] = React.useState<FilterState>(emptyFilters)
 
+  const [createDialogOpen, setCreateDialogOpen] = React.useState(false)
+  const [createForm, setCreateForm] = React.useState<LogFormState>(emptyLogForm)
+  const [createLoading, setCreateLoading] = React.useState(false)
+
   const hasToken = token.trim().length > 0
 
   const loadLogs = React.useCallback(
@@ -301,6 +341,54 @@ export function LogsDashboard() {
     resetOffset()
   }
 
+  function openCreateDialog() {
+    setCreateForm(emptyLogForm)
+    setCreateDialogOpen(true)
+  }
+
+  async function handleCreateLog() {
+    if (!token) {
+      toast.error("请先登录后再操作。")
+      return
+    }
+
+    if (!selectedProjectKey) {
+      toast.error("请先选择项目。")
+      return
+    }
+
+    const content = createForm.content.trim()
+    if (!content) {
+      toast.error("日志内容不能为空。")
+      return
+    }
+
+    setCreateLoading(true)
+    try {
+      await createLog(token, selectedProjectKey, {
+        level: Number(createForm.level) as LogLevel,
+        content,
+        platform: createForm.platform || undefined,
+        platform_version: createForm.platform_version.trim() || undefined,
+        device_info: parseJsonObject(createForm.device_info, "device_info"),
+        custom_data: parseJsonObject(createForm.custom_data, "custom_data"),
+      })
+      toast.success("日志已新建。")
+      setCreateDialogOpen(false)
+      setCreateForm(emptyLogForm)
+      resetOffset()
+      await loadLogs(0)
+    } catch (createError) {
+      if (isAuthError(createError)) {
+        setToken("")
+        setAuthError("登录状态已过期，请重新登录。")
+      }
+      toast.error(getErrorMessage(createError))
+    } finally {
+      setCreateLoading(false)
+    }
+  }
+
   return (
     <section className="space-y-6">
       <AdminPageHeader
@@ -308,11 +396,17 @@ export function LogsDashboard() {
         description="按项目、级别和时间范围筛选日志，定位运行问题。"
         badge="Verhub Logs"
         actions={
-          <ApiReferenceDrawer
-            tag="Logs"
-            title="日志接口文档"
-            projectKey={selectedProject?.project_key}
-          />
+          <>
+            <ApiReferenceDrawer
+              tag="Logs"
+              title="日志接口文档"
+              projectKey={selectedProject?.project_key}
+            />
+            <Button type="button" disabled={!selectedProjectKey} onClick={openCreateDialog}>
+              <Plus className="size-4" />
+              新增日志
+            </Button>
+          </>
         }
       />
 
@@ -447,6 +541,111 @@ export function LogsDashboard() {
           />
         </div>
       </AdminCard>
+
+      <AdminFormDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        title="新增日志"
+        description="手动补录一条日志；IP、UA、地理位置留空，不会伪装成客户端上报。"
+        submitLabel="创建日志"
+        submitIcon={<Plus className="size-4" />}
+        submitting={createLoading}
+        submitDisabled={!selectedProjectKey}
+        onSubmit={() => void handleCreateLog()}
+        className="sm:max-w-3xl"
+      >
+        <label className="space-y-1 text-sm">
+          <span className="text-slate-700 dark:text-slate-300">日志级别</span>
+          <select
+            value={createForm.level}
+            onChange={(event) =>
+              setCreateForm((prev) => ({
+                ...prev,
+                level: event.target.value as LogFormState["level"],
+              }))
+            }
+            className={FIELD_CLASS}
+          >
+            {levelOptions.map((option) => (
+              <option key={option.value} value={String(option.value)}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="space-y-1 text-sm">
+          <span className="text-slate-700 dark:text-slate-300">日志内容</span>
+          <textarea
+            value={createForm.content}
+            onChange={(event) =>
+              setCreateForm((prev) => ({ ...prev, content: event.target.value }))
+            }
+            rows={5}
+            maxLength={4096}
+            placeholder="例如：定时任务执行失败，已人工恢复"
+            className={FIELD_CLASS}
+          />
+        </label>
+
+        <label className="space-y-1 text-sm">
+          <span className="text-slate-700 dark:text-slate-300">平台</span>
+          <select
+            value={createForm.platform}
+            onChange={(event) =>
+              setCreateForm((prev) => ({ ...prev, platform: event.target.value as "" | Platform }))
+            }
+            className={FIELD_CLASS}
+          >
+            <option value="">未指定平台</option>
+            {PLATFORM_OPTIONS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="space-y-1 text-sm">
+          <span className="text-slate-700 dark:text-slate-300">平台版本</span>
+          <input
+            type="text"
+            value={createForm.platform_version}
+            onChange={(event) =>
+              setCreateForm((prev) => ({ ...prev, platform_version: event.target.value }))
+            }
+            maxLength={32}
+            placeholder="例如：11 / ubuntu 24.04"
+            className={FIELD_CLASS}
+          />
+        </label>
+
+        <label className="space-y-1 text-sm">
+          <span className="text-slate-700 dark:text-slate-300">device_info JSON</span>
+          <textarea
+            value={createForm.device_info}
+            onChange={(event) =>
+              setCreateForm((prev) => ({ ...prev, device_info: event.target.value }))
+            }
+            rows={3}
+            placeholder='例如：{"os":"windows"}'
+            className={`${FIELD_CLASS} font-mono text-xs`}
+          />
+        </label>
+
+        <label className="space-y-1 text-sm">
+          <span className="text-slate-700 dark:text-slate-300">custom_data JSON</span>
+          <textarea
+            value={createForm.custom_data}
+            onChange={(event) =>
+              setCreateForm((prev) => ({ ...prev, custom_data: event.target.value }))
+            }
+            rows={3}
+            placeholder='例如：{"build":"1.0.0"}'
+            className={`${FIELD_CLASS} font-mono text-xs`}
+          />
+        </label>
+      </AdminFormDialog>
     </section>
   )
 }

@@ -64,6 +64,35 @@ describe("FeedbacksService", () => {
     expect(result.created_at).toBe(1767225600)
   })
 
+  it("skips dedup and origin capture when an admin backfills a feedback", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "verhub" })
+    prisma.feedback.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+      ...data,
+      id: "feedback-manual",
+      customData: null,
+      ip: null,
+      userAgent: null,
+      countryCode: null,
+      countryName: null,
+      regionName: null,
+      city: null,
+      createdAt: 1767225600,
+    }))
+
+    const service = new FeedbacksService(prisma as never)
+    const result = await service.createByAdmin("verhub", {
+      content: "线下收集的意见",
+      rating: 4,
+      platform: "windows",
+    })
+
+    expect(prisma.feedback.findFirst).not.toHaveBeenCalled()
+    expect(result.ip).toBeNull()
+    expect(result.rating).toBe(4)
+    expect(result.platform).toBe("windows")
+  })
+
   it("throws when project key does not exist", async () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)

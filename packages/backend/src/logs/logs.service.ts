@@ -5,8 +5,9 @@ import { Prisma, Platform, LogLevel } from "@prisma/client"
 import { PrismaService } from "../database/prisma.service"
 import { buildDedupHash, resolveDedupWindowSeconds, stableStringify } from "../common/dedup"
 import { normalizeProjectKey, nowSeconds } from "../common/utils"
-import { fromPlatform, type PlatformValue } from "../common/platform"
+import { fromPlatform, toPlatform, type PlatformValue } from "../common/platform"
 import type { ClientOrigin } from "../geo/client-origin.service"
+import { CreateLogDto } from "./dto/create-log.dto"
 import { QueryLogsDto } from "./dto/query-logs.dto"
 import { UploadLogDto } from "./dto/upload-log.dto"
 
@@ -163,6 +164,31 @@ export class LogsService {
         platform: origin.platform,
         platformVersion: origin.platformVersion,
         dedupHash,
+      },
+    })
+
+    return this.toLogItem(created)
+  }
+
+  /**
+   * 后台手动补录一条日志。
+   *
+   * 不走 dedup：管理员重复提交是有意的补录，不是崩溃重试。来源字段（ip/UA/地理）
+   * 一律留空——填成管理员自己的浏览器只会让后续排障读到假的客户端来源。
+   */
+  async createByAdmin(projectKey: string, dto: CreateLogDto): Promise<LogItem> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    await this.ensureProjectExistsByKey(normalizedProjectKey)
+
+    const created = await this.prisma.log.create({
+      data: {
+        projectKey: normalizedProjectKey,
+        level: this.toRequiredLogLevel(dto.level),
+        content: dto.content,
+        deviceInfo: dto.device_info as Prisma.InputJsonValue | undefined,
+        customData: dto.custom_data as Prisma.InputJsonValue | undefined,
+        platform: toPlatform(dto.platform),
+        platformVersion: dto.platform_version,
       },
     })
 

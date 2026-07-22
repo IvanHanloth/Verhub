@@ -53,6 +53,19 @@ export async function listFeedbacks(
   )
 }
 
+/** 后台手动补录反馈；来源字段（ip/UA/地理）由后端留空。 */
+export async function createFeedback(
+  token: string,
+  projectKey: string,
+  input: FeedbackMutationInput,
+): Promise<FeedbackItem> {
+  return requestJson<FeedbackItem>(`/admin/projects/${projectKey}/feedbacks`, {
+    method: "POST",
+    token,
+    body: input,
+  })
+}
+
 export async function updateFeedback(
   token: string,
   projectKey: string,

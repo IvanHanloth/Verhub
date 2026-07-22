@@ -17,6 +17,7 @@ import {
 
 import { getErrorMessage } from "@/lib/error-utils"
 import { AdminCard, AdminItemCard } from "@/components/admin/admin-card"
+import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { ClientOriginBadges } from "@/components/common/client-origin-badges"
 import { JsonField } from "@/components/common/json-viewer"
@@ -51,6 +52,7 @@ export function ActionsDashboard() {
   const [description, setDescription] = React.useState("")
   const [customData, setCustomData] = React.useState("")
 
+  const [createDialogOpen, setCreateDialogOpen] = React.useState(false)
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
   const [editForm, setEditForm] = React.useState<EditFormState | null>(null)
 
@@ -95,9 +97,14 @@ export function ActionsDashboard() {
     }
   }, [actions])
 
-  async function handleCreate(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  function openCreateDialog() {
+    setName("")
+    setDescription("")
+    setCustomData("")
+    setCreateDialogOpen(true)
+  }
 
+  async function handleCreate() {
     if (!selectedProject) {
       toast.error("请先选择项目")
       return
@@ -127,6 +134,7 @@ export function ActionsDashboard() {
       setName("")
       setDescription("")
       setCustomData("")
+      setCreateDialogOpen(false)
       await loadActions()
     } catch (error) {
       toast.error(getErrorMessage(error))
@@ -198,6 +206,7 @@ export function ActionsDashboard() {
     setName(action.name)
     setDescription(action.description)
     setCustomData(action.custom_data ? JSON.stringify(action.custom_data, null, 2) : "")
+    setCreateDialogOpen(true)
     toast.success("已复制配置到创建表单")
   }
 
@@ -208,60 +217,19 @@ export function ActionsDashboard() {
         description="维护行为定义并查看最新上报记录。"
         badge="Verhub Actions"
         actions={
-          <ApiReferenceDrawer
-            tag="Actions"
-            title="行为埋点接口文档"
-            projectKey={selectedProject?.project_key}
-          />
-        }
-      />
-
-      <AdminCard>
-        <div className="mb-4 space-y-1">
-          <h2 className="text-lg font-semibold">新增行为</h2>
-          <p className="text-sm text-slate-700 dark:text-slate-300">
-            名称与描述为必填项，custom_data 需为 JSON 对象。
-          </p>
-        </div>
-        <form className="grid gap-3" onSubmit={handleCreate}>
-          <label className="space-y-1 text-sm">
-            <span className="text-slate-300">行为名称</span>
-            <input
-              required
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm"
-              placeholder="例如：打开设置页"
+          <>
+            <ApiReferenceDrawer
+              tag="Actions"
+              title="行为埋点接口文档"
+              projectKey={selectedProject?.project_key}
             />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-slate-300">行为描述</span>
-            <input
-              required
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm"
-              placeholder="说明该行为会记录什么"
-            />
-          </label>
-          <label className="space-y-1 text-sm">
-            <span className="text-slate-300">扩展数据 JSON</span>
-            <textarea
-              value={customData}
-              onChange={(event) => setCustomData(event.target.value)}
-              className="w-full rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-xs"
-              rows={4}
-              placeholder='例如：{"channel":"release"}'
-            />
-          </label>
-          <div className="flex gap-2">
-            <Button type="submit" disabled={loading}>
+            <Button type="button" disabled={!selectedProjectKey} onClick={openCreateDialog}>
               <Plus className="size-4" />
               新增行为
             </Button>
-          </div>
-        </form>
-      </AdminCard>
+          </>
+        }
+      />
 
       <AdminCard>
         <h3 className="mb-3 font-medium">行为列表</h3>
@@ -284,34 +252,47 @@ export function ActionsDashboard() {
                   <td className="px-3 py-2 text-slate-200">{action.name}</td>
                   <td className="px-3 py-2 text-slate-300">{action.description}</td>
                   <td className="px-3 py-2">
+                    {/* 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。 */}
                     <div className="flex flex-wrap gap-2">
                       <Button
                         type="button"
+                        size="icon"
                         variant="outline"
+                        title="复制配置"
+                        aria-label="复制配置"
                         onClick={() => copyFromAction(action)}
                       >
                         <Copy className="size-4" />
-                        复制配置
-                      </Button>
-                      <Button type="button" variant="outline" onClick={() => startEdit(action)}>
-                        <PencilLine className="size-4" />
-                        编辑
                       </Button>
                       <Button
                         type="button"
+                        size="icon"
                         variant="outline"
+                        title="编辑"
+                        aria-label="编辑"
+                        onClick={() => startEdit(action)}
+                      >
+                        <PencilLine className="size-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="outline"
+                        title="删除"
+                        aria-label="删除"
                         onClick={() => void handleDelete(action.action_id)}
                       >
                         <Trash2 className="size-4" />
-                        删除
                       </Button>
                       <Button
                         type="button"
+                        size="icon"
                         variant="outline"
+                        title="查看记录"
+                        aria-label="查看记录"
                         onClick={() => setSelectedActionId(action.action_id)}
                       >
                         <History className="size-4" />
-                        查看记录
                       </Button>
                     </div>
                   </td>
@@ -351,6 +332,49 @@ export function ActionsDashboard() {
           {!records.length ? <p className="text-sm text-slate-400">暂无行为记录</p> : null}
         </div>
       </AdminCard>
+
+      <AdminFormDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        title="新增行为"
+        description="名称与描述为必填项，扩展数据需为 JSON 对象。"
+        submitLabel="创建行为"
+        submitIcon={<Plus className="size-4" />}
+        submitting={loading}
+        onSubmit={() => void handleCreate()}
+        className="sm:max-w-3xl"
+      >
+        <label className="space-y-1 text-sm">
+          <span className="text-slate-700 dark:text-slate-300">行为名称</span>
+          <input
+            required
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+            placeholder="例如：打开设置页"
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-slate-700 dark:text-slate-300">行为描述</span>
+          <input
+            required
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+            placeholder="说明该行为会记录什么"
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-slate-700 dark:text-slate-300">扩展数据 JSON</span>
+          <textarea
+            value={customData}
+            onChange={(event) => setCustomData(event.target.value)}
+            className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs dark:border-white/20 dark:bg-white/10"
+            rows={4}
+            placeholder='例如：{"channel":"release"}'
+          />
+        </label>
+      </AdminFormDialog>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="sm:max-w-3xl">

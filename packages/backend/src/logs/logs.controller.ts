@@ -8,6 +8,7 @@ import { PublicEndpoint } from "@prisma/client"
 import { ClientOriginService } from "../geo/client-origin.service"
 import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 
+import { CreateLogDto } from "./dto/create-log.dto"
 import { QueryLogsDto } from "./dto/query-logs.dto"
 import { UploadLogDto } from "./dto/upload-log.dto"
 import { LogsService } from "./logs.service"
@@ -24,6 +25,13 @@ export class LogsController {
   @RequireApiScope("logs:read")
   async findAll(@Param("projectKey") projectKey: string, @Query() query: QueryLogsDto) {
     return this.logsService.findAll(projectKey, query)
+  }
+
+  @Post("admin/projects/:projectKey/logs")
+  @UseGuards(AdminOrApiKeyGuard)
+  @RequireApiScope("logs:write")
+  async createByAdmin(@Param("projectKey") projectKey: string, @Body() dto: CreateLogDto) {
+    return this.logsService.createByAdmin(projectKey, dto)
   }
 
   @Post("public/:projectKey/logs")

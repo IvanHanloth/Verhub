@@ -1,5 +1,5 @@
 import * as React from "react"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { toast } from "sonner"
@@ -13,6 +13,7 @@ import {
   updateVersion,
   importVersionsFromGithubReleases,
   previewVersionFromGithubRelease,
+  upsertVersionByVersion,
 } from "@/lib/versions-api"
 
 import { VersionsDashboard } from "./versions-dashboard"
@@ -29,6 +30,7 @@ vi.mock("@/lib/versions-api", () => ({
   updateVersion: vi.fn(),
   importVersionsFromGithubReleases: vi.fn(),
   previewVersionFromGithubRelease: vi.fn(),
+  upsertVersionByVersion: vi.fn(),
 }))
 
 vi.mock("sonner", () => ({
@@ -46,6 +48,7 @@ const mockedDeleteVersion = vi.mocked(deleteVersion)
 const mockedUpdateVersion = vi.mocked(updateVersion)
 const mockedImportVersionsFromGithubReleases = vi.mocked(importVersionsFromGithubReleases)
 const mockedPreviewVersionFromGithubRelease = vi.mocked(previewVersionFromGithubRelease)
+const mockedUpsertVersionByVersion = vi.mocked(upsertVersionByVersion)
 const mockedToastSuccess = vi.mocked(toast.success)
 const mockedToastError = vi.mocked(toast.error)
 
@@ -62,6 +65,7 @@ describe("VersionsDashboard", () => {
     mockedUpdateVersion.mockReset()
     mockedImportVersionsFromGithubReleases.mockReset()
     mockedPreviewVersionFromGithubRelease.mockReset()
+    mockedUpsertVersionByVersion.mockReset()
     mockedToastSuccess.mockReset()
     mockedToastError.mockReset()
 
@@ -222,7 +226,7 @@ describe("VersionsDashboard", () => {
     render(React.createElement(VersionsDashboard))
 
     await screen.findByText("1.0.0")
-    await user.click(screen.getByRole("button", { name: "从 GitHub 导入历史版本" }))
+    await user.click(screen.getByRole("button", { name: "同步历史版本" }))
 
     await waitFor(() => {
       expect(mockedImportVersionsFromGithubReleases).toHaveBeenCalledWith("valid-token", "verhub")
@@ -336,9 +340,11 @@ describe("VersionsDashboard", () => {
     await user.click(screen.getByRole("button", { name: "复制配置" }))
     expect(scrollSpy).not.toHaveBeenCalled()
 
-    expect(screen.getByPlaceholderText("例如：2.3.0")).toHaveValue("1.0.0")
-    expect(screen.getByDisplayValue("稳定版")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "发布版本" })).toBeInTheDocument()
+    // 复制配置直接把新建弹窗顶出来，省掉“复制完还要自己去点新增”的一步。
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getByPlaceholderText("例如：2.3.0")).toHaveValue("1.0.0")
+    expect(within(dialog).getByDisplayValue("稳定版")).toBeInTheDocument()
+    expect(within(dialog).getByRole("button", { name: "发布版本" })).toBeInTheDocument()
     scrollSpy.mockRestore()
   })
 
@@ -383,7 +389,9 @@ describe("VersionsDashboard", () => {
     render(React.createElement(VersionsDashboard))
 
     await screen.findByText("1.0.0")
-    await user.click(screen.getByRole("button", { name: "从 GitHub Release 获取" }))
+    await user.click(screen.getByRole("button", { name: "新增版本" }))
+    const dialog = await screen.findByRole("dialog")
+    await user.click(within(dialog).getByRole("button", { name: "按版本号获取 Release 信息" }))
 
     await waitFor(() => {
       expect(mockedPreviewVersionFromGithubRelease).toHaveBeenCalledWith("valid-token", "verhub", {
@@ -391,10 +399,51 @@ describe("VersionsDashboard", () => {
       })
     })
 
-    expect(screen.getByPlaceholderText("例如：2.3.0")).toHaveValue("1.2.3")
-    expect(screen.getByPlaceholderText("例如：2.3.0-rc.1")).toHaveValue("1.2.3")
-    expect(screen.getByDisplayValue("Verhub v1.2.3")).toBeInTheDocument()
-    expect(screen.getByLabelText("预发布版本")).toBeChecked()
+    expect(within(dialog).getByPlaceholderText("例如：2.3.0")).toHaveValue("1.2.3")
+    expect(within(dialog).getByPlaceholderText("例如：2.3.0-rc.1")).toHaveValue("1.2.3")
+    expect(within(dialog).getByDisplayValue("Verhub v1.2.3")).toBeInTheDocument()
+    expect(within(dialog).getByLabelText("预发布版本")).toBeChecked()
+  })
+
+  it("syncs the latest github release into the version list", async () => {
+    const user = userEvent.setup()
+
+    mockedListProjects.mockResolvedValue({
+      total: 1,
+      data: [
+        {
+          id: "project-1",
+          project_key: "verhub",
+          name: "Verhub",
+          repo_url: "https://github.com/octocat/Hello-World",
+          description: null,
+          author: null,
+          author_homepage_url: null,
+          icon_url: null,
+          website_url: null,
+          docs_url: null,
+          published_at: null,
+          created_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
+          updated_at: Math.floor(Date.parse("2026-01-01T00:00:00.000Z") / 1000),
+        },
+      ],
+    })
+
+    render(React.createElement(VersionsDashboard))
+
+    await screen.findByText("1.0.0")
+    await user.click(screen.getByRole("button", { name: "同步最新 Release" }))
+
+    // 走 upsert：同一个 Release 反复同步不应该撞版本号唯一约束。
+    await waitFor(() => {
+      expect(mockedUpsertVersionByVersion).toHaveBeenCalledWith(
+        "valid-token",
+        "verhub",
+        "1.2.3",
+        expect.objectContaining({ version: "1.2.3", title: "Verhub v1.2.3" }),
+      )
+    })
+    expect(mockedToastSuccess).toHaveBeenCalledWith("已同步最新 Release 1.2.3。")
   })
 
   it("requests specified release tag when version input is provided", async () => {
@@ -424,10 +473,12 @@ describe("VersionsDashboard", () => {
     render(React.createElement(VersionsDashboard))
 
     await screen.findByText("1.0.0")
-    const versionInput = screen.getByPlaceholderText("例如：2.3.0")
+    await user.click(screen.getByRole("button", { name: "新增版本" }))
+    const dialog = await screen.findByRole("dialog")
+    const versionInput = within(dialog).getByPlaceholderText("例如：2.3.0")
     await user.clear(versionInput)
     await user.type(versionInput, "v2.0.0-beta.1")
-    await user.click(screen.getByRole("button", { name: "从 GitHub Release 获取" }))
+    await user.click(within(dialog).getByRole("button", { name: "按版本号获取 Release 信息" }))
 
     await waitFor(() => {
       expect(mockedPreviewVersionFromGithubRelease).toHaveBeenCalledWith("valid-token", "verhub", {
@@ -464,7 +515,9 @@ describe("VersionsDashboard", () => {
     render(React.createElement(VersionsDashboard))
 
     await screen.findByText("1.0.0")
-    await user.click(screen.getByRole("button", { name: "从 GitHub Release 获取" }))
+    await user.click(screen.getByRole("button", { name: "新增版本" }))
+    const dialog = await screen.findByRole("dialog")
+    await user.click(within(dialog).getByRole("button", { name: "按版本号获取 Release 信息" }))
 
     await waitFor(() => {
       expect(mockedToastError).toHaveBeenCalledWith("GitHub Release 获取失败：HTTP 404")

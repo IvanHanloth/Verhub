@@ -171,6 +171,31 @@ export class FeedbacksService {
     return this.toFeedbackItem(created)
   }
 
+  /**
+   * 后台手动补录一条反馈（如渠道外收集到的意见）。
+   *
+   * 不走 dedup、不记来源：管理员的重复提交是有意的，而 ip/UA/地理写成后台自己的
+   * 只会污染"这条反馈来自哪个客户端"的判断。
+   */
+  async createByAdmin(projectKey: string, dto: CreateFeedbackDto): Promise<FeedbackItem> {
+    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    await this.ensureProjectExistsByKey(normalizedProjectKey)
+
+    const created = await this.prisma.feedback.create({
+      data: {
+        projectKey: normalizedProjectKey,
+        userId: dto.user_id,
+        rating: dto.rating,
+        content: dto.content,
+        platform: toPlatform(dto.platform),
+        platformVersion: dto.platform_version,
+        customData: dto.custom_data as Prisma.InputJsonValue | undefined,
+      },
+    })
+
+    return this.toFeedbackItem(created)
+  }
+
   async update(projectKey: string, id: string, dto: UpdateFeedbackDto): Promise<FeedbackItem> {
     const normalizedProjectKey = normalizeProjectKey(projectKey)
     const existing = await this.prisma.feedback.findFirst({

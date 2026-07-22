@@ -16,6 +16,7 @@ import {
 } from "@workspace/ui/components/dialog"
 
 import { AdminCard } from "@/components/admin/admin-card"
+import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import { MarkdownEditor } from "@/components/markdown/markdown-editor"
@@ -231,6 +232,7 @@ export function AnnouncementsDashboard() {
   const [error, setError] = React.useState<string | null>(null)
 
   const [form, setForm] = React.useState<AnnouncementFormState>(emptyForm)
+  const [createDialogOpen, setCreateDialogOpen] = React.useState(false)
   const [submitLoading, setSubmitLoading] = React.useState(false)
 
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
@@ -294,9 +296,15 @@ export function AnnouncementsDashboard() {
   React.useEffect(() => {
     resetOffset()
     setForm(emptyForm)
+    setCreateDialogOpen(false)
     setEditDialogOpen(false)
     setEditingId(null)
   }, [selectedProjectKey, resetOffset])
+
+  function openCreateDialog() {
+    setForm(emptyForm)
+    setCreateDialogOpen(true)
+  }
 
   function beginEdit(item: AnnouncementItem) {
     setEditingId(item.id)
@@ -322,12 +330,11 @@ export function AnnouncementsDashboard() {
       author: item.author ?? "",
       published_at: toDateTimeLocal(item.published_at),
     })
+    setCreateDialogOpen(true)
     toast.success("已复制配置到创建表单")
   }
 
-  async function handleCreate(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-
+  async function handleCreate() {
     if (!token) {
       toast.error("请先登录后再操作。")
       return
@@ -349,6 +356,7 @@ export function AnnouncementsDashboard() {
       await createAnnouncement(token, selectedProjectKey, payload)
       toast.success("公告已发布。")
       setForm(emptyForm)
+      setCreateDialogOpen(false)
       resetOffset()
       await loadAnnouncements(0)
     } catch (submitError) {
@@ -426,11 +434,17 @@ export function AnnouncementsDashboard() {
         description="维护公告内容、置顶状态、隐藏状态和发布时间。"
         badge="Verhub Announcements"
         actions={
-          <ApiReferenceDrawer
-            tag="Announcements"
-            title="公告接口文档"
-            projectKey={selectedProject?.project_key}
-          />
+          <>
+            <ApiReferenceDrawer
+              tag="Announcements"
+              title="公告接口文档"
+              projectKey={selectedProject?.project_key}
+            />
+            <Button type="button" disabled={!selectedProjectKey} onClick={openCreateDialog}>
+              <Plus className="size-4" />
+              新增公告
+            </Button>
+          </>
         }
       />
 
@@ -439,26 +453,6 @@ export function AnnouncementsDashboard() {
           {authError ?? projectsError}
         </AdminCard>
       ) : null}
-
-      <AdminCard className="space-y-6">
-        <div className="space-y-2">
-          <h2 className="text-lg font-semibold">发布公告</h2>
-          <p className="text-sm text-slate-200/90">支持按平台发布与隐藏公告。</p>
-        </div>
-
-        <form className="grid gap-3" onSubmit={handleCreate}>
-          <AnnouncementFormFields form={form} setForm={setForm} theme="dark" />
-
-          <Button type="submit" disabled={submitLoading || !selectedProjectKey}>
-            {submitLoading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Plus className="size-4" />
-            )}
-            发布公告
-          </Button>
-        </form>
-      </AdminCard>
 
       <AdminCard as="section">
         <AdminListHeader title="公告列表" total={total} page={page} totalPages={totalPages} />
@@ -513,26 +507,37 @@ export function AnnouncementsDashboard() {
                         <p>更新于 {new Date(item.updated_at * 1000).toLocaleString("zh-CN")}</p>
                       </td>
                       <td className="px-3 py-2">
+                        {/* 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。 */}
                         <div className="flex flex-wrap gap-2">
                           <Button
                             type="button"
+                            size="icon"
                             variant="outline"
+                            title="复制配置"
+                            aria-label="复制配置"
                             onClick={() => copyFromAnnouncement(item)}
                           >
                             <Copy className="size-4" />
-                            复制配置
-                          </Button>
-                          <Button type="button" variant="outline" onClick={() => beginEdit(item)}>
-                            <PencilLine className="size-4" />
-                            编辑
                           </Button>
                           <Button
                             type="button"
+                            size="icon"
+                            variant="outline"
+                            title="编辑"
+                            aria-label="编辑"
+                            onClick={() => beginEdit(item)}
+                          >
+                            <PencilLine className="size-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
                             variant="destructive"
+                            title="删除"
+                            aria-label="删除"
                             onClick={() => void handleDelete(item.id)}
                           >
                             <Trash2 className="size-4" />
-                            删除
                           </Button>
                         </div>
                       </td>
@@ -546,6 +551,20 @@ export function AnnouncementsDashboard() {
           </div>
         ) : null}
       </AdminCard>
+
+      <AdminFormDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        title="发布公告"
+        description="支持按平台发布，也可以先隐藏再择机放出。"
+        submitLabel="发布公告"
+        submitIcon={<Plus className="size-4" />}
+        submitting={submitLoading}
+        submitDisabled={!selectedProjectKey}
+        onSubmit={() => void handleCreate()}
+      >
+        <AnnouncementFormFields form={form} setForm={setForm} theme="light" />
+      </AdminFormDialog>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="sm:max-w-4xl">

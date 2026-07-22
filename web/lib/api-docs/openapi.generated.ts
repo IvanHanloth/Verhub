@@ -2253,6 +2253,49 @@ export const openApiDocument: OpenApiDocument = {
           },
         },
       },
+      post: {
+        tags: ["Feedbacks"],
+        summary: "后台手动新增反馈",
+        description:
+          "后台补录渠道外收集到的反馈。与客户端提交端点不同：不做重复抑制，也不写入 ip / user_agent / 地理位置等来源字段（这些只在真实客户端上报时才有意义）。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CreateFeedbackDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            description: "创建成功",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/FeedbackItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
     },
     "/admin/projects/{projectKey}/feedbacks/{id}": {
       parameters: [
@@ -3491,6 +3534,49 @@ export const openApiDocument: OpenApiDocument = {
               "application/json": {
                 schema: {
                   $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      post: {
+        tags: ["Logs"],
+        summary: "后台手动新增日志",
+        description:
+          "后台补录一条日志。与客户端上报端点不同：不做重复抑制，也不写入 ip / user_agent / 地理位置等来源字段，platform 与 platform_version 由请求体显式指定。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CreateLogDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            description: "创建成功",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/LogItem",
                 },
               },
             },
@@ -6815,6 +6901,33 @@ export const openApiDocument: OpenApiDocument = {
           custom_data: {
             app_version: "1.2.0",
           },
+        },
+      },
+      CreateLogDto: {
+        allOf: [
+          {
+            $ref: "#/components/schemas/UploadLogDto",
+          },
+          {
+            type: "object",
+            description:
+              "后台手动补录时使用。多出的 platform / platform_version 在客户端上报路径上 由 User-Agent 推断，手动补录没有客户端可推断，只能显式指定。",
+            properties: {
+              platform: {
+                $ref: "#/components/schemas/Platform",
+              },
+              platform_version: {
+                type: "string",
+                maxLength: 32,
+              },
+            },
+          },
+        ],
+        example: {
+          level: 2,
+          content: "定时任务执行失败，已人工恢复。",
+          platform: "windows",
+          platform_version: "11",
         },
       },
       LogItem: {

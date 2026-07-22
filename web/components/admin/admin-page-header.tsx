@@ -27,7 +27,7 @@ export function AdminPageHeader({
           <h1 className="text-2xl font-semibold sm:text-3xl">{title}</h1>
           <p className="max-w-3xl text-sm text-slate-200/90 sm:text-base">{description}</p>
         </div>
-        {actions ? <div>{actions}</div> : null}
+        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
     </section>
   )

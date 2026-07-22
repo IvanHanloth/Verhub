@@ -76,7 +76,7 @@ describe("ProjectsDashboard", () => {
     render(React.createElement(ProjectsDashboard))
 
     expect(
-      await screen.findByText("暂无项目，使用上方表单创建第一条项目记录。"),
+      await screen.findByText("暂无项目，点击右上角“新增项目”创建第一条项目记录。"),
     ).toBeInTheDocument()
     expect(mockedListProjects).toHaveBeenCalledWith(
       "valid-token",
@@ -155,9 +155,11 @@ describe("ProjectsDashboard", () => {
 
     render(React.createElement(ProjectsDashboard))
 
-    const repoInput = await screen.findByPlaceholderText("https://github.com/org/repo")
+    await user.click(await screen.findByRole("button", { name: "新增项目" }))
+    const dialog = await screen.findByRole("dialog")
+    const repoInput = within(dialog).getByPlaceholderText("https://github.com/org/repo")
     await user.type(repoInput, "https://github.com/octocat/Hello-World")
-    await user.click(screen.getByRole("button", { name: "从 GitHub 获取项目信息" }))
+    await user.click(within(dialog).getByRole("button", { name: "从 GitHub 获取项目信息" }))
 
     await waitFor(() => {
       expect(mockedPreviewProjectFromGithubRepo).toHaveBeenCalledWith(
@@ -166,13 +168,12 @@ describe("ProjectsDashboard", () => {
       )
     })
 
-    expect(screen.getByDisplayValue("octocat-hello-world")).toBeInTheDocument()
-    expect(screen.getByDisplayValue("octocat/Hello-World")).toBeInTheDocument()
+    expect(within(dialog).getByDisplayValue("octocat-hello-world")).toBeInTheDocument()
+    expect(within(dialog).getByDisplayValue("octocat/Hello-World")).toBeInTheDocument()
   })
 
-  it("scrolls to top when copying project config", async () => {
+  it("opens the create dialog prefilled when copying project config", async () => {
     const user = userEvent.setup()
-    const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined)
 
     window.localStorage.setItem("verhub-admin-token", "valid-token")
     mockedListProjects.mockResolvedValue({
@@ -201,8 +202,8 @@ describe("ProjectsDashboard", () => {
     await screen.findByText("ID: project-1")
     await user.click(screen.getByRole("button", { name: "复制配置" }))
 
-    expect(scrollSpy).toHaveBeenCalled()
-    scrollSpy.mockRestore()
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).getByDisplayValue("verhub")).toBeInTheDocument()
   })
 
   it("rejects invalid comparable range format before submit", async () => {
@@ -212,11 +213,12 @@ describe("ProjectsDashboard", () => {
 
     render(React.createElement(ProjectsDashboard))
 
-    const keyInput = await screen.findByPlaceholderText("例如：verhub-admin")
-    await user.type(keyInput, "demo")
-    await user.type(screen.getByPlaceholderText("输入面向管理员展示的名称"), "Demo")
-    await user.type(screen.getByPlaceholderText("例如：1.0.0"), "abc")
-    await user.click(screen.getByRole("button", { name: "创建项目" }))
+    await user.click(await screen.findByRole("button", { name: "新增项目" }))
+    const dialog = await screen.findByRole("dialog")
+    await user.type(within(dialog).getByPlaceholderText("例如：verhub-admin"), "demo")
+    await user.type(within(dialog).getByPlaceholderText("输入面向管理员展示的名称"), "Demo")
+    await user.type(within(dialog).getByPlaceholderText("例如：1.0.0"), "abc")
+    await user.click(within(dialog).getByRole("button", { name: "创建项目" }))
 
     expect(mockedToastError).toHaveBeenCalledWith("可选更新范围下限格式不合法。")
     expect(mockedCreateProject).not.toHaveBeenCalled()

@@ -6,6 +6,7 @@ describe("FeedbacksController", () => {
     findOne: jest.fn(),
     update: jest.fn(),
     remove: jest.fn(),
+    createByAdmin: jest.fn(),
     createByProjectKey: jest.fn(),
     getStatistics: jest.fn(),
     getStatus: jest.fn(),
@@ -52,6 +53,16 @@ describe("FeedbacksController", () => {
   it("remove delegates and returns success", async () => {
     mockService.remove.mockResolvedValue(undefined)
     expect(await controller.remove("proj", "f1")).toEqual({ success: true })
+  })
+
+  it("createByAdmin never attaches the caller origin", async () => {
+    const dto = { content: "手动补录的反馈" }
+    mockService.createByAdmin.mockResolvedValue({ id: "f9" })
+
+    await controller.createByAdmin("proj", dto as never)
+
+    expect(mockOriginService.describe).not.toHaveBeenCalled()
+    expect(mockService.createByAdmin).toHaveBeenCalledWith("proj", dto)
   })
 
   it("createByProjectKey passes the observed origin through to the service", async () => {

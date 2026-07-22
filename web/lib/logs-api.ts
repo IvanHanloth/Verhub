@@ -21,6 +21,15 @@ export type LogItem = {
   created_at: number
 }
 
+export type LogMutationInput = {
+  level: LogLevel
+  content: string
+  platform?: Platform
+  platform_version?: string
+  device_info?: Record<string, unknown>
+  custom_data?: Record<string, unknown>
+}
+
 export type ListLogsParams = {
   limit: number
   offset: number
@@ -60,5 +69,18 @@ export async function listLogs(
   return requestJson<ListLogsResponse>(`/admin/projects/${projectKey}/logs?${query.toString()}`, {
     token,
     signal,
+  })
+}
+
+/** 后台手动补录日志；来源字段（ip/UA/地理）由后端留空。 */
+export async function createLog(
+  token: string,
+  projectKey: string,
+  input: LogMutationInput,
+): Promise<LogItem> {
+  return requestJson<LogItem>(`/admin/projects/${projectKey}/logs`, {
+    method: "POST",
+    token,
+    body: input,
   })
 }

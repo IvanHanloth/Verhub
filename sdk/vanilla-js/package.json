@@ -1,6 +1,6 @@
 {
   "name": "verhub-sdk-vanilla",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "Verhub 纯 JS（零依赖、零构建）SDK，配合 <script> 或直接 import 使用",
   "license": "Apache-2.0",

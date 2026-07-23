@@ -197,7 +197,7 @@ jobs:
         with:
           packages-dir: sdk/python/dist
           # Trusted Publishing 下无需 password；若用 API Token，取消下一行注释：
-          # password: ${{ secrets.PYPI_API_TOKEN }}
+          password: ${{ secrets.PYPI_API_TOKEN }}
 
   publish-npm:
     needs: bump

@@ -6,3 +6,5 @@ node_modules
 dist
 coverage
 pnpm-lock.yaml
+# 由 sdk/vanilla-js/build.mjs 生成，保持与其原样输出一致，勿经 prettier 改写
+sdk/vanilla-js/verhub-sdk.global.js

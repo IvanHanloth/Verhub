@@ -39,6 +39,10 @@ jobs:
         id: version
         run: node scripts/version.mjs apply "${{ inputs.version }}"
 
+      # 纯 JS 的 global 版本是从 verhub-sdk.js 生成的，版本号改了要一并重生成。
+      - name: Rebuild vanilla-js global bundle
+        run: node sdk/vanilla-js/build.mjs
+
       - name: Commit, tag and push
         id: bump
         env:
@@ -53,8 +57,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # 版本号真源与所有跟随文件，与 scripts/version.mjs 的目标清单保持一致
           git add package.json packages/backend/package.json packages/ui/package.json \
-                  web/package.json sdk/typescript/package.json doc/package.json
+                  web/package.json doc/package.json \
+                  sdk/typescript/package.json sdk/typescript/src/version.ts \
+                  sdk/vanilla-js/package.json sdk/vanilla-js/verhub-sdk.js \
+                  sdk/vanilla-js/verhub-sdk.global.js \
+                  sdk/python/verhub_sdk/_version.py \
+                  sdk/rust/Cargo.toml sdk/rust/src/lib.rs
           git commit -m "chore(release): $TAG"
           git tag "$TAG"
 
@@ -146,6 +156,112 @@ jobs:
             VERHUB_BUILD_PUBLISHED_AT=${{ needs.bump.outputs.published_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ---- 各语言 SDK 发布到对应包管理平台 ----
+  # 三者都 checkout 刚打好的 tag，跑一遍 version check 兜底，再构建并发布。
+  # 用 sdk-publish 这个 environment 收口密钥，可在仓库设置里加保护规则。
+
+  publish-python:
+    needs: bump
+    runs-on: ubuntu-latest
+    environment: sdk-publish
+    permissions:
+      contents: read
+      # PyPI Trusted Publishing 走 OIDC；若改用 API Token 可删掉本行。
+      id-token: write
+    defaults:
+      run:
+        working-directory: sdk/python
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump.outputs.tag }}
+
+      - name: Verify version matches tag
+        working-directory: .
+        run: node scripts/version.mjs check "${{ needs.bump.outputs.tag }}"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: sdk/python/dist
+          # Trusted Publishing 下无需 password；若用 API Token，取消下一行注释：
+          # password: ${{ secrets.PYPI_API_TOKEN }}
+
+  publish-npm:
+    needs: bump
+    runs-on: ubuntu-latest
+    environment: sdk-publish
+    permissions:
+      contents: read
+      # npm 发布带 provenance 需要 OIDC。
+      id-token: write
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump.outputs.tag }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify version matches tag
+        working-directory: .
+        run: node scripts/version.mjs check "${{ needs.bump.outputs.tag }}"
+
+      - name: Install and build
+        run: |
+          npm install
+          npm run build
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-rust:
+    needs: bump
+    runs-on: ubuntu-latest
+    environment: sdk-publish
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: sdk/rust
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump.outputs.tag }}
+
+      - name: Verify version matches tag
+        working-directory: .
+        run: node scripts/version.mjs check "${{ needs.bump.outputs.tag }}"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish to crates.io
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   release:
     needs: [bump, docker]

@@ -1,0 +1,36 @@
+[package]
+name = "verhub-sdk"
+version = "0.2.1"
+edition = "2021"
+rust-version = "1.75"
+description = "Verhub 版本与发布管理平台的官方 Rust SDK"
+license = "Apache-2.0"
+authors = ["IvanHanloth <ivan@hanloth.com>"]
+homepage = "https://ivanhanloth.github.io/Verhub/reference/sdk"
+repository = "https://github.com/IvanHanloth/verhub"
+documentation = "https://docs.rs/verhub-sdk"
+readme = "README.md"
+keywords = ["verhub", "version", "release", "changelog", "sdk"]
+categories = ["api-bindings", "web-programming::http-client"]
+exclude = ["/target"]
+
+[dependencies]
+os_info = { version = "3", default-features = false }
+percent-encoding = "2.3"
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[features]
+default = ["rustls-tls"]
+# 自带证书栈，不依赖系统 OpenSSL；交叉编译时省事。
+rustls-tls = ["reqwest/rustls-tls"]
+# 改用系统 TLS 实现。
+native-tls = ["reqwest/native-tls"]
+
+[package.metadata.docs.rs]
+all-features = false

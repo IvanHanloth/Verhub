@@ -10,6 +10,60 @@ permissions:
   contents: read
 
 jobs:
+  # 四个语言 SDK 的构建守卫：不进 turbo 流水线，独立跑一遍编译/类型检查，
+  # 防止改了契约却漏改 SDK。不发布，只保证能构建。
+  sdk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Version consistency
+        run: node scripts/version.mjs check
+
+      - name: TypeScript SDK build
+        working-directory: sdk/typescript
+        run: |
+          npm install
+          npm run typecheck
+          npm run build
+
+      - name: Vanilla JS bundle is in sync
+        run: |
+          node sdk/vanilla-js/build.mjs
+          git diff --exit-code sdk/vanilla-js/verhub-sdk.global.js \
+            || (echo "::error::verhub-sdk.global.js 与源不同步，请跑 node sdk/vanilla-js/build.mjs" && exit 1)
+
+      - name: Python SDK import and build
+        working-directory: sdk/python
+        run: |
+          python -m pip install --upgrade pip build
+          python -m pip install .
+          python -c "import verhub_sdk; print(verhub_sdk.__version__)"
+          python -m build
+
+      - name: Rust SDK check
+        working-directory: sdk/rust
+        run: |
+          cargo clippy --all-targets -- -D warnings
+          cargo test --doc
+
   # 前端单测不需要数据库，独立成 job 与后端并行。
   # 其中包含接口契约的两道守卫：openapi.generated.ts 是否与 verhub.openapi.yaml
   # 同步（过期会提示跑 pnpm api:sync），以及已发布的 /doc/<slug> 是否全部可达。

@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "verhub-sdk"
+dynamic = ["version"]
+description = "Verhub 版本与发布管理平台的官方 Python SDK"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+authors = [{ name = "IvanHanloth", email = "ivan@hanloth.com" }]
+keywords = ["verhub", "version", "release", "changelog", "update", "sdk"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
+]
+dependencies = ["requests>=2.28,<3"]
+
+[project.urls]
+Homepage = "https://github.com/IvanHanloth/verhub"
+Documentation = "https://ivanhanloth.github.io/Verhub/reference/sdk"
+Repository = "https://github.com/IvanHanloth/verhub"
+Issues = "https://github.com/IvanHanloth/verhub/issues"
+
+[tool.hatch.version]
+path = "verhub_sdk/_version.py"
+pattern = 'VERHUB_SDK_VERSION = "(?P<version>[^"]+)"'
+
+[tool.hatch.build.targets.wheel]
+packages = ["verhub_sdk"]
+
+[tool.hatch.build.targets.sdist]
+include = ["verhub_sdk", "README.md"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

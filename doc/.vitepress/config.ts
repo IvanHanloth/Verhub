@@ -1,13 +1,13 @@
 const config = {
   lang: "zh-CN",
   title: "Verhub 文档",
-  base: '/Verhub/',
+  base: "/Verhub/",
   description: "Verhub 版本与发布管理平台文档中心",
   cleanUrls: true,
   lastUpdated: true,
   themeConfig: {
     logo: {
-      src: "/logo-500.png"
+      src: "/logo-500.png",
     },
     nav: [
       { text: "首页", link: "/" },
@@ -15,22 +15,23 @@ const config = {
       { text: "部署指南", link: "/guide/deployment" },
       { text: "开发指南", link: "/guide/development" },
       { text: "用户指南", link: "/guide/user-guide" },
-      { text: "贡献指南", link: "/guide/contributing" }
+      { text: "SDK", link: "/reference/sdk" },
+      { text: "贡献指南", link: "/guide/contributing" },
     ],
     sidebar: [
       {
         text: "开始使用",
         items: [
           { text: "项目介绍", link: "/guide/introduction" },
-          { text: "常见问题", link: "/guide/faq" }
-        ]
+          { text: "常见问题", link: "/guide/faq" },
+        ],
       },
       {
         text: "部署与运维",
         items: [
           { text: "快速开始", link: "/guide/getting-started" },
-          { text: "部署指南", link: "/guide/deployment" }
-        ]
+          { text: "部署指南", link: "/guide/deployment" },
+        ],
       },
       {
         text: "研发协作",
@@ -39,19 +40,23 @@ const config = {
           { text: "更新策略", link: "/guide/update-policy" },
           { text: "贡献指南", link: "/guide/contributing" },
           { text: "用户指南", link: "/guide/user-guide" },
-          { text: "架构概览", link: "/reference/architecture" }
-        ]
-      }
+          { text: "架构概览", link: "/reference/architecture" },
+        ],
+      },
+      {
+        text: "参考",
+        items: [{ text: "SDK 参考", link: "/reference/sdk" }],
+      },
     ],
     socialLinks: [{ icon: "github", link: "https://github.com/IvanHanloth/verhub" }],
     search: {
-      provider: "local"
+      provider: "local",
     },
     footer: {
       message: "Released under the Apache 2.0 License.",
-      copyright: "Copyright © 2026 Verhub by IvanHanloth"
-    }
-  }
-};
+      copyright: "Copyright © 2026 Verhub by IvanHanloth",
+    },
+  },
+}
 
-export default config;
+export default config

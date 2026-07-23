@@ -123,6 +123,12 @@ Webhook 鉴权（Project）：
 - 国内来源精确到省市：`ApiRequestStat` 除国家码外还存省/市级行政区划码（`regionCode`/`cityCode`，GB/T 2260），聚合按**码**分组而非中文名——太平洋科技返回「辽宁省/大连市」、纯真网络返回「辽宁/大连」，按名分组会把同一省劈成两桶，而两家的码一致（`210000`/`210200`）。境外与未定位无国标码，落空串 sentinel（NULL 会被 Postgres unique 视为互异，破坏 upsert-increment）。省份分布只取 `region=CN` 且省码非空的行，中文省名由后端静态表 `province-names.ts`（`Intl.DisplayNames` 不含中国省级）给出，随 overview 的 `by_province` 返回，前端据此渲染中国省级热力地图。市级码已入库，暂不在 UI 展开。
 - 热力图（星期 × 小时）按**来源当地时区**折叠，而非查询者时区：回答的是「用户在其当地几点活跃」。聚合表只到国家码，故用 `region-timezone.ts` 的国家→代表时区静态表平移（中国全境 UTC+8 精确，美/俄等跨时区国家取代表时区近似），无法定位（UNKNOWN/LOCAL/表外）回退到查询者时区兜底。趋势图 timeseries 仍按查询者时区——那是给管理员看的绝对时间轴，两者口径不同是有意为之。
 
+公开上报限流：
+
+- 四个公开写接口（`/public/{projectKey}/logs`、`/feedbacks`、`/actions`、`/versions/check-update`）挂 `ClientIpThrottlerGuard`，单 IP 每分钟默认 300 次（`VERHUB_PUBLIC_RATE_LIMIT` 可调），超限返回 429。
+- 去重只挡重复载荷的存储，构造不同载荷的洪泛仍会无上限写库并触发 geo 解析，限流是这层的硬上限。
+- 计数按 `extractClientIp` 解析出的真实客户端 IP，而非连接对端——否则 CDN/nginx 后面全体访客共用一个桶。只挂公开写接口：管理端与被 Next SSR 代理拉取的公开只读接口（版本列表、项目详情等）不限流，免得误伤 SSR 出口 IP。
+
 上报去重：
 
 - `Log` / `Feedback` / `ActionRecord` 各有 `dedupHash` 列，指纹取「项目 + 载荷 + 调用方」。窗口内命中则直接返回已存在的那条记录，不新建行。

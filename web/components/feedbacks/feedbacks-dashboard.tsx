@@ -1,13 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { AlertTriangle, Copy, Loader2, PencilLine, Plus, Save, Trash2 } from "lucide-react"
+import { AlertTriangle, Copy, PencilLine, Plus, Save, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
 
 import { isAuthError } from "@/lib/api-client"
 import { getErrorMessage } from "@/lib/error-utils"
+import { useConfirm } from "@/components/common/confirm-dialog"
+import { TableSkeleton } from "@/components/common/skeleton"
 import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
@@ -163,6 +165,7 @@ function FeedbackFormFields({
 }
 
 export function FeedbacksDashboard() {
+  const confirm = useConfirm()
   const [token, setToken] = React.useState(() => getSessionToken().trim())
   const [authError, setAuthError] = React.useState<string | null>(null)
 
@@ -389,7 +392,12 @@ export function FeedbacksDashboard() {
       return
     }
 
-    const confirmed = window.confirm("确认删除这条反馈吗？该操作不可撤销。")
+    const confirmed = await confirm({
+      title: "删除反馈",
+      description: "确认删除这条反馈吗？该操作不可撤销。",
+      confirmLabel: "删除",
+      destructive: true,
+    })
     if (!confirmed) {
       return
     }
@@ -457,12 +465,7 @@ export function FeedbacksDashboard() {
           </div>
         ) : null}
 
-        {hasToken && selectedProjectKey && loading ? (
-          <div className="flex items-center gap-2 rounded-2xl border border-white/15 bg-white/5 p-6 text-sm text-slate-200">
-            <Loader2 className="size-4 animate-spin" />
-            正在加载反馈列表...
-          </div>
-        ) : null}
+        {hasToken && selectedProjectKey && loading ? <TableSkeleton /> : null}
 
         {hasToken && selectedProjectKey && !loading && error ? (
           <div className="rounded-2xl border border-rose-300/30 bg-rose-300/10 p-6 text-sm text-rose-200">

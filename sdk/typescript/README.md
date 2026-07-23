@@ -88,12 +88,14 @@ client.setPlatformVersion("ubuntu 24.04")
 ## 错误处理
 
 ```ts
-import { VerhubApiError, VerhubConnectionError } from "verhub-sdk"
+import { VerhubApiError, VerhubAuthError, VerhubConnectionError } from "verhub-sdk"
 
 try {
-  await client.public.getLatestVersion()
+  await client.admin.listProjects()
 } catch (error) {
-  if (error instanceof VerhubApiError) {
+  if (error instanceof VerhubAuthError) {
+    console.error("忘了设 token，请求没发出去", error.message) // 本地前置校验失败
+  } else if (error instanceof VerhubApiError) {
     console.error(error.status, error.message, error.body) // 服务端返回非 2xx
   } else if (error instanceof VerhubConnectionError) {
     console.error(error.cause) // 请求没到服务端
@@ -101,7 +103,32 @@ try {
 }
 ```
 
-两者都继承自 `VerhubError`。
+三者都继承自 `VerhubError`。`VerhubAuthError` 用于「调 admin 接口却没设凭据」这类
+**本地前置校验失败**——请求根本没发出去，与服务端真正拒绝凭据的 `VerhubApiError`
+（HTTP 401/403）区分开。
+
+> **升级提示（破坏性变更）**：早期版本在缺 token 时抛的是伪造的 `VerhubApiError`
+> （status 401）。现在改抛 `VerhubAuthError`。若你之前靠 `instanceof VerhubApiError`
+> 兜这种情况，请补上 `VerhubAuthError`。
+
+## 重试
+
+默认对**连接失败和幂等请求（GET/HEAD）自动重试 2 次**并指数退避；`checkUpdate`
+这类 POST 不会被重放。用 `retries` 调整，传 `0` 关闭。
+
+```ts
+new VerhubClient({ baseUrl, projectKey, retries: 3 })
+```
+
+## User-Agent
+
+Node 等服务端运行时默认带 UA `verhub-sdk-js/<版本>`（浏览器禁止脚本改写 UA，此项
+无效）。想加上自家应用标识做服务端统计，用 `appIdentifier`（保留 SDK 版本信息）：
+
+```ts
+new VerhubClient({ baseUrl, projectKey, appIdentifier: "MyApp/1.2" })
+// UA: verhub-sdk-js/x.y.z MyApp/1.2
+```
 
 ## 其他选项
 
@@ -111,5 +138,6 @@ new VerhubClient({
   timeoutMs: 5000, // 默认 15000，传 0 表示不超时
   headers: { "x-trace": "1" }, // 附加到每个请求
   fetch: myFetch, // 自定义 fetch 实现
+  logger: (e) => console.debug(e.method, e.url, e.status), // 调试日志钩子，默认不打
 })
 ```

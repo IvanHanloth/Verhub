@@ -20,6 +20,8 @@ import { Button } from "@workspace/ui/components/button"
 import { isAuthError } from "@/lib/api-client"
 import { getSessionToken } from "@/lib/auth-session"
 import { getErrorMessage } from "@/lib/error-utils"
+import { useConfirm } from "@/components/common/confirm-dialog"
+import { TableSkeleton } from "@/components/common/skeleton"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
@@ -56,6 +58,7 @@ import { VersionFormFields } from "./version-form-fields"
 const VERSION_PAGE_SIZE = 10
 
 export function VersionsDashboard() {
+  const confirm = useConfirm()
   const [token, setToken] = React.useState(() => getSessionToken().trim())
   const [authError, setAuthError] = React.useState<string | null>(null)
 
@@ -418,7 +421,12 @@ export function VersionsDashboard() {
       return
     }
 
-    const confirmed = window.confirm("确认删除这个版本吗？该操作不可撤销。")
+    const confirmed = await confirm({
+      title: "删除版本",
+      description: "确认删除这个版本吗？该操作不可撤销。",
+      confirmLabel: "删除",
+      destructive: true,
+    })
     if (!confirmed) {
       return
     }
@@ -666,12 +674,7 @@ export function VersionsDashboard() {
           </div>
         ) : null}
 
-        {hasToken && selectedProjectKey && versionsLoading ? (
-          <div className="flex items-center gap-2 rounded-2xl border border-slate-900/15 bg-slate-100/60 p-6 text-sm text-slate-700 dark:border-white/15 dark:bg-white/5 dark:text-slate-200">
-            <Loader2 className="size-4 animate-spin" />
-            正在加载版本列表...
-          </div>
-        ) : null}
+        {hasToken && selectedProjectKey && versionsLoading ? <TableSkeleton /> : null}
 
         {hasToken && selectedProjectKey && !versionsLoading && versionsError ? (
           <div className="rounded-2xl border border-rose-300/30 bg-rose-300/10 p-6 text-sm text-rose-200">

@@ -27,7 +27,17 @@ import {
 type ApiKeyValidationResult = {
   valid: boolean
   keyId?: string
+  /** 命中 key 现有的 lastUsedAt，用于决定是否值得再写一次。 */
+  lastUsedAt?: number | null
 }
+
+/**
+ * lastUsedAt 的最小回写间隔（秒）。
+ *
+ * 每次校验都写会在高频调用下把「记录一次最近使用时间」放大成每请求一次 UPDATE。
+ * 这个字段只用于人工审计「这个 key 还在用吗」，分钟级精度足够，故窗口内不重复写。
+ */
+const LAST_USED_WRITE_INTERVAL_SECONDS = 60
 
 type ProjectScopeContext = {
   projectId?: string
@@ -53,10 +63,15 @@ export class ApiKeyManagementService {
       return false
     }
 
-    await this.prisma.apiKey.update({
-      where: { id: result.keyId },
-      data: { lastUsedAt: nowSeconds() },
-    })
+    // 距上次记录不足一个窗口就跳过：把每请求一次写压成每分钟至多一次。
+    const now = nowSeconds()
+    const lastUsedAt = result.lastUsedAt ?? null
+    if (lastUsedAt === null || now - lastUsedAt >= LAST_USED_WRITE_INTERVAL_SECONDS) {
+      await this.prisma.apiKey.update({
+        where: { id: result.keyId },
+        data: { lastUsedAt: now },
+      })
+    }
 
     return true
   }
@@ -287,6 +302,7 @@ export class ApiKeyManagementService {
         scopes: true,
         allProjects: true,
         projectIds: true,
+        lastUsedAt: true,
       },
     })
 
@@ -304,6 +320,7 @@ export class ApiKeyManagementService {
       return {
         valid: true,
         keyId: found.id,
+        lastUsedAt: found.lastUsedAt,
       }
     }
 
@@ -340,6 +357,7 @@ export class ApiKeyManagementService {
         scopes: true,
         allProjects: true,
         projectIds: true,
+        lastUsedAt: true,
       },
     })
 
@@ -359,6 +377,7 @@ export class ApiKeyManagementService {
     return {
       valid: true,
       keyId: graceFound.id,
+      lastUsedAt: graceFound.lastUsedAt,
     }
   }
 

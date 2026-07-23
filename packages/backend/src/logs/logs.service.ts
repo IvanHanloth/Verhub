@@ -62,16 +62,21 @@ export class LogsService {
     warning_count: number
     error_count: number
   }> {
-    const [count, debugCount, infoCount, warningCount, errorCount] = await Promise.all([
-      this.prisma.log.count(),
-      this.prisma.log.count({ where: { level: LogLevel.DEBUG } }),
-      this.prisma.log.count({ where: { level: LogLevel.INFO } }),
-      this.prisma.log.count({ where: { level: LogLevel.WARN } }),
-      this.prisma.log.count({ where: { level: LogLevel.ERROR } }),
-    ])
+    // 一次 groupBy 拿全部等级计数，替代原先 5 次全表 count（1 总数 + 4 等级）。
+    // level 为必填枚举、无 null 行，各档之和即为总数。
+    const rows = await this.prisma.log.groupBy({
+      by: ["level"],
+      _count: { _all: true },
+    })
+
+    const counts = new Map(rows.map((row) => [row.level, row._count._all]))
+    const debugCount = counts.get(LogLevel.DEBUG) ?? 0
+    const infoCount = counts.get(LogLevel.INFO) ?? 0
+    const warningCount = counts.get(LogLevel.WARN) ?? 0
+    const errorCount = counts.get(LogLevel.ERROR) ?? 0
 
     return {
-      count,
+      count: debugCount + infoCount + warningCount + errorCount,
       debug_count: debugCount,
       info_count: infoCount,
       warning_count: warningCount,

@@ -302,6 +302,8 @@ model Version {
 
   @@unique([projectKey, version])
   @@index([projectKey, createdAt])
+  // 版本列表默认按 comparableVersion 降序分页；无此索引时排序退化为内存排序。
+  @@index([projectKey, comparableVersion])
 }
 
 model Announcement {

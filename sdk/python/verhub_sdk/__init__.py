@@ -14,8 +14,14 @@ from ._http import (
 )
 from ._unset import UNSET, UnsetType
 from .admin_api import AdminApi
+from .async_client import AsyncVerhubClient
 from .client import VerhubClient, VerhubSDK
-from .errors import VerhubApiError, VerhubConnectionError, VerhubError
+from .errors import (
+    VerhubApiError,
+    VerhubAuthError,
+    VerhubConnectionError,
+    VerhubError,
+)
 from .models import (
     LOG_LEVEL_DEBUG,
     LOG_LEVEL_ERROR,
@@ -29,11 +35,13 @@ __version__ = VERHUB_SDK_VERSION
 
 __all__ = [
     "VerhubClient",
+    "AsyncVerhubClient",
     "VerhubSDK",
     "PublicApi",
     "AdminApi",
     "VerhubError",
     "VerhubApiError",
+    "VerhubAuthError",
     "VerhubConnectionError",
     "UNSET",
     "UnsetType",

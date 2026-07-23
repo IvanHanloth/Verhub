@@ -17,6 +17,7 @@ import { RequireApiScope } from "../auth/guards/api-scope.decorator"
 import { PublicEndpoint } from "@prisma/client"
 
 import { ClientOriginService } from "../geo/client-origin.service"
+import { ClientIpThrottlerGuard } from "../common/client-ip-throttler.guard"
 import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 
 import { CreateFeedbackDto } from "./dto/create-feedback.dto"
@@ -74,6 +75,7 @@ export class FeedbacksController {
   }
 
   @Post("public/:projectKey/feedbacks")
+  @UseGuards(ClientIpThrottlerGuard)
   @TrackEndpoint(PublicEndpoint.FEEDBACK_SUBMIT)
   async createByProjectKey(
     @Param("projectKey") projectKey: string,

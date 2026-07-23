@@ -71,16 +71,25 @@ const client = new VerhubClient({
 - 默认按环境探测平台**与系统版本**（浏览器记作 `web`、版本留空；Node 里能取到
   Windows `11` / `ubuntu 24.04` 等），经两个 `x-verhub-platform*` 头声明，仅用于统计；
   可用 `setPlatform` / `setPlatformVersion` 事后更新
-- 错误分 `VerhubApiError`（非 2xx）与 `VerhubConnectionError`（没到服务端），
-  都继承自 `VerhubError`
-- 支持 `timeoutMs`、`headers`、`fetch` 三个可选项
+- 错误分三类：`VerhubAuthError`（缺凭据的本地前置校验，请求没发出去）、
+  `VerhubApiError`（非 2xx）、`VerhubConnectionError`（没到服务端），都继承自
+  `VerhubError`
+- 默认对连接失败与幂等请求（GET/HEAD）自动重试 2 次；POST 不重放。用 `retries`
+  调整，传 `0` 关闭
+- 支持 `timeoutMs`、`retries`、`headers`、`fetch`、`appIdentifier`、`logger` 等可选项。
+  `appIdentifier` 追加到默认 UA 之后（仅服务端运行时有效，浏览器禁改 UA）
 
 ```js
 try {
-  await client.public.getLatestVersion()
+  await client.admin.listProjects()
 } catch (error) {
-  if (error instanceof VerhubApiError) {
+  if (error instanceof VerhubAuthError) {
+    console.error("忘了设 token，请求没发出去") // 本地前置校验失败
+  } else if (error instanceof VerhubApiError) {
     console.error(error.status, error.message)
   }
 }
 ```
+
+> **升级提示（破坏性变更）**：早期版本在缺 token 时抛的是伪造的 `VerhubApiError`
+> （status 401），现在改抛 `VerhubAuthError`。

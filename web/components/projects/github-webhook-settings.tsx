@@ -8,6 +8,7 @@ import { Button } from "@workspace/ui/components/button"
 
 import { API_BASE_URL } from "@/lib/api-client"
 import { getErrorMessage } from "@/lib/error-utils"
+import { useConfirm } from "@/components/common/confirm-dialog"
 import {
   clearGithubWebhookSecret,
   getGithubWebhookSettings,
@@ -55,6 +56,7 @@ export function GithubWebhookSettings({
   token: string
   projectKey: string | null
 }) {
+  const confirm = useConfirm()
   const [settings, setSettings] = React.useState<WebhookSettings | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
@@ -255,13 +257,21 @@ export function GithubWebhookSettings({
               variant="destructive"
               disabled={busy || !settings.enabled}
               onClick={() => {
-                if (!window.confirm("清除后该项目将不再接收 GitHub Release 推送，确认继续？")) {
-                  return
-                }
-                void runMutation(
-                  () => clearGithubWebhookSecret(token, projectKey),
-                  "Secret 已清除，Webhook 已停用。",
-                )
+                void (async () => {
+                  const confirmed = await confirm({
+                    title: "清除 Webhook Secret",
+                    description: "清除后该项目将不再接收 GitHub Release 推送，确认继续？",
+                    confirmLabel: "清除",
+                    destructive: true,
+                  })
+                  if (!confirmed) {
+                    return
+                  }
+                  void runMutation(
+                    () => clearGithubWebhookSecret(token, projectKey),
+                    "Secret 已清除，Webhook 已停用。",
+                  )
+                })()
               }}
             >
               <Trash2 className="size-4" />

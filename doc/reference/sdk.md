@@ -38,8 +38,12 @@ Verhub 提供四个官方 SDK。它们共享同一套接口设计，只是命名
   `x-verhub-platform` / `x-verhub-platform-version` 两个请求头声明，仅用于服务端
   请求统计，**不影响任何接口的返回内容**。可在构造时覆盖，也可用
   `set_platform` / `set_platform_version` 事后更新。
-- **两类错误**：服务端返回非 2xx 抛 `VerhubApiError`（带 `status` / `message` /
-  `body`），请求没到服务端抛 `VerhubConnectionError`，都继承自 `VerhubError`。
+- **三类错误**：缺凭据等**本地前置校验失败**（请求没发出去）抛 `VerhubAuthError`
+  （Rust 为 `Error::MissingToken`），服务端返回非 2xx 抛 `VerhubApiError`（带
+  `status` / `message` / `body`），请求没到服务端抛 `VerhubConnectionError`，都继承自
+  `VerhubError`。
+- **默认重试**：连接失败与幂等请求（GET）默认自动重试 2 次并指数退避，POST（含
+  check-update）不重放；各语言均可用 `retries` 调整或关闭。
 
 ::: warning 不要把管理凭据放进浏览器
 `admin` 命名空间在纯 JS / TS 版里同样可用，但任何访客都能从前端代码里读到写死的
@@ -274,10 +278,12 @@ if result.should_update {
 ::: code-group
 
 ```python [Python]
-from verhub_sdk import VerhubApiError, VerhubConnectionError
+from verhub_sdk import VerhubApiError, VerhubAuthError, VerhubConnectionError
 
 try:
-    client.public.get_latest_version()
+    client.admin.list_projects()
+except VerhubAuthError as exc:
+    print(exc)                       # 缺凭据，本地拦下，请求没发出去
 except VerhubApiError as exc:
     print(exc.status, exc.message)   # 非 2xx
 except VerhubConnectionError as exc:
@@ -285,12 +291,13 @@ except VerhubConnectionError as exc:
 ```
 
 ```ts [TypeScript / JS]
-import { VerhubApiError, VerhubConnectionError } from "verhub-sdk"
+import { VerhubApiError, VerhubAuthError, VerhubConnectionError } from "verhub-sdk"
 
 try {
-  await client.public.getLatestVersion()
+  await client.admin.listProjects()
 } catch (error) {
-  if (error instanceof VerhubApiError) console.error(error.status, error.message)
+  if (error instanceof VerhubAuthError) console.error("缺凭据，请求没发出去")
+  else if (error instanceof VerhubApiError) console.error(error.status, error.message)
   else if (error instanceof VerhubConnectionError) console.error(error.cause)
 }
 ```
@@ -298,8 +305,9 @@ try {
 ```rust [Rust]
 use verhub_sdk::Error;
 
-match client.public().get_latest_version().await {
-    Ok(v) => println!("{}", v.version),
+match client.admin().list_projects().await {
+    Ok(page) => println!("{}", page.total),
+    Err(Error::MissingToken) => eprintln!("缺凭据，请求没发出去"),
     Err(Error::Api { status, message, .. }) => eprintln!("{status}: {message}"),
     Err(Error::Connection(err)) => eprintln!("{err}"),
     Err(err) => eprintln!("{err}"),
@@ -307,6 +315,26 @@ match client.public().get_latest_version().await {
 ```
 
 :::
+
+::: warning 缺凭据是本地前置校验，不是 401
+调用 `admin` 接口却没设 token 时，SDK 在**请求发出前**就抛
+`VerhubAuthError`（Rust 为 `Error::MissingToken`），而非伪造一个服务端 401。
+早期版本抛的是 status 为 401 的 `VerhubApiError`，属破坏性变更——原先靠
+`VerhubApiError` 捕获此情形的代码需补上 `VerhubAuthError`。
+:::
+
+## 重试、超时与异步
+
+- **重试**：连接失败与幂等 GET 默认自动重试 2 次并指数退避，POST 不重放。
+  各语言用 `retries`（Python/TS/JS 为构造参数，Rust 为 `.retries(n)`）调整，`0` 关闭。
+- **超时**：Python 的 `timeout` 支持 `(connect, read)` 元组、Rust 另有
+  `.connect_timeout(...)`，可让连接阶段快速失败、读取宽松些；TS/JS 基于 `fetch`
+  只有整体 `timeoutMs`。
+- **User-Agent**：`app_identifier`（TS/JS 为 `appIdentifier`，Rust 为
+  `.app_identifier(...)`）会追加到默认 UA 之后，保留 SDK 版本又便于统计；浏览器
+  禁止脚本改写 UA，此项仅在服务端运行时生效。
+- **异步**：Rust 与 TS/JS 原生异步；Python 额外提供 `AsyncVerhubClient`（`await`
+  接口面与同步版一致，内部以线程池承载，适合 GUI 等低并发场景）。
 
 ## 平台声明与请求统计
 

@@ -16,6 +16,7 @@ import { RequireApiScope } from "../auth/guards/api-scope.decorator"
 import { PublicEndpoint } from "@prisma/client"
 
 import { ClientOriginService } from "../geo/client-origin.service"
+import { ClientIpThrottlerGuard } from "../common/client-ip-throttler.guard"
 import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 import { CreateActionDto } from "./dto/create-action.dto"
 import { CreateActionRecordDto } from "./dto/create-action-record.dto"
@@ -96,6 +97,7 @@ export class ActionsController {
   }
 
   @Post("public/:projectKey/actions")
+  @UseGuards(ClientIpThrottlerGuard)
   @TrackEndpoint(PublicEndpoint.ACTION_RECORD)
   async createRecordByProjectKey(
     @Param("projectKey") projectKey: string,

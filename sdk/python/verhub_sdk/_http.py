@@ -1,15 +1,32 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
-from typing import Any, Dict, Mapping, Optional
+import warnings
+from typing import Any, Dict, Mapping, Optional, Tuple, Union
 from urllib.parse import quote, urlencode
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from ._unset import UNSET, UnsetType
 from ._version import VERHUB_SDK_VERSION
-from .errors import VerhubApiError, VerhubConnectionError, VerhubError
+from .errors import VerhubApiError, VerhubAuthError, VerhubConnectionError, VerhubError
+
+#: SDK 日志器。默认不输出，调用方按需 ``logging.getLogger("verhub_sdk").setLevel(DEBUG)``
+#: 即可看到每次请求的方法、URL 与状态码。
+logger = logging.getLogger("verhub_sdk")
+
+#: 单次请求超时：单值表示连接与读取共用，元组 ``(connect, read)`` 分别指定。
+Timeout = Union[float, Tuple[float, float]]
+
+#: 默认重试次数。只作用于连接建立失败与幂等方法（GET 等），POST 不自动重试。
+DEFAULT_RETRIES = 2
+
+#: 会触发重试的服务端状态码，均为可安全重试的临时性错误。
+RETRY_STATUS = (502, 503, 504)
 
 #: 客户端平台声明头。仅用于服务端请求统计，不影响接口返回内容。
 PLATFORM_HEADER = "x-verhub-platform"
@@ -99,6 +116,54 @@ def compact(source: Mapping[str, Any]) -> Dict[str, Any]:
     return {key: value for key, value in source.items() if not isinstance(value, UnsetType)}
 
 
+def _normalize_base_url(base_url: str) -> str:
+    """
+    去掉首尾空白与末尾斜杠；base_url 不像带 ``/api/v`` 前缀时给一句温和提醒。
+
+    传错前缀（比如只给裸域名）时所有请求会静默 404，很难排查，这里主动 warn
+    一声而不是抛错——非标准挂载路径的部署仍能正常用。
+
+    :param base_url: 原始根地址
+    :return: 规范化后的根地址
+    """
+    normalized = base_url.strip().rstrip("/")
+    if "/api/v" not in normalized:
+        warnings.warn(
+            f"base_url 通常应以 /api/v1 结尾，当前为 {normalized!r}；若非有意为之，"
+            f"请求可能全部 404",
+            stacklevel=3,
+        )
+    return normalized
+
+
+def _build_session(retries: int) -> requests.Session:
+    """
+    造一个带默认重试的 ``requests.Session``。
+
+    只重试连接建立失败与幂等方法（GET/HEAD 等）——``urllib3.Retry`` 的
+    ``allowed_methods`` 默认就不含 POST，所以 check-update 这类 POST 不会被
+    重放。``backoff_factor`` 给一点退避，避开瞬时抖动。
+
+    :param retries: 重试次数，``<=0`` 表示不重试
+    :return: 配置好的 Session
+    """
+    session = requests.Session()
+    if retries > 0:
+        retry = Retry(
+            total=retries,
+            connect=retries,
+            read=0,
+            status=retries,
+            status_forcelist=RETRY_STATUS,
+            backoff_factor=0.3,
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+    return session
+
+
 class HttpClient:
     """底层 HTTP 客户端，两个命名空间共用一份连接、凭据与来源声明。"""
 
@@ -110,9 +175,11 @@ class HttpClient:
         *,
         platform: Any = UNSET,
         platform_version: Any = UNSET,
-        timeout: float = 15.0,
+        timeout: Timeout = 15.0,
+        retries: int = DEFAULT_RETRIES,
         session: Optional[requests.Session] = None,
         user_agent: Optional[str] = None,
+        app_identifier: Optional[str] = None,
     ) -> None:
         """
         :param base_url: API 根地址，须包含 ``/api/v1`` 前缀
@@ -121,16 +188,30 @@ class HttpClient:
         :param platform: 平台声明；省略则自动探测，传 ``None`` 则不声明
         :param platform_version: 系统版本明细；省略时若平台也是自动探测则一并
             自动探测，传 ``None`` 则不声明
-        :param timeout: 单次请求超时（秒）
-        :param session: 自定义 ``requests.Session``，可用于配置代理、重试、证书
-        :param user_agent: 覆盖默认 User-Agent
+        :param timeout: 单次请求超时（秒）。单值表示连接与读取共用，传
+            ``(connect, read)`` 元组可分别指定——更新检查常希望连接快速失败、
+            读取宽松些
+        :param retries: 连接失败与幂等请求（GET 等）的自动重试次数，默认 2。
+            仅在使用内建 Session 时生效；POST 不自动重试。传 0 关闭
+        :param session: 自定义 ``requests.Session``，可用于配置代理、重试、证书。
+            传入后 ``retries`` 不再挂载，重试策略由该 Session 自负
+        :param user_agent: 覆盖默认 User-Agent，会连带丢掉 SDK 版本信息
+        :param app_identifier: 追加到默认 User-Agent 之后的应用标识（如
+            ``MyApp/1.2``），既保留 SDK 版本又能做服务端统计；与 ``user_agent``
+            同时给时以后者为准
         """
-        self.base_url = base_url.strip().rstrip("/")
+        self.base_url = _normalize_base_url(base_url)
         self.project_key = project_key
         self.token = token or ""
         self.timeout = timeout
-        self.session = session or requests.Session()
-        self.user_agent = user_agent or f"verhub-sdk-python/{VERHUB_SDK_VERSION}"
+        self.session = session or _build_session(retries)
+
+        if user_agent:
+            self.user_agent = user_agent
+        else:
+            self.user_agent = f"verhub-sdk-python/{VERHUB_SDK_VERSION}"
+            if app_identifier:
+                self.user_agent = f"{self.user_agent} {app_identifier.strip()}"
 
         auto_platform = isinstance(platform, UnsetType)
         self.platform = detect_platform() if auto_platform else platform
@@ -215,7 +296,8 @@ class HttpClient:
 
         if auth:
             if not self.token:
-                raise VerhubApiError("缺少凭据：请先设置 token", 401, None)
+                # 请求还没发出去就在本地拦下，用专门的异常，别伪造一个假的 401。
+                raise VerhubAuthError("缺少凭据：请先设置 token")
             headers["Authorization"] = f"Bearer {self.token}"
 
         payload = None
@@ -223,6 +305,7 @@ class HttpClient:
             headers["Content-Type"] = "application/json"
             payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
 
+        logger.debug("verhub 请求 %s %s", method, url)
         try:
             response = self.session.request(
                 method=method,
@@ -232,8 +315,10 @@ class HttpClient:
                 timeout=self.timeout,
             )
         except requests.RequestException as exc:
+            logger.debug("verhub 请求 %s %s 失败：%s", method, url, exc)
             raise VerhubConnectionError(f"请求 {method} {url} 失败：{exc}", exc) from exc
 
+        logger.debug("verhub 响应 %s %s -> %s", method, url, response.status_code)
         data = self._parse_json(response.text)
         if not response.ok:
             message = self._error_message(data) or f"请求失败，HTTP {response.status_code}"

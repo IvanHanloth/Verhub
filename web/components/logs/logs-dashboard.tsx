@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { AlertTriangle, ChevronRight, Clock3, Loader2, Plus } from "lucide-react"
+import { AlertTriangle, ChevronRight, Clock3, Plus } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
@@ -16,6 +16,7 @@ import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { ClientOriginBadges } from "@/components/common/client-origin-badges"
 import { JsonField } from "@/components/common/json-viewer"
+import { ListRowsSkeleton } from "@/components/common/skeleton"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import { useAdminProjects } from "@/hooks/use-admin-projects"
 import { createLog, listLogs, type LogItem, type LogLevel } from "@/lib/logs-api"
@@ -173,7 +174,9 @@ function LogEntry({ log }: { log: LogItem }) {
     log.custom_data !== null
 
   return (
-    <article className="px-4 py-3">
+    // 用 div 而非 article：全局 `.admin-unified article` 会套上 rounded-3xl+border
+    // 把每行变成独立卡片，而这里的本意是外层容器内的 divide-y 行列表。
+    <div className="px-4 py-3">
       <button
         type="button"
         onClick={() => setExpanded((current) => !current)}
@@ -222,7 +225,7 @@ function LogEntry({ log }: { log: LogItem }) {
           ) : null}
         </div>
       ) : null}
-    </article>
+    </div>
   )
 }
 
@@ -500,12 +503,7 @@ export function LogsDashboard() {
             <AdminListHeader title="日志列表" total={total} page={page} totalPages={totalPages} />
           </div>
 
-          {loading ? (
-            <div className="flex min-h-56 items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-300">
-              <Loader2 className="size-4 animate-spin" />
-              正在加载日志...
-            </div>
-          ) : null}
+          {loading ? <ListRowsSkeleton /> : null}
 
           {!loading && error ? (
             <div className="flex min-h-56 items-center justify-center px-4 text-center text-sm text-rose-600 dark:text-rose-300">

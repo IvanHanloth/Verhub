@@ -1,4 +1,4 @@
-import { VerhubApiError, VerhubConnectionError, VerhubError } from "./errors"
+import { VerhubApiError, VerhubAuthError, VerhubConnectionError, VerhubError } from "./errors"
 import type { Platform } from "./models"
 import { VERHUB_SDK_VERSION } from "./version"
 
@@ -10,6 +10,27 @@ export const PLATFORM_VERSION_HEADER = "x-verhub-platform-version"
 
 /** 系统版本明细的长度上限，与服务端一致，超出直接截断。 */
 const MAX_PLATFORM_VERSION_LENGTH = 32
+
+/** 默认重试次数。只作用于连接失败与幂等方法（GET/HEAD），POST 不自动重试。 */
+const DEFAULT_RETRIES = 2
+
+/** 会触发重试的服务端状态码，均为可安全重试的临时性错误。 */
+const RETRY_STATUS = new Set([502, 503, 504])
+
+/** 可安全重试的幂等方法。 */
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD"])
+
+/** 调试日志钩子收到的事件。 */
+export type VerhubLogEvent = {
+  /** HTTP 方法。 */
+  method: string
+  /** 完整请求 URL。 */
+  url: string
+  /** 已收到响应时的状态码；请求未到达服务端时为 undefined。 */
+  status?: number
+  /** 本次为第几次尝试，从 1 开始。 */
+  attempt: number
+}
 
 export type QueryValue = string | number | boolean | null | undefined
 export type RequestQuery = Record<string, QueryValue>
@@ -27,10 +48,19 @@ export type VerhubClientOptions = {
   platformVersion?: string | null
   /** 单次请求超时（毫秒），默认 15000；传 0 表示不超时。 */
   timeoutMs?: number
+  /** 连接失败与幂等请求（GET/HEAD）的自动重试次数，默认 2；POST 不重试，传 0 关闭。 */
+  retries?: number
   /** 自定义 fetch 实现，可用于注入代理、埋点或测试桩。 */
   fetch?: typeof globalThis.fetch
   /** 附加到每个请求上的头。 */
   headers?: Record<string, string>
+  /**
+   * 追加到默认 User-Agent 之后的应用标识（如 `MyApp/1.2`），保留 SDK 版本又便于
+   * 服务端统计。浏览器禁止脚本改写 User-Agent，此项仅在服务端运行时生效。
+   */
+  appIdentifier?: string
+  /** 调试日志钩子；默认不打日志，传入后每次请求/响应回调一次。 */
+  logger?: (event: VerhubLogEvent) => void
 }
 
 type NodeLikeProcess = {
@@ -197,6 +227,24 @@ export function compact<T extends Record<string, unknown>>(input: T): Partial<T>
   return out as Partial<T>
 }
 
+/**
+ * 去掉首尾空白与末尾斜杠；baseUrl 不像带 `/api/v` 前缀时给一句温和提醒。
+ *
+ * 传错前缀（比如只给裸域名）时所有请求会静默 404，很难排查，这里主动 warn
+ * 一声而不是抛错——非标准挂载路径的部署仍能正常用。
+ *
+ * @param baseUrl 原始根地址
+ */
+function normalizeBaseUrl(baseUrl: string): string {
+  const normalized = baseUrl.trim().replace(/\/+$/, "")
+  if (!normalized.includes("/api/v")) {
+    console.warn(
+      `verhub: baseUrl 通常应以 /api/v1 结尾，当前为 "${normalized}"；若非有意为之，请求可能全部 404`,
+    )
+  }
+  return normalized
+}
+
 export type RequestOptions = {
   pathParams?: Record<string, string>
   query?: RequestQuery
@@ -212,18 +260,29 @@ export class HttpClient {
   private platform: Platform | null
   private platformVersion: string | null
   private readonly timeoutMs: number
+  private readonly retries: number
+  private readonly userAgent: string | null
   private readonly fetcher: typeof globalThis.fetch
   private readonly extraHeaders: Record<string, string>
+  private readonly logger?: (event: VerhubLogEvent) => void
 
   /**
    * @param options 客户端配置
    */
   constructor(options: VerhubClientOptions) {
-    this.baseUrl = options.baseUrl.trim().replace(/\/+$/, "")
+    this.baseUrl = normalizeBaseUrl(options.baseUrl)
     this.projectKey = options.projectKey
     this.token = options.token ?? ""
     this.timeoutMs = options.timeoutMs ?? 15000
+    this.retries = options.retries ?? DEFAULT_RETRIES
     this.extraHeaders = options.headers ?? {}
+    this.logger = options.logger
+
+    // 浏览器改不了 User-Agent，appIdentifier 只对服务端运行时有意义。
+    const appId = options.appIdentifier?.trim()
+    this.userAgent = hostOsName()
+      ? `verhub-sdk-js/${VERHUB_SDK_VERSION}${appId ? ` ${appId}` : ""}`
+      : null
 
     const autoPlatform = options.platform === undefined
     // 内联三元让 TS 能收窄掉 undefined；用 autoPlatform 变量则窄不了。
@@ -305,7 +364,7 @@ export class HttpClient {
     const headers: Record<string, string> = {
       Accept: "application/json",
       // 浏览器禁止脚本改写 User-Agent，设了也会被静默丢弃，所以只在服务端运行时带上。
-      ...(hostOsName() ? { "User-Agent": `verhub-sdk-js/${VERHUB_SDK_VERSION}` } : {}),
+      ...(this.userAgent ? { "User-Agent": this.userAgent } : {}),
       ...this.extraHeaders,
     }
     if (this.platform) {
@@ -317,7 +376,8 @@ export class HttpClient {
 
     if (options.auth) {
       if (!this.token) {
-        throw new VerhubApiError("缺少凭据：请先设置 token", 401, null)
+        // 请求还没发出去就在本地拦下，用专门的异常，别伪造一个假的 401。
+        throw new VerhubAuthError("缺少凭据：请先设置 token")
       }
       headers.Authorization = `Bearer ${this.token}`
     }
@@ -328,20 +388,58 @@ export class HttpClient {
       payload = JSON.stringify(options.body)
     }
 
-    const controller = this.timeoutMs > 0 ? new AbortController() : undefined
-    const timer =
-      controller && this.timeoutMs > 0
-        ? setTimeout(() => controller.abort(), this.timeoutMs)
-        : undefined
+    // 只对幂等方法自动重试；POST（含 check-update）不重放。
+    const canRetry = IDEMPOTENT_METHODS.has(method) && this.retries > 0
+    const maxAttempts = canRetry ? this.retries + 1 : 1
 
-    let response: Response
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      this.logger?.({ method, url, attempt })
+
+      let response: Response
+      try {
+        response = await this.fetchOnce(method, url, headers, payload)
+      } catch (cause) {
+        // 连接阶段失败，请求没到服务端，幂等方法可安全重试；否则原样抛出。
+        if (canRetry && attempt < maxAttempts) {
+          await this.backoff(attempt)
+          continue
+        }
+        throw cause
+      }
+
+      this.logger?.({ method, url, status: response.status, attempt })
+
+      // 502/503/504 是临时性错误，幂等方法退避后重试。
+      if (RETRY_STATUS.has(response.status) && canRetry && attempt < maxAttempts) {
+        await this.backoff(attempt)
+        continue
+      }
+
+      const raw = await response.text()
+      const parsed = this.parseJson(raw)
+      if (!response.ok) {
+        const message = this.errorMessage(parsed) ?? `请求失败，HTTP ${response.status}`
+        throw new VerhubApiError(message, response.status, parsed)
+      }
+      return parsed as T
+    }
+
+    // 循环结构保证上面必然 return 或 throw，这行只为类型收敛。
+    throw new VerhubConnectionError(`请求 ${method} ${url} 失败：重试耗尽`, undefined)
+  }
+
+  /** 发一次请求，带独立的超时控制；失败按连接错误抛出。 */
+  private async fetchOnce(
+    method: string,
+    url: string,
+    headers: Record<string, string>,
+    payload: string | undefined,
+  ): Promise<Response> {
+    const controller = this.timeoutMs > 0 ? new AbortController() : undefined
+    const timer = controller ? setTimeout(() => controller.abort(), this.timeoutMs) : undefined
+
     try {
-      response = await this.fetcher(url, {
-        method,
-        headers,
-        body: payload,
-        signal: controller?.signal,
-      })
+      return await this.fetcher(url, { method, headers, body: payload, signal: controller?.signal })
     } catch (cause) {
       const reason = controller?.signal.aborted ? `超时（${this.timeoutMs}ms）` : String(cause)
       throw new VerhubConnectionError(`请求 ${method} ${url} 失败：${reason}`, cause)
@@ -350,16 +448,12 @@ export class HttpClient {
         clearTimeout(timer)
       }
     }
+  }
 
-    const raw = await response.text()
-    const parsed = this.parseJson(raw)
-
-    if (!response.ok) {
-      const message = this.errorMessage(parsed) ?? `请求失败，HTTP ${response.status}`
-      throw new VerhubApiError(message, response.status, parsed)
-    }
-
-    return parsed as T
+  /** 指数退避：第 n 次重试前等 300 * 2^(n-1) 毫秒。 */
+  private backoff(attempt: number): Promise<void> {
+    const ms = 300 * 2 ** (attempt - 1)
+    return new Promise((resolve) => setTimeout(resolve, ms))
   }
 
   /**

@@ -7,7 +7,7 @@
 
 export { AdminApi } from "./admin-api"
 export { VerhubClient, VerhubSDK } from "./client"
-export { VerhubApiError, VerhubConnectionError, VerhubError } from "./errors"
+export { VerhubApiError, VerhubAuthError, VerhubConnectionError, VerhubError } from "./errors"
 export {
   detectPlatform,
   detectPlatformVersion,

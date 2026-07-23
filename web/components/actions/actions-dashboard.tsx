@@ -16,6 +16,7 @@ import {
 } from "@workspace/ui/components/dialog"
 
 import { getErrorMessage } from "@/lib/error-utils"
+import { useConfirm } from "@/components/common/confirm-dialog"
 import { AdminCard, AdminItemCard } from "@/components/admin/admin-card"
 import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
@@ -43,6 +44,7 @@ type EditFormState = {
 }
 
 export function ActionsDashboard() {
+  const confirm = useConfirm()
   const { selectedProject, selectedProjectKey } = useAdminProjects()
   const [actions, setActions] = React.useState<ActionItem[]>([])
   const [records, setRecords] = React.useState<ActionRecordItem[]>([])
@@ -188,7 +190,12 @@ export function ActionsDashboard() {
   }
 
   async function handleDelete(actionId: string) {
-    const confirmed = window.confirm("确认删除此行为吗？")
+    const confirmed = await confirm({
+      title: "删除行为",
+      description: "确认删除此行为吗？相关记录将不再归入该行为。",
+      confirmLabel: "删除",
+      destructive: true,
+    })
     if (!confirmed) {
       return
     }

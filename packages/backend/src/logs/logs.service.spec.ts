@@ -9,6 +9,7 @@ function createPrismaMock() {
     },
     log: {
       count: jest.fn(),
+      groupBy: jest.fn(),
       findMany: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
@@ -188,12 +189,13 @@ describe("LogsService", () => {
 
   it("getStatistics returns all level counts", async () => {
     const prisma = createPrismaMock()
-    prisma.log.count
-      .mockResolvedValueOnce(100) // total
-      .mockResolvedValueOnce(10) // debug
-      .mockResolvedValueOnce(40) // info
-      .mockResolvedValueOnce(30) // warning
-      .mockResolvedValueOnce(20) // error
+    // 一次 groupBy 返回各等级计数；总数由各档求和得出。
+    prisma.log.groupBy.mockResolvedValue([
+      { level: "DEBUG", _count: { _all: 10 } },
+      { level: "INFO", _count: { _all: 40 } },
+      { level: "WARN", _count: { _all: 30 } },
+      { level: "ERROR", _count: { _all: 20 } },
+    ])
 
     const service = new LogsService(prisma as never)
     const stats = await service.getStatistics()

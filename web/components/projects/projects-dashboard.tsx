@@ -27,6 +27,8 @@ import {
 
 import { isAuthError } from "@/lib/api-client"
 import { getErrorMessage } from "@/lib/error-utils"
+import { useConfirm } from "@/components/common/confirm-dialog"
+import { TableSkeleton } from "@/components/common/skeleton"
 import { notifyAdminProjectsChanged, useAdminProjects } from "@/hooks/use-admin-projects"
 import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
@@ -341,6 +343,7 @@ function ProjectFormFields({
 }
 
 export function ProjectsDashboard() {
+  const confirm = useConfirm()
   const { selectedProjectKey, setSelectedProjectKey } = useAdminProjects()
   const [projects, setProjects] = React.useState<ProjectItem[]>([])
   const {
@@ -574,7 +577,12 @@ export function ProjectsDashboard() {
       return
     }
 
-    const confirmed = window.confirm("确认删除这个项目吗？该操作不可撤销。")
+    const confirmed = await confirm({
+      title: "删除项目",
+      description: "确认删除这个项目吗？该操作不可撤销。",
+      confirmLabel: "删除",
+      destructive: true,
+    })
     if (!confirmed) {
       return
     }
@@ -679,12 +687,7 @@ export function ProjectsDashboard() {
           </div>
         ) : null}
 
-        {hasToken && loading ? (
-          <div className="flex items-center gap-2 rounded-2xl border border-white/15 bg-white/5 p-6 text-sm text-slate-200">
-            <Loader2 className="size-4 animate-spin" />
-            正在加载项目列表...
-          </div>
-        ) : null}
+        {hasToken && loading ? <TableSkeleton /> : null}
 
         {hasToken && !loading && error ? (
           <div className="rounded-2xl border border-rose-300/30 bg-rose-300/10 p-6 text-sm text-rose-200">

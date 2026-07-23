@@ -4,7 +4,7 @@ from typing import Any, Optional
 
 import requests
 
-from ._http import VERHUB_SDK_VERSION, HttpClient
+from ._http import DEFAULT_RETRIES, VERHUB_SDK_VERSION, HttpClient, Timeout
 from ._unset import UNSET
 from .admin_api import AdminApi
 from .models import HealthResponse
@@ -33,9 +33,11 @@ class VerhubClient:
         *,
         platform: Any = UNSET,
         platform_version: Any = UNSET,
-        timeout: float = 15.0,
+        timeout: Timeout = 15.0,
+        retries: int = DEFAULT_RETRIES,
         session: Optional[requests.Session] = None,
         user_agent: Optional[str] = None,
+        app_identifier: Optional[str] = None,
     ) -> None:
         """
         :param base_url: API 根地址，须包含 ``/api/v1``，如
@@ -47,9 +49,15 @@ class VerhubClient:
             仅用于服务端请求统计，不影响接口返回内容
         :param platform_version: 系统版本明细，如 ``11`` / ``ubuntu 24.04``；省略时
             若平台也是自动探测，则一并从系统信息自动提取，传 ``None`` 则不声明
-        :param timeout: 单次请求超时（秒）
-        :param session: 自定义 ``requests.Session``，可用于配置代理、重试、证书
-        :param user_agent: 覆盖默认 User-Agent
+        :param timeout: 单次请求超时（秒）；传 ``(connect, read)`` 元组可分别指定
+            连接与读取超时
+        :param retries: 连接失败与幂等请求的自动重试次数，默认 2；POST 不自动重试，
+            传 0 关闭。仅在使用内建 Session 时生效
+        :param session: 自定义 ``requests.Session``，可用于配置代理、重试、证书；
+            传入后 ``retries`` 不再挂载
+        :param user_agent: 覆盖默认 User-Agent，会连带丢掉 SDK 版本信息
+        :param app_identifier: 追加到默认 User-Agent 之后的应用标识（如
+            ``MyApp/1.2``），保留 SDK 版本又便于服务端统计
         """
         self._http = HttpClient(
             base_url=base_url,
@@ -58,8 +66,10 @@ class VerhubClient:
             platform=platform,
             platform_version=platform_version,
             timeout=timeout,
+            retries=retries,
             session=session,
             user_agent=user_agent,
+            app_identifier=app_identifier,
         )
         self.public = PublicApi(self._http)
         self.admin = AdminApi(self._http)

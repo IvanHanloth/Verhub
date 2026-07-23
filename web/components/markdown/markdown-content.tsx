@@ -118,7 +118,12 @@ const COMPONENTS: Components = {
     ) : null,
 }
 
-export function MarkdownContent({ children, className }: MarkdownContentProps) {
+// memo：正文内容不变时不重解析。展示页的公告轮播每 5 秒触发一次整树重渲染，
+// 而版本/公告正文与轮播索引无关，浅比较即可挡掉全部无谓的 remark/rehype 解析。
+export const MarkdownContent = React.memo(function MarkdownContent({
+  children,
+  className,
+}: MarkdownContentProps) {
   return (
     <div className={className}>
       <ReactMarkdown
@@ -130,7 +135,7 @@ export function MarkdownContent({ children, className }: MarkdownContentProps) {
       </ReactMarkdown>
     </div>
   )
-}
+})
 
 type MarkdownContentProps = {
   children: string

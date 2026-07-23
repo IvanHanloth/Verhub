@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common"
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from "@nestjs/common"
 import { PublicEndpoint } from "@prisma/client"
 
+import { ClientIpThrottlerGuard } from "../common/client-ip-throttler.guard"
 import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 import { CheckVersionUpdateDto } from "./dto/check-version-update.dto"
 import { QueryVersionsDto } from "./dto/query-versions.dto"
@@ -45,6 +46,7 @@ export class VersionsPublicController {
   }
 
   @Post("check-update")
+  @UseGuards(ClientIpThrottlerGuard)
   @TrackEndpoint(PublicEndpoint.VERSION_CHECK_UPDATE)
   async checkUpdate(@Param("projectKey") projectKey: string, @Body() dto: CheckVersionUpdateDto) {
     return this.versionUpdateCheckService.checkUpdateByProjectKey(projectKey, dto)

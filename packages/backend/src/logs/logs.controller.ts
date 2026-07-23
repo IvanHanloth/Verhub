@@ -6,6 +6,7 @@ import { RequireApiScope } from "../auth/guards/api-scope.decorator"
 import { PublicEndpoint } from "@prisma/client"
 
 import { ClientOriginService } from "../geo/client-origin.service"
+import { ClientIpThrottlerGuard } from "../common/client-ip-throttler.guard"
 import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 
 import { CreateLogDto } from "./dto/create-log.dto"
@@ -35,6 +36,7 @@ export class LogsController {
   }
 
   @Post("public/:projectKey/logs")
+  @UseGuards(ClientIpThrottlerGuard)
   @TrackEndpoint(PublicEndpoint.LOG_UPLOAD)
   async createByProjectKey(
     @Param("projectKey") projectKey: string,

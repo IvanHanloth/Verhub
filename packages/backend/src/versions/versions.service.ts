@@ -49,10 +49,8 @@ export class VersionsService {
     const [totalVersions, totalProjects, forcedVersions, latestVersion, firstVersion] =
       await Promise.all([
         this.prisma.version.count(),
-        this.prisma.version.findMany({
-          select: { projectKey: true },
-          distinct: ["projectKey"],
-        }),
+        // 只要项目数：groupBy 在库层聚合，不把每个去重后的 key 拉进内存。
+        this.prisma.version.groupBy({ by: ["projectKey"] }),
         this.prisma.version.count({ where: { forced: true } }),
         this.prisma.version.findFirst({
           orderBy: { createdAt: "desc" },
@@ -204,37 +202,43 @@ export class VersionsService {
       const comparableVersion = this.resolveComparableVersion(dto.comparable_version, dto.version)
       const downloadData = resolveDownloadData(dto.download_url, dto.download_links)
 
-      const created = await this.prisma.version.create({
-        data: {
-          projectKey: normalizedKey,
-          version: dto.version,
-          comparableVersion,
-          title: dto.title,
-          content: dto.content,
-          downloadUrl: downloadData.downloadUrl,
-          downloadLinks: downloadData.downloadLinks,
-          forced: false,
-          isLatest,
-          isPreview,
-          isMilestone: dto.is_milestone ?? false,
-          isDeprecated: dto.is_deprecated ?? false,
-          platforms: toPlatforms(dto.platforms, dto.platform),
-          platform: toPlatform(dto.platform),
-          customData: dto.custom_data as Prisma.InputJsonValue | undefined,
-          publishedAt,
-        },
-      })
-
-      if (created.isLatest) {
-        await this.prisma.version.updateMany({
-          where: {
+      // 建行与「同项目其余 latest 降级」必须原子：否则两步之间存在多 latest 窗口，
+      // 且第二步失败会留下多个 isLatest=true 的不一致状态。
+      const created = await this.prisma.$transaction(async (tx) => {
+        const row = await tx.version.create({
+          data: {
             projectKey: normalizedKey,
-            id: { not: created.id },
-            isLatest: true,
+            version: dto.version,
+            comparableVersion,
+            title: dto.title,
+            content: dto.content,
+            downloadUrl: downloadData.downloadUrl,
+            downloadLinks: downloadData.downloadLinks,
+            forced: false,
+            isLatest,
+            isPreview,
+            isMilestone: dto.is_milestone ?? false,
+            isDeprecated: dto.is_deprecated ?? false,
+            platforms: toPlatforms(dto.platforms, dto.platform),
+            platform: toPlatform(dto.platform),
+            customData: dto.custom_data as Prisma.InputJsonValue | undefined,
+            publishedAt,
           },
-          data: { isLatest: false },
         })
-      }
+
+        if (row.isLatest) {
+          await tx.version.updateMany({
+            where: {
+              projectKey: normalizedKey,
+              id: { not: row.id },
+              isLatest: true,
+            },
+            data: { isLatest: false },
+          })
+        }
+
+        return row
+      })
 
       return toVersionItem(created)
     } catch (error: unknown) {
@@ -348,42 +352,48 @@ export class VersionsService {
           ? undefined
           : this.resolveComparableVersion(dto.comparable_version, dto.version ?? version.version)
 
-      const updated = await this.prisma.version.update({
-        where: { id },
-        data: {
-          version: dto.version,
-          comparableVersion: nextComparableVersion,
-          title: dto.title,
-          content: dto.content,
-          downloadUrl: nextDownloadData.downloadUrl,
-          downloadLinks: nextDownloadData.downloadLinks,
-          forced: false,
-          isLatest: nextIsLatest,
-          isPreview: nextIsPreview,
-          isMilestone: dto.is_milestone,
-          isDeprecated: dto.is_deprecated,
-          platforms:
-            dto.platforms !== undefined || dto.platform !== undefined
-              ? toPlatforms(dto.platforms, dto.platform)
-              : undefined,
-          platform: toPlatform(dto.platform),
-          customData: dto.custom_data as Prisma.InputJsonValue | undefined,
-          publishedAt: nextPublishedAt,
-        },
-      })
-
-      if (updated.isLatest) {
-        await this.prisma.version.updateMany({
-          where: {
-            projectKey: normalizedKey,
-            id: { not: updated.id },
-            isLatest: true,
+      // 与 create 同理：改行与 latest 归属维护必须在同一事务内完成，避免中间态
+      // 出现零个或多个 latest。
+      const updated = await this.prisma.$transaction(async (tx) => {
+        const row = await tx.version.update({
+          where: { id },
+          data: {
+            version: dto.version,
+            comparableVersion: nextComparableVersion,
+            title: dto.title,
+            content: dto.content,
+            downloadUrl: nextDownloadData.downloadUrl,
+            downloadLinks: nextDownloadData.downloadLinks,
+            forced: false,
+            isLatest: nextIsLatest,
+            isPreview: nextIsPreview,
+            isMilestone: dto.is_milestone,
+            isDeprecated: dto.is_deprecated,
+            platforms:
+              dto.platforms !== undefined || dto.platform !== undefined
+                ? toPlatforms(dto.platforms, dto.platform)
+                : undefined,
+            platform: toPlatform(dto.platform),
+            customData: dto.custom_data as Prisma.InputJsonValue | undefined,
+            publishedAt: nextPublishedAt,
           },
-          data: { isLatest: false },
         })
-      } else if (version.isLatest) {
-        await this.ensureLatestForProject(normalizedKey, updated.id)
-      }
+
+        if (row.isLatest) {
+          await tx.version.updateMany({
+            where: {
+              projectKey: normalizedKey,
+              id: { not: row.id },
+              isLatest: true,
+            },
+            data: { isLatest: false },
+          })
+        } else if (version.isLatest) {
+          await this.ensureLatestForProject(tx, normalizedKey, row.id)
+        }
+
+        return row
+      })
 
       return toVersionItem(updated)
     } catch (error: unknown) {
@@ -509,8 +519,14 @@ export class VersionsService {
     }
   }
 
-  private async ensureLatestForProject(projectKey: string, excludeId: string): Promise<void> {
-    const nextLatest = await this.prisma.version.findFirst({
+  // 接受事务客户端而非直接用 this.prisma：调用方在 update 的事务内选出新 latest，
+  // 必须与那次更新写在同一事务，否则原子性无从谈起。
+  private async ensureLatestForProject(
+    client: Prisma.TransactionClient,
+    projectKey: string,
+    excludeId: string,
+  ): Promise<void> {
+    const nextLatest = await client.version.findFirst({
       where: {
         projectKey,
         id: { not: excludeId },
@@ -524,7 +540,7 @@ export class VersionsService {
       return
     }
 
-    await this.prisma.version.update({
+    await client.version.update({
       where: { id: nextLatest.id },
       data: { isLatest: true },
     })

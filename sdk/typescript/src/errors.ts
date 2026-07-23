@@ -9,6 +9,20 @@ export class VerhubError extends Error {
 }
 
 /**
+ * 本地前置校验失败：调用 admin 接口但没有设置凭据，请求根本没发出去。
+ *
+ * 与 {@link VerhubApiError} 区分开——后者是「请求发出去了、服务端拒了」，这个
+ * 是「你忘了设 token」。故意不继承 `VerhubApiError`，避免调用方用
+ * `instanceof VerhubApiError` 把两种情况混为一谈。
+ */
+export class VerhubAuthError extends VerhubError {
+  constructor(message: string) {
+    super(message)
+    this.name = "VerhubAuthError"
+  }
+}
+
+/**
  * 服务端返回了非 2xx 响应。
  */
 export class VerhubApiError extends VerhubError {

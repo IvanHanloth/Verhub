@@ -7,6 +7,15 @@ class VerhubError(Exception):
     """所有 SDK 异常的基类，便于调用方一次性捕获。"""
 
 
+class VerhubAuthError(VerhubError):
+    """本地前置校验失败：调用 admin 接口但没有设置凭据，请求根本没发出去。
+
+    与 :class:`VerhubApiError` 区分开——后者是「请求发出去了、服务端拒了」，
+    这个是「你忘了设 token」。故意不继承 ``VerhubApiError``，避免调用方用
+    ``except VerhubApiError`` 把两种情况混为一谈。
+    """
+
+
 class VerhubApiError(VerhubError):
     """服务端返回了非 2xx 响应。"""
 

@@ -3,7 +3,7 @@ import { BadRequestException, ConflictException, NotFoundException } from "@nest
 import { VersionsService } from "./versions.service"
 
 function createPrismaMock() {
-  return {
+  const mock = {
     project: {
       findUnique: jest.fn(),
     },
@@ -12,6 +12,7 @@ function createPrismaMock() {
       findMany: jest.fn(),
       findFirst: jest.fn(),
       findUnique: jest.fn(),
+      groupBy: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
@@ -19,6 +20,14 @@ function createPrismaMock() {
     },
     $transaction: jest.fn(),
   }
+
+  // 交互式事务（回调形态）默认用 mock 自身当 tx 直接执行回调；数组形态（findAll）
+  // 仍由各用例用 mockResolvedValue 覆盖。
+  mock.$transaction.mockImplementation((arg: unknown) =>
+    typeof arg === "function" ? (arg as (tx: typeof mock) => unknown)(mock) : Promise.resolve(arg),
+  )
+
+  return mock
 }
 
 function buildVersionRecord(overrides: Record<string, unknown> = {}) {
@@ -260,7 +269,7 @@ describe("VersionsService", () => {
   it("getStatistics returns aggregated metrics", async () => {
     const prisma = createPrismaMock()
     prisma.version.count.mockResolvedValueOnce(10).mockResolvedValueOnce(2)
-    prisma.version.findMany.mockResolvedValue([
+    prisma.version.groupBy.mockResolvedValue([
       { projectKey: "a" },
       { projectKey: "b" },
       { projectKey: "c" },
@@ -282,7 +291,7 @@ describe("VersionsService", () => {
   it("getStatistics returns null times when no versions", async () => {
     const prisma = createPrismaMock()
     prisma.version.count.mockResolvedValue(0)
-    prisma.version.findMany.mockResolvedValue([])
+    prisma.version.groupBy.mockResolvedValue([])
     prisma.version.findFirst.mockResolvedValue(null)
 
     const service = new VersionsService(prisma as never)

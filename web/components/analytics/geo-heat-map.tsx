@@ -48,17 +48,14 @@ function readCssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
-// zrender（echarts 的 canvas 渲染层）自带的色值解析器只认 hex/rgb/hsl，遇到 oklch 会解析
-// 失败并回退成黑色——这正是热力地图整块发黑的根因。而 canvas / getComputedStyle 这类「让
-// 浏览器代解析」的路子在本项目实测都不可靠（部分环境不把带彩度的 oklch 落成 rgb）。索性
-// 在 JS 里按 Ottosson 公式把 oklch(L C H) 直接算成 sRGB——只读 --heat-* 令牌、不依赖任何
-// 浏览器能力，明暗主题各自的令牌值照常跟随。
 function toRgb(cssColor: string): string {
-  const match = /^oklch\(\s*([\d.]+)%?\s+([\d.]+)\s+([\d.]+)/i.exec(cssColor)
+  const match = /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)/i.exec(cssColor)
   if (!match) return cssColor
-  const L = parseFloat(match[1]!)
-  const C = parseFloat(match[2]!)
-  const hRad = (parseFloat(match[3]!) * Math.PI) / 180
+  // 源码里 L 写成 0–1 小数，但生产构建的 CSS 压缩器（Lightning CSS）会把它落成百分比形态
+  // （0.885 → 88.5%）。命中百分号就归一回 0–1，否则 L 会被当成 88.5 塞进公式、算出近黑。
+  const L = parseFloat(match[1]!) / (match[2] ? 100 : 1)
+  const C = parseFloat(match[3]!)
+  const hRad = (parseFloat(match[4]!) * Math.PI) / 180
   const a = C * Math.cos(hRad)
   const b = C * Math.sin(hRad)
   // oklab → 三个 LMS 锥响应（已取立方）。

@@ -172,6 +172,8 @@ export function AnalyticsDashboard() {
   const [endpointView, setEndpointView] = React.useState<ChartView>("bar")
   // 默认国内：主要流量在国内，省级粒度是常看的那张；全球图一键可切。
   const [mapScope, setMapScope] = React.useState<MapScope>("china")
+  // 「来源地区」列表的国内/全球切换，与下方地图各管各的：全球看国家分布，国内看省份分布。
+  const [regionScope, setRegionScope] = React.useState<MapScope>("world")
 
   const range = RANGE_OPTIONS[rangeIndex] ?? RANGE_OPTIONS[1]!
 
@@ -349,6 +351,18 @@ export function AnalyticsDashboard() {
       (overview?.by_region ?? []).map((item, index) => ({
         key: item.region,
         label: regionLabel(item.region),
+        count: item.count,
+        fill: seriesColor(index),
+      })),
+    [overview],
+  )
+
+  // 「来源地区」切到国内时列省份，省名后端已给中文，直接用。
+  const regionProvinceItems = React.useMemo<DistributionItem[]>(
+    () =>
+      (overview?.by_province ?? []).map((item, index) => ({
+        key: item.code,
+        label: item.name,
         count: item.count,
         fill: seriesColor(index),
       })),
@@ -611,15 +625,34 @@ export function AnalyticsDashboard() {
         <ChartCard
           className="md:col-span-6 xl:col-span-5"
           title="来源地区"
-          subtitle="按调用方 IP 解析的国家/地区"
+          subtitle={
+            regionScope === "world" ? "按调用方 IP 解析的国家/地区" : "按调用方 IP 解析的国内省份"
+          }
           icon={Globe2}
-          actions={<ChartViewToggle value={regionView} onChange={setRegionView} label="来源地区" />}
+          actions={
+            <>
+              <SegmentedToggle
+                value={regionScope}
+                onChange={setRegionScope}
+                label="来源地区"
+                options={MAP_SCOPES}
+              />
+              <ChartViewToggle value={regionView} onChange={setRegionView} label="来源地区" />
+            </>
+          }
         >
-          {regionItems.length === 0 ? (
-            <ChartPlaceholder loading={loading} />
+          {(regionScope === "world" ? regionItems : regionProvinceItems).length === 0 ? (
+            <ChartPlaceholder
+              loading={loading}
+              emptyText={
+                regionScope === "world"
+                  ? "所选范围内暂无可定位的来源。"
+                  : "所选范围内暂无国内来源。"
+              }
+            />
           ) : (
             <DistributionChart
-              items={regionItems}
+              items={regionScope === "world" ? regionItems : regionProvinceItems}
               view={regionView}
               measureLabel="请求数"
               barColor="var(--series-4)"

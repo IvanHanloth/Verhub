@@ -1,6 +1,6 @@
 {
   "name": "@workspace/backend",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Verhub backend service powered by NestJS and PostgreSQL",
   "license": "UNLICENSED",

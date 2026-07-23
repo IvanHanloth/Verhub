@@ -13,7 +13,7 @@
  * export 语句换成全局赋值——所以整份文件里只允许出现那一处 export。
  */
 
-const VERHUB_SDK_VERSION = "0.2.1"
+const VERHUB_SDK_VERSION = "0.2.2"
 
 /** 客户端平台声明头。仅用于服务端请求统计，不影响接口返回内容。 */
 const PLATFORM_HEADER = "x-verhub-platform"

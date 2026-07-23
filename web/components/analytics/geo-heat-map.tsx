@@ -48,30 +48,75 @@ function readCssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
-function toRgb(cssColor: string): string {
-  const match = /^oklch\(\s*([\d.]+)(%?)\s+([\d.]+)\s+([\d.]+)/i.exec(cssColor)
-  if (!match) return cssColor
-  // 源码里 L 写成 0–1 小数，但生产构建的 CSS 压缩器（Lightning CSS）会把它落成百分比形态
-  // （0.885 → 88.5%）。命中百分号就归一回 0–1，否则 L 会被当成 88.5 塞进公式、算出近黑。
-  const L = parseFloat(match[1]!) / (match[2] ? 100 : 1)
-  const C = parseFloat(match[3]!)
-  const hRad = (parseFloat(match[4]!) * Math.PI) / 180
-  const a = C * Math.cos(hRad)
-  const b = C * Math.sin(hRad)
-  // oklab → 三个 LMS 锥响应（已取立方）。
+// zrender（echarts 的 canvas 渲染层）只认 hex/rgb/hsl，遇到 oklch / lab 会解析失败并回退成
+// 黑色——热力地图整块发黑的根因。这里在 JS 里把它们直接算成 sRGB，不依赖浏览器代解析。
+// 两种形态都要认：--heat-* 源码写成 oklch，dev（turbopack 不降级）读到的就是 oklch；生产构建
+// 里 Lightning CSS 按 browserslist 把 oklch 降级成 lab()，getComputedStyle 读到的是 lab()。
+// 少认一种，对应环境就整块发黑。
+
+/** linear sRGB 三通道 → gamma 编码并夹到 0–255 的 rgb() 字符串。 */
+function encodeSrgb(linear: number[]): string {
+  const ch = linear.map((x) => {
+    const c = x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055
+    return Math.max(0, Math.min(255, Math.round(c * 255)))
+  })
+  return `rgb(${ch[0]}, ${ch[1]}, ${ch[2]})`
+}
+
+/** oklab(L∈0–1, a, b) → linear sRGB 三通道（Ottosson 公式，中间量为已取立方的 LMS 锥响应）。 */
+function oklabToLinear(L: number, a: number, b: number): number[] {
   const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3
   const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3
   const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3
-  const linear = [
+  return [
     4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
     -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
     -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
   ]
-  const channels = linear.map((x) => {
-    const c = x <= 0.0031308 ? 12.92 * x : 1.055 * x ** (1 / 2.4) - 0.055
-    return Math.max(0, Math.min(255, Math.round(c * 255)))
-  })
-  return `rgb(${channels[0]}, ${channels[1]}, ${channels[2]})`
+}
+
+/** CIE Lab(D50, L∈0–100, a, b) → linear sRGB 三通道，矩阵已含 D50→D65 Bradford 适配。 */
+function labToLinear(L: number, a: number, b: number): number[] {
+  const fy = (L + 16) / 116
+  const fx = fy + a / 500
+  const fz = fy - b / 200
+  const eps = 216 / 24389
+  const kappa = 24389 / 27
+  const xr = fx ** 3 > eps ? fx ** 3 : (116 * fx - 16) / kappa
+  const yr = L > kappa * eps ? fy ** 3 : L / kappa
+  const zr = fz ** 3 > eps ? fz ** 3 : (116 * fz - 16) / kappa
+  // D50 白点缩放到 XYZ。
+  const X = xr * 0.9642956764
+  const Y = yr
+  const Z = zr * 0.8251046025
+  return [
+    3.1341359569958707 * X - 1.6173863321612538 * Y - 0.4906619460083532 * Z,
+    -0.978795502912089 * X + 1.916254789530814 * Y + 0.03344273116131949 * Z,
+    0.07195537988411677 * X - 0.2289768548158685 * Y + 1.405386790200787 * Z,
+  ]
+}
+
+function toRgb(cssColor: string): string {
+  const value = cssColor.trim()
+
+  // oklch(L C H)：源码/dev 形态。L 源码写成 0–1 小数，个别降级会落成百分比（88.5%），
+  // 命中百分号就归一回 0–1，否则 L 会被当成 88.5 塞进公式、算出近黑。
+  const okl = /^oklch\(\s*([-+]?[\d.]+)(%?)\s+([-+]?[\d.]+)\s+([-+]?[\d.]+)/i.exec(value)
+  if (okl) {
+    const L = parseFloat(okl[1]!) / (okl[2] ? 100 : 1)
+    const C = parseFloat(okl[3]!)
+    const hRad = (parseFloat(okl[4]!) * Math.PI) / 180
+    return encodeSrgb(oklabToLinear(L, C * Math.cos(hRad), C * Math.sin(hRad)))
+  }
+
+  // lab(L a b)：生产构建里 Lightning CSS 把 oklch 降级成的形态。L 带不带 % 值域都是 0–100。
+  const lab = /^lab\(\s*([-+]?[\d.]+)%?\s+([-+]?[\d.]+)\s+([-+]?[\d.]+)/i.exec(value)
+  if (lab) {
+    return encodeSrgb(labToLinear(parseFloat(lab[1]!), parseFloat(lab[2]!), parseFloat(lab[3]!)))
+  }
+
+  // hex / rgb / hsl 等 zrender 本就认识的形态原样返回。
+  return value
 }
 
 /** 从 --heat-* 变量取一条渐变色阶并归一成 rgb，deps 传 resolvedTheme 以在切主题时重取。 */

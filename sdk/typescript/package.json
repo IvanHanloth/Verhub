@@ -1,6 +1,6 @@
 {
   "name": "verhub-sdk",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Verhub 版本与发布管理平台的官方 TypeScript / JavaScript SDK",
   "license": "Apache-2.0",
   "author": "IvanHanloth <ivan@hanloth.com>",

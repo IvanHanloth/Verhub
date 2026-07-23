@@ -1,6 +1,6 @@
 [package]
 name = "verhub-sdk"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2021"
 rust-version = "1.75"
 description = "Verhub 版本与发布管理平台的官方 Rust SDK"

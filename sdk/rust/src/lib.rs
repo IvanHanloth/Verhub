@@ -55,7 +55,7 @@ use crate::http::Inner;
 use crate::models::HealthResponse;
 
 /// SDK 版本号，跟随主仓库版本。
-pub const VERHUB_SDK_VERSION: &str = "0.2.3";
+pub const VERHUB_SDK_VERSION: &str = "0.2.4";
 
 /// Verhub SDK 入口。
 ///

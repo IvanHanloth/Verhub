@@ -56,7 +56,8 @@ impl AdminApi<'_> {
             .await
     }
 
-    /// 更新绑定的项目。提交 `project_key` 会改键，改完记得 `set_project_key`。
+    /// 更新绑定的项目。提交 `project_key` 会改键；改键后旧 key 会自动登记为别名并
+    /// 继续指向本项目（旧 key 仍可访问），但仍应 `set_project_key` 切到新 key。
     pub async fn update_project(&self, input: &UpdateProjectInput) -> Result<ProjectItem> {
         let key = self.inner.require_project_key()?;
         self.inner
@@ -77,6 +78,34 @@ impl AdminApi<'_> {
             .request::<_, ()>(
                 Method::DELETE,
                 &format!("/admin/projects/{}", segment(&key)),
+                &[],
+                None,
+                true,
+            )
+            .await
+    }
+
+    /// 列出绑定项目的别名（改名保留的旧 Project Key）。
+    pub async fn list_project_aliases(&self) -> Result<ProjectAliasListResponse> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request::<_, ()>(
+                Method::GET,
+                &format!("/admin/projects/{}/aliases", segment(&key)),
+                &[],
+                None,
+                true,
+            )
+            .await
+    }
+
+    /// 删除一个别名。删除后旧 key 不再指向本项目，此后以它访问会 404。
+    pub async fn delete_project_alias(&self, alias: &str) -> Result<DeleteSuccessResponse> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request::<_, ()>(
+                Method::DELETE,
+                &format!("/admin/projects/{}/aliases/{}", segment(&key), segment(alias)),
                 &[],
                 None,
                 true,

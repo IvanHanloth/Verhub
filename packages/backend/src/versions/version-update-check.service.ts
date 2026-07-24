@@ -12,6 +12,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common"
 
 import { PrismaService } from "../database/prisma.service"
+import { ProjectResolverService } from "../database/project-resolver.service"
 import { CheckVersionUpdateDto } from "./dto/check-version-update.dto"
 import {
   compareComparableVersions,
@@ -20,11 +21,13 @@ import {
 } from "./version-comparator"
 import { toVersionItem } from "./version-mapping"
 import type { CheckVersionUpdateResponse, VersionRecord } from "./types"
-import { normalizeProjectKey } from "./types"
 
 @Injectable()
 export class VersionUpdateCheckService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly projectResolver: ProjectResolverService,
+  ) {}
 
   /** Evaluate whether a client should update, and to which version. */
   async checkUpdateByProjectKey(
@@ -37,8 +40,8 @@ export class VersionUpdateCheckService {
       )
     }
 
-    const normalizedKey = normalizeProjectKey(projectKey)
-    const project = await this.prisma.project.findUnique({
+    const normalizedKey = await this.projectResolver.resolveCanonicalKeyOrThrow(projectKey)
+    const project = await this.prisma.project.findUniqueOrThrow({
       where: { projectKey: normalizedKey },
       select: {
         projectKey: true,
@@ -46,9 +49,6 @@ export class VersionUpdateCheckService {
         optionalUpdateMaxComparableVersion: true,
       },
     })
-    if (!project) {
-      throw new NotFoundException("Project not found")
-    }
 
     // Resolve latest candidates (always needed for the response)
     const { latestCandidate, latestPreview } = await this.resolveLatestCandidates(

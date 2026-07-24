@@ -32,6 +32,9 @@ vi.mock("@/lib/projects-api", () => ({
   regenerateGithubWebhookSecret: vi.fn(),
   setGithubWebhookSecret: vi.fn(),
   clearGithubWebhookSecret: vi.fn(),
+  // 编辑弹窗还嵌了别名面板，打开弹窗会拉一次别名列表。
+  listProjectAliases: vi.fn().mockResolvedValue({ data: [] }),
+  deleteProjectAlias: vi.fn(),
 }))
 
 vi.mock("sonner", () => ({

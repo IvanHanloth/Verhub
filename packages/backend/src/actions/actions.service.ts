@@ -2,8 +2,9 @@ import { Injectable, NotFoundException } from "@nestjs/common"
 import { Platform, Prisma } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
+import { ProjectResolverService } from "../database/project-resolver.service"
 import { buildDedupHash, resolveDedupWindowSeconds, stableStringify } from "../common/dedup"
-import { normalizeProjectKey, nowSeconds } from "../common/utils"
+import { nowSeconds } from "../common/utils"
 import { fromPlatform, type PlatformValue } from "../common/platform"
 import type { ClientOrigin } from "../geo/client-origin.service"
 import { CreateActionDto } from "./dto/create-action.dto"
@@ -64,11 +65,13 @@ type ActionRecordListResponse = {
 
 @Injectable()
 export class ActionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly projectResolver: ProjectResolverService,
+  ) {}
 
   async findAllByProject(projectKey: string, query: QueryActionsDto): Promise<ActionListResponse> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
-    await this.ensureProjectExistsByKey(normalizedProjectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
     const [total, data] = await this.prisma.$transaction([
       this.prisma.action.count({ where: { projectKey: normalizedProjectKey } }),
@@ -88,18 +91,11 @@ export class ActionsService {
   }
 
   async create(dto: CreateActionDto): Promise<ActionItem> {
-    const normalizedProjectKey = normalizeProjectKey(dto.project_key)
-    const project = await this.prisma.project.findUnique({
-      where: { projectKey: normalizedProjectKey },
-      select: { projectKey: true },
-    })
-    if (!project) {
-      throw new NotFoundException("Project not found")
-    }
+    const normalizedProjectKey = await this.resolveProjectKey(dto.project_key)
 
     const created = await this.prisma.action.create({
       data: {
-        projectKey: project.projectKey,
+        projectKey: normalizedProjectKey,
         name: dto.name,
         description: dto.description,
         customData: dto.custom_data as Prisma.InputJsonValue | undefined,
@@ -188,7 +184,7 @@ export class ActionsService {
     http: Record<string, unknown>,
     origin: ClientOrigin,
   ): Promise<ActionRecordItem> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
     const action = await this.prisma.action.findUnique({
       where: { id: dto.action_id },
       include: { project: { select: { projectKey: true } } },
@@ -255,14 +251,9 @@ export class ActionsService {
     }
   }
 
-  private async ensureProjectExistsByKey(projectKey: string): Promise<void> {
-    const project = await this.prisma.project.findUnique({
-      where: { projectKey },
-      select: { projectKey: true },
-    })
-    if (!project) {
-      throw new NotFoundException("Project not found")
-    }
+  // 把外部 key 解析成当前项目的规范 key（含改名后的别名）；未命中抛 404。
+  private resolveProjectKey(projectKey: string): Promise<string> {
+    return this.projectResolver.resolveCanonicalKeyOrThrow(projectKey)
   }
 
   private toActionItem(action: {

@@ -109,6 +109,13 @@ Webhook 鉴权（Project）：
 - 用于公共项目展示页与客户端启动信息补全；GitHub 仓库预览可自动回填上述信息（`docsUrl` 除外，仓库接口无对应字段，需手动填写）。
 - 展示页的项目描述、版本更新内容与公告正文按 Markdown（GFM）渲染，渲染前经白名单清洗；管理端对应表单提供编写/预览切换。
 
+项目改名与别名（Project / ProjectAlias）：
+
+- `projectKey` 既是主键也是对外访问标识。改名即变更 `projectKey`：子表与统计表的外键 `ON UPDATE CASCADE` 使内容整体迁到新键。
+- 改名在一个事务里把**旧键登记为别名**（`ProjectAlias`，别名做主键、外键指向当前项目且 `ON UPDATE CASCADE`，故二次改名时别名链自动扁平地跟到最新键）。别名与项目键共享同一命名空间：新键不得撞上任何已有项目或别名。
+- 所有按项目键定位的入口（公开详情/版本/公告、四个写接口、check-update、API Key 项目授权、统计拦截器、GitHub webhook 投递）统一经 `ProjectResolverService` 把外部键解析成当前规范键——旧键因此**透明**命中当前项目，客户端与 SDK 无需感知改名。
+- 别名由改名自动产生，管理端可查看并删除；删除后旧键失效并重新变为可用键。`GET/DELETE /admin/projects/{projectKey}/aliases[/{alias}]`。
+
 调用方来源采集（Geo）：
 
 - IP 按「越难伪造越先信」取：CDN 自写的客户端地址头（`CF-Connecting-IP` / `True-Client-IP` / `EO-Client-IP` / `Ali-CDN-Real-IP` / `Fastly-Client-IP`，边缘节点会无条件覆盖，客户端伪造不进来）→ `X-Forwarded-For` → `X-Real-IP` → 连接地址。`VERHUB_CLIENT_IP_HEADER` 可覆盖整份清单（自家 CDN 用别的头名时）。

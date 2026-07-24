@@ -1,14 +1,17 @@
 import { NotFoundException } from "@nestjs/common"
 
+import { makeResolver } from "../../test/project-resolver.testkit"
 import { GithubWebhookSecretService } from "./github-webhook-secret.service"
 
 function createPrismaMock() {
-  return {
-    project: {
-      findUnique: jest.fn(),
-      update: jest.fn(),
-    },
+  const project = {
+    findUnique: jest.fn(),
+    findUniqueOrThrow: jest.fn(),
+    update: jest.fn(),
   }
+  // findUniqueOrThrow 复用 findUnique 的 mock 返回，测试只需 mock 一处。
+  project.findUniqueOrThrow.mockImplementation((args: unknown) => project.findUnique(args))
+  return { project }
 }
 
 function createService(existing?: { secret: string | null; updatedAt: number | null }) {
@@ -26,7 +29,7 @@ function createService(existing?: { secret: string | null; updatedAt: number | n
     }),
   )
 
-  return { service: new GithubWebhookSecretService(prisma as never), prisma }
+  return { service: new GithubWebhookSecretService(prisma as never, makeResolver(prisma)), prisma }
 }
 
 describe("GithubWebhookSecretService", () => {

@@ -30,8 +30,21 @@ function createInterceptor(endpoint: PublicEndpoint | undefined) {
     recordClientVersionSafely: jest.fn(),
     recordPlatformVersionSafely: jest.fn(),
   }
-  const interceptor = new RequestStatsInterceptor(reflector, statsService as never)
+  // 别名解析对统计是透传：直接返回归一化后的输入 key。
+  const projectResolver = {
+    resolveCanonicalKey: jest.fn((key: string) => Promise.resolve(key.trim().toLowerCase())),
+  }
+  const interceptor = new RequestStatsInterceptor(
+    reflector,
+    statsService as never,
+    projectResolver as never,
+  )
   return { interceptor, statsService }
+}
+
+/** 落库是 tap 里 fire-and-forget 的异步：断言前把已排队的微任务放行。 */
+function flushMicrotasks(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve))
 }
 
 describe("RequestStatsInterceptor", () => {
@@ -43,6 +56,7 @@ describe("RequestStatsInterceptor", () => {
     })
 
     await lastValueFrom(interceptor.intercept(context, createHandler()))
+    await flushMicrotasks()
 
     expect(statsService.recordRequestSafely).toHaveBeenCalledWith({
       projectKey: "verhub",
@@ -60,6 +74,7 @@ describe("RequestStatsInterceptor", () => {
     })
 
     await lastValueFrom(interceptor.intercept(context, createHandler()))
+    await flushMicrotasks()
 
     expect(statsService.recordRequestSafely).toHaveBeenCalledWith(
       expect.objectContaining({ ip: "203.0.113.9" }),
@@ -77,6 +92,7 @@ describe("RequestStatsInterceptor", () => {
     })
 
     await lastValueFrom(interceptor.intercept(context, createHandler()))
+    await flushMicrotasks()
 
     expect(statsService.recordRequestSafely).toHaveBeenCalledWith(
       expect.objectContaining({ platform: Platform.IOS }),
@@ -92,6 +108,7 @@ describe("RequestStatsInterceptor", () => {
     })
 
     await lastValueFrom(interceptor.intercept(context, createHandler()))
+    await flushMicrotasks()
 
     expect(statsService.recordRequestSafely).toHaveBeenCalledWith(
       expect.objectContaining({ platform: Platform.ANDROID }),
@@ -108,6 +125,7 @@ describe("RequestStatsInterceptor", () => {
     })
 
     await lastValueFrom(interceptor.intercept(context, createHandler()))
+    await flushMicrotasks()
 
     expect(statsService.recordPlatformVersionSafely).toHaveBeenCalledWith({
       projectKey: "verhub",
@@ -125,6 +143,7 @@ describe("RequestStatsInterceptor", () => {
     })
 
     await lastValueFrom(interceptor.intercept(context, createHandler()))
+    await flushMicrotasks()
 
     expect(statsService.recordRequestSafely).toHaveBeenCalledWith(
       expect.objectContaining({ platform: Platform.LINUX }),
@@ -140,6 +159,7 @@ describe("RequestStatsInterceptor", () => {
     const context = createContext({ params: { projectKey: "verhub" }, headers: {} })
 
     await lastValueFrom(interceptor.intercept(context, createHandler()))
+    await flushMicrotasks()
 
     expect(statsService.recordPlatformVersionSafely).toHaveBeenCalledWith(
       expect.objectContaining({ platform: Platform.OTHERS, platformVersion: "" }),
@@ -151,6 +171,7 @@ describe("RequestStatsInterceptor", () => {
     const context = createContext({ params: { projectKey: "verhub" }, headers: {} })
 
     await lastValueFrom(interceptor.intercept(context, createHandler()))
+    await flushMicrotasks()
 
     expect(statsService.recordRequestSafely).not.toHaveBeenCalled()
   })
@@ -160,6 +181,7 @@ describe("RequestStatsInterceptor", () => {
     const context = createContext({ params: {}, headers: {} })
 
     await lastValueFrom(interceptor.intercept(context, createHandler()))
+    await flushMicrotasks()
 
     expect(statsService.recordRequestSafely).not.toHaveBeenCalled()
   })
@@ -184,6 +206,7 @@ describe("RequestStatsInterceptor", () => {
     })
 
     await lastValueFrom(interceptor.intercept(context, createHandler()))
+    await flushMicrotasks()
 
     expect(statsService.recordClientVersionSafely).toHaveBeenCalledWith({
       projectKey: "verhub",
@@ -201,6 +224,7 @@ describe("RequestStatsInterceptor", () => {
     })
 
     await lastValueFrom(interceptor.intercept(context, createHandler()))
+    await flushMicrotasks()
 
     expect(statsService.recordClientVersionSafely).toHaveBeenCalledWith(
       expect.objectContaining({ version: "2.3.0-rc.1" }),
@@ -216,6 +240,7 @@ describe("RequestStatsInterceptor", () => {
     })
 
     await lastValueFrom(interceptor.intercept(context, createHandler()))
+    await flushMicrotasks()
 
     expect(statsService.recordRequestSafely).toHaveBeenCalled()
     expect(statsService.recordClientVersionSafely).not.toHaveBeenCalled()
@@ -230,6 +255,7 @@ describe("RequestStatsInterceptor", () => {
     })
 
     await lastValueFrom(interceptor.intercept(context, createHandler()))
+    await flushMicrotasks()
 
     expect(statsService.recordClientVersionSafely).not.toHaveBeenCalled()
   })

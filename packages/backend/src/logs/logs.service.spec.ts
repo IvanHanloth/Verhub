@@ -1,4 +1,5 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common"
+import { makeResolver } from "../../test/project-resolver.testkit"
 
 import { LogsService } from "./logs.service"
 
@@ -43,7 +44,7 @@ describe("LogsService", () => {
       createdAt: new Date("2026-01-01T00:00:00.000Z"),
     })
 
-    const service = new LogsService(prisma as never)
+    const service = new LogsService(prisma as never, makeResolver(prisma))
     const result = await service.createByProjectKey(
       "verhub",
       {
@@ -68,7 +69,7 @@ describe("LogsService", () => {
       createdAt: 1767225600,
     }))
 
-    const service = new LogsService(prisma as never)
+    const service = new LogsService(prisma as never, makeResolver(prisma))
     const result = await service.createByProjectKey(
       "verhub",
       { level: 1, content: "hello" },
@@ -108,7 +109,7 @@ describe("LogsService", () => {
       createdAt: 1767225600,
     }))
 
-    const service = new LogsService(prisma as never)
+    const service = new LogsService(prisma as never, makeResolver(prisma))
     const result = await service.createByAdmin("verhub", {
       level: 2,
       content: "手动补录",
@@ -142,7 +143,7 @@ describe("LogsService", () => {
       createdAt: 1767225600,
     })
 
-    const service = new LogsService(prisma as never)
+    const service = new LogsService(prisma as never, makeResolver(prisma))
     const result = await service.createByProjectKey(
       "verhub",
       { level: 3, content: "fatal issue" },
@@ -157,7 +158,7 @@ describe("LogsService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue({ id: "project-1" })
 
-    const service = new LogsService(prisma as never)
+    const service = new LogsService(prisma as never, makeResolver(prisma))
 
     await expect(
       service.findAll("project-1", {
@@ -173,7 +174,7 @@ describe("LogsService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)
 
-    const service = new LogsService(prisma as never)
+    const service = new LogsService(prisma as never, makeResolver(prisma))
 
     await expect(
       service.createByProjectKey(
@@ -197,7 +198,7 @@ describe("LogsService", () => {
       { level: "ERROR", _count: { _all: 20 } },
     ])
 
-    const service = new LogsService(prisma as never)
+    const service = new LogsService(prisma as never, makeResolver(prisma))
     const stats = await service.getStatistics()
 
     expect(stats).toEqual({
@@ -226,7 +227,7 @@ describe("LogsService", () => {
       ],
     ])
 
-    const service = new LogsService(prisma as never)
+    const service = new LogsService(prisma as never, makeResolver(prisma))
     const result = await service.findAll("proj", { limit: 10, offset: 0 })
 
     expect(result.total).toBe(1)
@@ -237,7 +238,7 @@ describe("LogsService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)
 
-    const service = new LogsService(prisma as never)
+    const service = new LogsService(prisma as never, makeResolver(prisma))
     await expect(service.findAll("missing", { limit: 10, offset: 0 })).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -248,7 +249,7 @@ describe("LogsService", () => {
     prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
     prisma.$transaction.mockResolvedValue([0, []])
 
-    const service = new LogsService(prisma as never)
+    const service = new LogsService(prisma as never, makeResolver(prisma))
     await service.findAll("proj", { limit: 10, offset: 0, level: 3 })
 
     expect(prisma.log.count).toHaveBeenCalledWith(
@@ -262,7 +263,7 @@ describe("LogsService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
 
-    const service = new LogsService(prisma as never)
+    const service = new LogsService(prisma as never, makeResolver(prisma))
     await expect(
       service.createByProjectKey("proj", { level: 99, content: "bad" }, emptyOrigin),
     ).rejects.toBeInstanceOf(BadRequestException)
@@ -270,7 +271,7 @@ describe("LogsService", () => {
 
   it("getStatus returns module info", () => {
     const prisma = createPrismaMock()
-    const service = new LogsService(prisma as never)
+    const service = new LogsService(prisma as never, makeResolver(prisma))
     expect(service.getStatus()).toEqual({ module: "logs", implemented: true })
   })
 })

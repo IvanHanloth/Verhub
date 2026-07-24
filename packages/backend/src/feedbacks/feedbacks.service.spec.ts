@@ -1,4 +1,5 @@
 import { NotFoundException } from "@nestjs/common"
+import { makeResolver } from "../../test/project-resolver.testkit"
 
 import { FeedbacksService } from "./feedbacks.service"
 
@@ -46,7 +47,7 @@ describe("FeedbacksService", () => {
       createdAt: 1767225600,
     })
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     const result = await service.createByProjectKey(
       "verhub",
       {
@@ -80,7 +81,7 @@ describe("FeedbacksService", () => {
       createdAt: 1767225600,
     }))
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     const result = await service.createByAdmin("verhub", {
       content: "线下收集的意见",
       rating: 4,
@@ -97,7 +98,7 @@ describe("FeedbacksService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
 
     await expect(
       service.createByProjectKey(
@@ -119,7 +120,7 @@ describe("FeedbacksService", () => {
       createdAt: 1767225600,
     }))
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     const result = await service.createByProjectKey(
       "verhub",
       { content: "nice" },
@@ -135,7 +136,7 @@ describe("FeedbacksService", () => {
     prisma.feedback.count.mockResolvedValue(10)
     prisma.feedback.findMany.mockResolvedValue([{ rating: 4 }, { rating: 5 }, { rating: 3 }])
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     const stats = await service.getStatistics()
 
     expect(stats.count).toBe(10)
@@ -148,7 +149,7 @@ describe("FeedbacksService", () => {
     prisma.feedback.count.mockResolvedValue(5)
     prisma.feedback.findMany.mockResolvedValue([])
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     const stats = await service.getStatistics()
 
     expect(stats.rate_avg).toBeNull()
@@ -173,7 +174,7 @@ describe("FeedbacksService", () => {
       ],
     ])
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     const result = await service.findAll("proj", { limit: 10, offset: 0 })
 
     expect(result.total).toBe(1)
@@ -184,7 +185,7 @@ describe("FeedbacksService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     await expect(service.findAll("missing", { limit: 10, offset: 0 })).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -203,7 +204,7 @@ describe("FeedbacksService", () => {
       createdAt: 2000,
     })
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     const result = await service.findOne("proj", "f1")
 
     expect(result.id).toBe("f1")
@@ -214,7 +215,7 @@ describe("FeedbacksService", () => {
     const prisma = createPrismaMock()
     prisma.feedback.findFirst.mockResolvedValue(null)
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     await expect(service.findOne("proj", "missing")).rejects.toBeInstanceOf(NotFoundException)
   })
 
@@ -231,7 +232,7 @@ describe("FeedbacksService", () => {
       createdAt: 2000,
     })
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     const result = await service.update("proj", "f1", {
       content: "updated",
       rating: 4,
@@ -246,7 +247,7 @@ describe("FeedbacksService", () => {
     const prisma = createPrismaMock()
     prisma.feedback.findFirst.mockResolvedValue(null)
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     await expect(service.update("proj", "missing", { content: "x" })).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -257,7 +258,7 @@ describe("FeedbacksService", () => {
     prisma.feedback.findFirst.mockResolvedValue({ id: "f1" })
     prisma.feedback.delete.mockResolvedValue({})
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     await service.remove("proj", "f1")
 
     expect(prisma.feedback.delete).toHaveBeenCalledWith({ where: { id: "f1" } })
@@ -267,7 +268,7 @@ describe("FeedbacksService", () => {
     const prisma = createPrismaMock()
     prisma.feedback.findFirst.mockResolvedValue(null)
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     await expect(service.remove("proj", "missing")).rejects.toBeInstanceOf(NotFoundException)
   })
 
@@ -286,7 +287,7 @@ describe("FeedbacksService", () => {
       createdAt: 3000,
     })
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     const result = await service.updateById("f1", { content: "changed" })
 
     expect(result.content).toBe("changed")
@@ -296,7 +297,7 @@ describe("FeedbacksService", () => {
     const prisma = createPrismaMock()
     prisma.feedback.findUnique.mockResolvedValue(null)
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     await expect(service.updateById("missing", { content: "x" })).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -308,7 +309,7 @@ describe("FeedbacksService", () => {
     prisma.feedback.findFirst.mockResolvedValue({ id: "f1" })
     prisma.feedback.delete.mockResolvedValue({})
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     await service.removeById("f1")
 
     expect(prisma.feedback.delete).toHaveBeenCalledWith({ where: { id: "f1" } })
@@ -318,13 +319,13 @@ describe("FeedbacksService", () => {
     const prisma = createPrismaMock()
     prisma.feedback.findUnique.mockResolvedValue(null)
 
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     await expect(service.removeById("missing")).rejects.toBeInstanceOf(NotFoundException)
   })
 
   it("getStatus returns module info", () => {
     const prisma = createPrismaMock()
-    const service = new FeedbacksService(prisma as never)
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
     expect(service.getStatus()).toEqual({ module: "feedbacks", implemented: true })
   })
 })

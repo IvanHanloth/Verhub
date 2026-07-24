@@ -52,6 +52,8 @@ class ProjectItem(TypedDict):
     optional_update_min_comparable_version: Optional[str]
     optional_update_max_comparable_version: Optional[str]
     stats_retention_days: int
+    # 改名后保留的旧 Project Key（别名），均可访问到本项目。新到旧排序。
+    aliases: List[str]
     created_at: int
     updated_at: int
 
@@ -151,6 +153,15 @@ class ActionRecordItem(TypedDict):
 class ProjectListResponse(TypedDict):
     total: int
     data: List[ProjectItem]
+
+
+class ProjectAliasItem(TypedDict):
+    alias: str
+    created_at: int
+
+
+class ProjectAliasListResponse(TypedDict):
+    data: List[ProjectAliasItem]
 
 
 class VersionListResponse(TypedDict):

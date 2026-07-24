@@ -38,6 +38,21 @@ export class ProjectsController {
     return this.projectsService.findOne(projectKey)
   }
 
+  @Get(":projectKey/aliases")
+  @RequireApiScope("projects:read")
+  async listAliases(@Param("projectKey") projectKey: string) {
+    return this.projectsService.listAliases(projectKey)
+  }
+
+  @Delete(":projectKey/aliases/:alias")
+  @RequireApiScope("projects:write")
+  async removeAlias(@Param("projectKey") projectKey: string, @Param("alias") alias: string) {
+    await this.projectsService.removeAlias(projectKey, alias)
+    return {
+      success: true,
+    }
+  }
+
   @Post()
   @RequireApiScope("projects:write")
   async create(@Body() dto: CreateProjectDto) {

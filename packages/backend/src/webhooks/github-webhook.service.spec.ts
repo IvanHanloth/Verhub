@@ -1,13 +1,17 @@
 import { ForbiddenException, NotFoundException, UnauthorizedException } from "@nestjs/common"
 
+import { makeResolver } from "../../test/project-resolver.testkit"
 import { computeGithubSignature } from "./github-signature"
 import { GithubWebhookService } from "./github-webhook.service"
 
 const SECRET = "whsec_test_secret_value"
 
 function createPrismaMock() {
+  const project = { findUnique: jest.fn(), findUniqueOrThrow: jest.fn() }
+  // findUniqueOrThrow 复用 findUnique 的 mock 返回，测试只需 mock 一处。
+  project.findUniqueOrThrow.mockImplementation((args: unknown) => project.findUnique(args))
   return {
-    project: { findUnique: jest.fn() },
+    project,
     version: { findFirst: jest.fn() },
   }
 }
@@ -31,7 +35,11 @@ function createService(overrides?: { secret?: string | null }) {
   })
   prisma.version.findFirst.mockResolvedValue(null)
 
-  const service = new GithubWebhookService(prisma as never, versionsService as never)
+  const service = new GithubWebhookService(
+    prisma as never,
+    versionsService as never,
+    makeResolver(prisma),
+  )
 
   return { service, prisma, versionsService }
 }

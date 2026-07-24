@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common"
+import { makeResolver } from "../../test/project-resolver.testkit"
 
 import { VersionsService } from "./versions.service"
 
@@ -59,7 +60,7 @@ describe("VersionsService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
 
     await expect(
       service.findAll("missing-project", { limit: 10, offset: 0 }),
@@ -90,7 +91,7 @@ describe("VersionsService", () => {
 
     prisma.version.updateMany.mockResolvedValue({ count: 1 })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.create("project-1", {
       version: "1.0.0",
       comparable_version: "1.0.0",
@@ -137,7 +138,7 @@ describe("VersionsService", () => {
     const prisma = createPrismaMock()
     prisma.version.findFirst.mockResolvedValue(null)
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
 
     await expect(service.findOne("project-1", "missing-version")).rejects.toBeInstanceOf(
       NotFoundException,
@@ -149,7 +150,7 @@ describe("VersionsService", () => {
     prisma.project.findUnique.mockResolvedValue({ projectKey: "project-1" })
     prisma.version.create.mockRejectedValue({ code: "P2002" })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
 
     await expect(
       service.create("project-1", {
@@ -188,7 +189,7 @@ describe("VersionsService", () => {
 
     prisma.version.updateMany.mockResolvedValue({ count: 0 })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.create("project-1", {
       version: "1.0.1",
       comparable_version: "1.0.1",
@@ -245,7 +246,7 @@ describe("VersionsService", () => {
       createdAt: 1767225600,
     })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await service.create("project-1", {
       version: "2.0.0-beta.1",
       comparable_version: "2.0.0-beta.1",
@@ -278,7 +279,7 @@ describe("VersionsService", () => {
       .mockResolvedValueOnce({ createdAt: 9999 })
       .mockResolvedValueOnce({ createdAt: 1000 })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const stats = await service.getStatistics()
 
     expect(stats.total_versions).toBe(10)
@@ -294,7 +295,7 @@ describe("VersionsService", () => {
     prisma.version.groupBy.mockResolvedValue([])
     prisma.version.findFirst.mockResolvedValue(null)
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const stats = await service.getStatistics()
 
     expect(stats.latest_version_time).toBeNull()
@@ -330,7 +331,7 @@ describe("VersionsService", () => {
       ],
     ])
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.findAll("proj", { limit: 10, offset: 0 })
 
     expect(result.total).toBe(1)
@@ -360,7 +361,7 @@ describe("VersionsService", () => {
       createdAt: 1000,
     })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.findOneById("v1")
 
     expect(result.id).toBe("v1")
@@ -370,7 +371,7 @@ describe("VersionsService", () => {
     const prisma = createPrismaMock()
     prisma.version.findUnique.mockResolvedValue(null)
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await expect(service.findOneById("missing")).rejects.toBeInstanceOf(NotFoundException)
   })
 
@@ -398,7 +399,7 @@ describe("VersionsService", () => {
       createdAt: 2000,
     })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.findLatestByProjectKey("proj")
 
     expect(result.version).toBe("2.0.0")
@@ -429,7 +430,7 @@ describe("VersionsService", () => {
         createdAt: 1500,
       })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.findLatestByProjectKey("proj")
 
     expect(result.version).toBe("1.5.0")
@@ -461,7 +462,7 @@ describe("VersionsService", () => {
         createdAt: 3000,
       })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.findLatestByProjectKey("proj")
 
     expect(result.version).toBe("3.0.0-beta")
@@ -471,7 +472,7 @@ describe("VersionsService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await expect(service.findLatestByProjectKey("missing")).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -482,7 +483,7 @@ describe("VersionsService", () => {
     prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
     prisma.version.findFirst.mockResolvedValue(null)
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await expect(service.findLatestByProjectKey("proj")).rejects.toBeInstanceOf(NotFoundException)
   })
 
@@ -510,7 +511,7 @@ describe("VersionsService", () => {
       createdAt: 2000,
     })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.findLatestPreviewByProjectKey("proj")
 
     expect(result?.version).toBe("2.0.0-beta")
@@ -521,7 +522,7 @@ describe("VersionsService", () => {
     prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
     prisma.version.findFirst.mockResolvedValue(null)
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.findLatestPreviewByProjectKey("proj")
 
     expect(result).toBeNull()
@@ -551,7 +552,7 @@ describe("VersionsService", () => {
       createdAt: 1000,
     })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.findByVersionNumber("proj", "1.2.3")
 
     expect(result.version).toBe("1.2.3")
@@ -579,7 +580,7 @@ describe("VersionsService", () => {
       createdAt: 1000,
     })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.findByVersionNumber("proj", "1.2.3")
 
     expect(result.version).toBe("v1.2.3")
@@ -591,7 +592,7 @@ describe("VersionsService", () => {
     prisma.version.findFirst.mockResolvedValue(null)
     prisma.version.findMany.mockResolvedValue([])
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await expect(service.findByVersionNumber("proj", "9.9.9")).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -630,7 +631,7 @@ describe("VersionsService", () => {
     prisma.version.updateMany.mockResolvedValue({ count: 0 })
     prisma.version.count.mockResolvedValue(5)
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.update("proj", "v1", {
       title: "Updated",
       download_url: "https://new.com",
@@ -643,7 +644,7 @@ describe("VersionsService", () => {
     const prisma = createPrismaMock()
     prisma.version.findFirst.mockResolvedValue(null)
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await expect(service.update("proj", "missing", { title: "x" })).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -663,7 +664,7 @@ describe("VersionsService", () => {
     prisma.version.count.mockResolvedValue(5)
     prisma.version.update.mockRejectedValue({ code: "P2002" })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await expect(service.update("proj", "v1", { version: "2.0.0" })).rejects.toBeInstanceOf(
       ConflictException,
     )
@@ -702,7 +703,7 @@ describe("VersionsService", () => {
       createdAt: 1000,
     })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.updateById("v1", { title: "Changed" })
 
     expect(result.title).toBe("Changed")
@@ -712,7 +713,7 @@ describe("VersionsService", () => {
     const prisma = createPrismaMock()
     prisma.version.findUnique.mockResolvedValue(null)
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await expect(service.updateById("missing", { title: "x" })).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -725,7 +726,7 @@ describe("VersionsService", () => {
     prisma.version.findFirst.mockResolvedValue({ id: "v1" })
     prisma.version.delete.mockResolvedValue({})
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await service.remove("proj", "v1")
 
     expect(prisma.version.delete).toHaveBeenCalledWith({ where: { id: "v1" } })
@@ -735,7 +736,7 @@ describe("VersionsService", () => {
     const prisma = createPrismaMock()
     prisma.version.findFirst.mockResolvedValue(null)
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await expect(service.remove("proj", "missing")).rejects.toBeInstanceOf(NotFoundException)
   })
 
@@ -745,7 +746,7 @@ describe("VersionsService", () => {
     prisma.version.findFirst.mockResolvedValue({ id: "v1" })
     prisma.version.delete.mockResolvedValue({})
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await service.removeById("v1")
 
     expect(prisma.version.delete).toHaveBeenCalled()
@@ -755,7 +756,7 @@ describe("VersionsService", () => {
     const prisma = createPrismaMock()
     prisma.version.findUnique.mockResolvedValue(null)
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await expect(service.removeById("missing")).rejects.toBeInstanceOf(NotFoundException)
   })
 
@@ -763,7 +764,7 @@ describe("VersionsService", () => {
 
   it("getStatus returns module info", () => {
     const prisma = createPrismaMock()
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     expect(service.getStatus()).toEqual({ module: "versions", implemented: true })
   })
 
@@ -773,7 +774,7 @@ describe("VersionsService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await expect(
       service.create("proj", {
         version: "1.0.0",
@@ -789,7 +790,7 @@ describe("VersionsService", () => {
     prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
     prisma.version.findMany.mockResolvedValue([])
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await expect(
       service.create("proj", {
         version: "1.0.0",
@@ -804,7 +805,7 @@ describe("VersionsService", () => {
     prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
     prisma.version.findMany.mockResolvedValue([])
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await expect(
       service.create("proj", {
         version: "1.0.0",
@@ -833,7 +834,7 @@ describe("VersionsService", () => {
       },
     ])
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await expect(service.update("proj", "v1", { is_deprecated: true })).rejects.toBeInstanceOf(
       BadRequestException,
     )
@@ -878,7 +879,7 @@ describe("VersionsService", () => {
       })
       .mockResolvedValueOnce({}) // promote next
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await service.update("proj", "v1", { is_latest: false })
 
     // Should have promoted another version to latest
@@ -900,7 +901,7 @@ describe("VersionsService", () => {
     })
     prisma.version.update.mockResolvedValue(buildVersionRecord({ downloadUrl: null }))
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await service.update("proj", "v1", { download_url: null })
 
     expect(prisma.version.update).toHaveBeenCalledWith(
@@ -925,7 +926,7 @@ describe("VersionsService", () => {
     })
     prisma.version.update.mockResolvedValue(buildVersionRecord())
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await service.update("proj", "v1", { title: "Renamed" })
 
     expect(prisma.version.update).toHaveBeenCalledWith(
@@ -944,7 +945,7 @@ describe("VersionsService.upsertByVersion", () => {
     prisma.version.create.mockResolvedValue(buildVersionRecord({ version: "1.2.3" }))
     prisma.version.updateMany.mockResolvedValue({ count: 0 })
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.upsertByVersion("proj", "1.2.3", { title: "Release" })
 
     expect(result.created).toBe(true)
@@ -973,7 +974,7 @@ describe("VersionsService.upsertByVersion", () => {
     })
     prisma.version.update.mockResolvedValue(buildVersionRecord({ version: "1.2.3" }))
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.upsertByVersion("proj", "1.2.3", { title: "Re-published" })
 
     expect(result.created).toBe(false)
@@ -988,7 +989,7 @@ describe("VersionsService.upsertByVersion", () => {
 
   it("rejects a body version that disagrees with the path", async () => {
     const prisma = createPrismaMock()
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
 
     await expect(
       service.upsertByVersion("proj", "1.2.3", { version: "9.9.9" }),
@@ -1000,7 +1001,7 @@ describe("VersionsService.upsertByVersion", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     await expect(service.upsertByVersion("missing", "1.2.3", {})).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -1027,7 +1028,7 @@ describe("VersionsService.upsertByVersion", () => {
     })
     prisma.version.update.mockResolvedValue(buildVersionRecord({ version: "1.2.3" }))
 
-    const service = new VersionsService(prisma as never)
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
     const result = await service.upsertByVersion("proj", "1.2.3", { title: "Racy" })
 
     expect(result.created).toBe(false)

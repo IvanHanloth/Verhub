@@ -21,7 +21,8 @@ import {
 } from "@nestjs/common"
 
 import { PrismaService } from "../database/prisma.service"
-import { normalizeProjectKey, nowSeconds } from "../common/utils"
+import { ProjectResolverService } from "../database/project-resolver.service"
+import { nowSeconds } from "../common/utils"
 import { compareComparableVersions, parseComparableVersion } from "../versions/version-comparator"
 import { normalizeVersionTag, toGithubReleaseDownloadLinks } from "../versions/version-mapping"
 import { VersionsService } from "../versions/versions.service"
@@ -51,6 +52,7 @@ export class GithubWebhookService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly versionsService: VersionsService,
+    private readonly projectResolver: ProjectResolverService,
   ) {}
 
   async handleDelivery(input: {
@@ -61,15 +63,16 @@ export class GithubWebhookService {
     rawBody: Buffer | undefined
     body: unknown
   }): Promise<GithubWebhookResult> {
-    const normalizedKey = normalizeProjectKey(input.projectKey)
-    const project = await this.prisma.project.findUnique({
-      where: { projectKey: normalizedKey },
-      select: { projectKey: true, githubWebhookSecret: true },
-    })
-
-    if (!project) {
+    // 经别名解析成规范 key：项目改名后，GitHub 里配置的旧 webhook URL 仍要能投递。
+    const normalizedKey = await this.projectResolver.resolveCanonicalKey(input.projectKey)
+    if (!normalizedKey) {
       throw new NotFoundException("Project not found")
     }
+    const project = await this.prisma.project.findUniqueOrThrow({
+      where: { projectKey: normalizedKey },
+      select: { githubWebhookSecret: true },
+    })
+
     if (!project.githubWebhookSecret) {
       throw new ForbiddenException("GitHub webhook secret is not configured for this project")
     }

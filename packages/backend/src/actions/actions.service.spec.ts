@@ -1,4 +1,5 @@
 import { NotFoundException } from "@nestjs/common"
+import { makeResolver } from "../../test/project-resolver.testkit"
 
 import { ActionsService } from "./actions.service"
 
@@ -74,7 +75,7 @@ describe("ActionsService", () => {
       project: { projectKey: "my-app" },
     })
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
     const result = await service.create({
       project_key: "My-App",
       name: "page_view",
@@ -99,7 +100,7 @@ describe("ActionsService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
 
     await expect(
       service.create({ project_key: "missing", name: "test", description: "" }),
@@ -121,7 +122,7 @@ describe("ActionsService", () => {
       project: { projectKey: "my-app" },
     })
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
     const result = await service.update("action-1", {
       name: "page_view_v2",
       description: "Updated description",
@@ -145,7 +146,7 @@ describe("ActionsService", () => {
     prisma.action.findUnique.mockResolvedValue({ id: "action-1" })
     prisma.action.delete.mockResolvedValue({ id: "action-1" })
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
     await service.remove("action-1")
 
     expect(prisma.action.delete).toHaveBeenCalledWith({ where: { id: "action-1" } })
@@ -155,7 +156,7 @@ describe("ActionsService", () => {
     const prisma = createPrismaMock()
     prisma.action.findUnique.mockResolvedValue(null)
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
 
     await expect(service.remove("missing")).rejects.toBeInstanceOf(NotFoundException)
   })
@@ -182,7 +183,7 @@ describe("ActionsService", () => {
       createdAt: 2000,
     })
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
     const result = await service.createRecordByProjectKey(
       "My-App",
       { action_id: "action-1" },
@@ -214,7 +215,7 @@ describe("ActionsService", () => {
       project: { projectKey: "other-project" },
     })
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
 
     await expect(
       service.createRecordByProjectKey("my-app", { action_id: "action-1" }, {}, emptyOrigin),
@@ -225,7 +226,7 @@ describe("ActionsService", () => {
     const prisma = createPrismaMock()
     prisma.action.count.mockResolvedValue(42)
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
     const result = await service.getActionStatistics()
 
     expect(result).toEqual({ count: 42 })
@@ -233,7 +234,7 @@ describe("ActionsService", () => {
 
   it("returns module status", () => {
     const prisma = createPrismaMock()
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
 
     expect(service.getStatus()).toEqual({ module: "actions", implemented: true })
   })
@@ -255,7 +256,7 @@ describe("ActionsService", () => {
       ],
     ])
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
     const result = await service.findAllByProject("my-app", { limit: 10, offset: 0 })
 
     expect(result.total).toBe(1)
@@ -266,7 +267,7 @@ describe("ActionsService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
     await expect(
       service.findAllByProject("missing", { limit: 10, offset: 0 }),
     ).rejects.toBeInstanceOf(NotFoundException)
@@ -288,7 +289,7 @@ describe("ActionsService", () => {
       ],
     ])
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
     const result = await service.findRecordsByAction("action-1", { limit: 10, offset: 0 })
 
     expect(result.total).toBe(1)
@@ -299,7 +300,7 @@ describe("ActionsService", () => {
     const prisma = createPrismaMock()
     prisma.action.findUnique.mockResolvedValue(null)
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
     await expect(
       service.findRecordsByAction("missing", { limit: 10, offset: 0 }),
     ).rejects.toBeInstanceOf(NotFoundException)
@@ -315,7 +316,7 @@ describe("ActionsService", () => {
       createdAt: 3000,
     })
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
     const result = await service.findRecord("record-1")
 
     expect(result.action_record_id).toBe("record-1")
@@ -326,7 +327,7 @@ describe("ActionsService", () => {
     const prisma = createPrismaMock()
     prisma.actionRecord.findUnique.mockResolvedValue(null)
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
     await expect(service.findRecord("missing")).rejects.toBeInstanceOf(NotFoundException)
   })
 
@@ -334,7 +335,7 @@ describe("ActionsService", () => {
     const prisma = createPrismaMock()
     prisma.action.findUnique.mockResolvedValue(null)
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
     await expect(service.update("missing", { name: "x", description: "y" })).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -344,7 +345,7 @@ describe("ActionsService", () => {
     const prisma = createPrismaMock()
     prisma.actionRecord.count.mockResolvedValue(100)
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
     const result = await service.getActionRecordStatistics()
 
     expect(result).toEqual({ count: 100 })
@@ -354,7 +355,7 @@ describe("ActionsService", () => {
     const prisma = createPrismaMock()
     prisma.action.findUnique.mockResolvedValue(null)
 
-    const service = new ActionsService(prisma as never)
+    const service = new ActionsService(prisma as never, makeResolver(prisma))
     await expect(
       service.createRecordByProjectKey("my-app", { action_id: "missing" }, {}, emptyOrigin),
     ).rejects.toBeInstanceOf(NotFoundException)

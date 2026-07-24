@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common"
+import { BadRequestException, Injectable } from "@nestjs/common"
 
 import { Prisma, Platform, LogLevel } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
+import { ProjectResolverService } from "../database/project-resolver.service"
 import { buildDedupHash, resolveDedupWindowSeconds, stableStringify } from "../common/dedup"
-import { normalizeProjectKey, nowSeconds } from "../common/utils"
+import { nowSeconds } from "../common/utils"
 import { fromPlatform, toPlatform, type PlatformValue } from "../common/platform"
 import type { ClientOrigin } from "../geo/client-origin.service"
 import { CreateLogDto } from "./dto/create-log.dto"
@@ -53,7 +54,10 @@ type LogListResponse = {
 
 @Injectable()
 export class LogsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly projectResolver: ProjectResolverService,
+  ) {}
 
   async getStatistics(): Promise<{
     count: number
@@ -85,8 +89,7 @@ export class LogsService {
   }
 
   async findAll(projectKey: string, query: QueryLogsDto): Promise<LogListResponse> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
-    await this.ensureProjectExistsByKey(normalizedProjectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
     if (
       query.start_time !== undefined &&
@@ -126,18 +129,11 @@ export class LogsService {
     dto: UploadLogDto,
     origin: ClientOrigin,
   ): Promise<LogItem> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
-    const project = await this.prisma.project.findUnique({
-      where: { projectKey: normalizedProjectKey },
-      select: { projectKey: true },
-    })
-    if (!project) {
-      throw new NotFoundException("Project not found")
-    }
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
     const level = this.toRequiredLogLevel(dto.level)
     const dedupHash = buildDedupHash([
-      project.projectKey,
+      normalizedProjectKey,
       level,
       dto.content,
       origin.ip,
@@ -155,7 +151,7 @@ export class LogsService {
 
     const created = await this.prisma.log.create({
       data: {
-        projectKey: project.projectKey,
+        projectKey: normalizedProjectKey,
         level,
         content: dto.content,
         deviceInfo: dto.device_info as Prisma.InputJsonValue | undefined,
@@ -182,8 +178,7 @@ export class LogsService {
    * 一律留空——填成管理员自己的浏览器只会让后续排障读到假的客户端来源。
    */
   async createByAdmin(projectKey: string, dto: CreateLogDto): Promise<LogItem> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
-    await this.ensureProjectExistsByKey(normalizedProjectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
     const created = await this.prisma.log.create({
       data: {
@@ -220,14 +215,9 @@ export class LogsService {
     }
   }
 
-  private async ensureProjectExistsByKey(projectKey: string): Promise<void> {
-    const project = await this.prisma.project.findUnique({
-      where: { projectKey },
-      select: { projectKey: true },
-    })
-    if (!project) {
-      throw new NotFoundException("Project not found")
-    }
+  // 把外部 key 解析成当前项目的规范 key（含改名后的别名）；未命中抛 404。
+  private resolveProjectKey(projectKey: string): Promise<string> {
+    return this.projectResolver.resolveCanonicalKeyOrThrow(projectKey)
   }
 
   private toLogLevel(level: number | undefined): LogLevel | undefined {

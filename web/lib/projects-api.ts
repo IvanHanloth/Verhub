@@ -15,6 +15,8 @@ export type ProjectItem = {
   optional_update_min_comparable_version?: string | null
   optional_update_max_comparable_version?: string | null
   stats_retention_days?: number
+  /** 改名后保留的旧 Project Key（别名），均可访问到本项目。新到旧排序。 */
+  aliases?: string[]
   created_at: number
   updated_at: number
 }
@@ -22,6 +24,11 @@ export type ProjectItem = {
 export type ListProjectsResponse = {
   total: number
   data: ProjectItem[]
+}
+
+export type ProjectAliasItem = {
+  alias: string
+  created_at: number
 }
 
 export type ProjectMutationInput = {
@@ -124,6 +131,28 @@ export async function deleteProject(token: string, projectKey: string): Promise<
     method: "DELETE",
     token,
   })
+}
+
+export async function listProjectAliases(
+  token: string,
+  projectKey: string,
+  signal?: AbortSignal,
+): Promise<{ data: ProjectAliasItem[] }> {
+  return requestJson<{ data: ProjectAliasItem[] }>(`/admin/projects/${projectKey}/aliases`, {
+    token,
+    signal,
+  })
+}
+
+export async function deleteProjectAlias(
+  token: string,
+  projectKey: string,
+  alias: string,
+): Promise<{ success: true }> {
+  return requestJson<{ success: true }>(
+    `/admin/projects/${projectKey}/aliases/${encodeURIComponent(alias)}`,
+    { method: "DELETE", token },
+  )
 }
 
 export async function getGithubWebhookSettings(

@@ -1,4 +1,5 @@
 import { Logger } from "@nestjs/common"
+import { makeResolver } from "../../test/project-resolver.testkit"
 
 import { ApiKeyManagementService } from "./api-key-management.service"
 
@@ -69,7 +70,11 @@ describe("ApiKeyManagementService", () => {
     })
     prisma.apiKey.update.mockResolvedValue({ id: "api-key-1" })
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     const result = await service.validateApiKey("sk_live_demo", "versions:write")
 
     expect(result).toBe(true)
@@ -89,7 +94,11 @@ describe("ApiKeyManagementService", () => {
       projectIds: [],
     })
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     const valid = await service.validateApiKey("sk_live_demo", "versions:write")
 
     expect(valid).toBe(false)
@@ -105,7 +114,11 @@ describe("ApiKeyManagementService", () => {
       projectIds: [],
     })
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     const valid = await service.validateApiKey("sk_live_demo", "admin:profile:update")
 
     expect(valid).toBe(false)
@@ -121,7 +134,11 @@ describe("ApiKeyManagementService", () => {
       projectIds: ["project-1"],
     })
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
 
     const allowed = await service.validateApiKey("sk_live_demo", "versions:read", {
       projectId: "project-1",
@@ -146,7 +163,11 @@ describe("ApiKeyManagementService", () => {
         projectIds: [],
       })
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     const valid = await service.validateApiKey("sk_live_previous", "versions:read")
 
     expect(valid).toBe(true)
@@ -165,7 +186,11 @@ describe("ApiKeyManagementService", () => {
 
     const warnSpy = jest.spyOn(Logger.prototype, "warn").mockImplementation(() => undefined)
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     const valid = await service.validateApiKey("sk_live_expired", "versions:read")
 
     expect(valid).toBe(false)
@@ -187,7 +212,11 @@ describe("ApiKeyManagementService", () => {
       createdAt: Math.floor(Date.now() / 1000),
     })
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     const result = await service.createApiKey({ name: "ci-key" }, "admin-id")
 
     expect(result.token.startsWith("vh_")).toBe(true)
@@ -226,7 +255,11 @@ describe("ApiKeyManagementService", () => {
       createdAt: Math.floor(Date.now() / 1000),
     })
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     const result = await service.createApiKey(
       {
         name: "ci-key",
@@ -267,7 +300,11 @@ describe("ApiKeyManagementService", () => {
       },
     ])
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     const result = await service.listApiKeys()
 
     expect(result.data).toHaveLength(1)
@@ -277,7 +314,11 @@ describe("ApiKeyManagementService", () => {
 
   it("getApiScopes returns available and default scopes", () => {
     const prisma = createPrismaMock()
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     const scopes = service.getApiScopes()
 
     expect(scopes.data).toBeDefined()
@@ -306,7 +347,11 @@ describe("ApiKeyManagementService", () => {
       createdAt: 1000,
     })
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     const result = await service.updateApiKey("k1", { name: "new-name" })
 
     expect(result.name).toBe("new-name")
@@ -316,7 +361,11 @@ describe("ApiKeyManagementService", () => {
     const prisma = createPrismaMock()
     prisma.apiKey.findUnique.mockResolvedValue(null)
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     await expect(service.updateApiKey("missing", { name: "x" })).rejects.toThrow()
   })
 
@@ -331,7 +380,11 @@ describe("ApiKeyManagementService", () => {
     })
     prisma.apiKey.update.mockResolvedValue({})
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     const result = await service.rotateApiKey("k1", { grace_period_minutes: 30 })
 
     expect(result.id).toBe("k1")
@@ -344,7 +397,11 @@ describe("ApiKeyManagementService", () => {
     const prisma = createPrismaMock()
     prisma.apiKey.findUnique.mockResolvedValue(null)
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     await expect(service.rotateApiKey("missing", {})).rejects.toThrow()
   })
 
@@ -358,7 +415,11 @@ describe("ApiKeyManagementService", () => {
       expiresAt: 1, // expired (timestamp 1)
     })
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     await expect(service.rotateApiKey("k1", {})).rejects.toThrow()
   })
 
@@ -366,7 +427,11 @@ describe("ApiKeyManagementService", () => {
     const prisma = createPrismaMock()
     prisma.apiKey.update.mockResolvedValue({})
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     await service.revokeApiKey("k1")
 
     expect(prisma.apiKey.update).toHaveBeenCalledWith({
@@ -382,7 +447,11 @@ describe("ApiKeyManagementService", () => {
     const prisma = createPrismaMock()
     prisma.apiKey.findFirst.mockResolvedValue(null)
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     const result = await service.validateApiKey("sk_unknown", "versions:read")
 
     expect(result).toBe(false)
@@ -399,7 +468,11 @@ describe("ApiKeyManagementService", () => {
     prisma.apiKey.update.mockResolvedValue({})
     prisma.project.findUnique.mockResolvedValue({ projectKey: "my-app" })
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     const valid = await service.validateApiKey("sk_live_demo", "versions:read", {
       projectKey: "my-app",
     })
@@ -416,7 +489,11 @@ describe("ApiKeyManagementService", () => {
       projectIds: ["proj"],
     })
 
-    const service = new ApiKeyManagementService(prisma as never, createConfigService() as never)
+    const service = new ApiKeyManagementService(
+      prisma as never,
+      createConfigService() as never,
+      makeResolver(prisma),
+    )
     const valid = await service.validateApiKey("sk_live_demo", "versions:read")
 
     expect(valid).toBe(false)

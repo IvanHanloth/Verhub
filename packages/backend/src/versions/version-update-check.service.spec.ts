@@ -1,10 +1,12 @@
 import { CheckVersionUpdateDto } from "./dto/check-version-update.dto"
+import { makeResolver } from "../../test/project-resolver.testkit"
 import { VersionUpdateCheckService } from "./version-update-check.service"
 
 function createPrismaMock() {
   return {
     project: {
       findUnique: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
     },
     version: {
       count: jest.fn(),
@@ -53,7 +55,7 @@ describe("VersionUpdateCheckService", () => {
 
   it("returns should_update=true when current < latest", async () => {
     const prisma = createPrismaMock()
-    prisma.project.findUnique.mockResolvedValueOnce({
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
       projectKey: "project-1",
       optionalUpdateMinComparableVersion: null,
       optionalUpdateMaxComparableVersion: null,
@@ -76,7 +78,7 @@ describe("VersionUpdateCheckService", () => {
       })
     prisma.version.findMany.mockResolvedValueOnce([]) // no milestones
 
-    const service = new VersionUpdateCheckService(prisma as never)
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
     const result = await service.checkUpdateByProjectKey(
       "project-1",
       createDto({ current_version: "1.0.0" }),
@@ -91,7 +93,7 @@ describe("VersionUpdateCheckService", () => {
 
   it("returns should_update=true when current is deprecated even without newer", async () => {
     const prisma = createPrismaMock()
-    prisma.project.findUnique.mockResolvedValueOnce({
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
       projectKey: "project-1",
       optionalUpdateMinComparableVersion: null,
       optionalUpdateMaxComparableVersion: null,
@@ -113,7 +115,7 @@ describe("VersionUpdateCheckService", () => {
         isDeprecated: true,
       })
 
-    const service = new VersionUpdateCheckService(prisma as never)
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
     const result = await service.checkUpdateByProjectKey(
       "project-1",
       createDto({ current_version: "2.0.0" }),
@@ -128,7 +130,7 @@ describe("VersionUpdateCheckService", () => {
 
   it("returns should_update=false when current is latest and not deprecated", async () => {
     const prisma = createPrismaMock()
-    prisma.project.findUnique.mockResolvedValueOnce({
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
       projectKey: "project-1",
       optionalUpdateMinComparableVersion: null,
       optionalUpdateMaxComparableVersion: null,
@@ -150,7 +152,7 @@ describe("VersionUpdateCheckService", () => {
         isDeprecated: false,
       })
 
-    const service = new VersionUpdateCheckService(prisma as never)
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
     const result = await service.checkUpdateByProjectKey(
       "project-1",
       createDto({ current_version: "2.0.0" }),
@@ -166,7 +168,7 @@ describe("VersionUpdateCheckService", () => {
 
   it("sets required=true when deprecated with newer version available", async () => {
     const prisma = createPrismaMock()
-    prisma.project.findUnique.mockResolvedValueOnce({
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
       projectKey: "project-1",
       optionalUpdateMinComparableVersion: "1.0.0",
       optionalUpdateMaxComparableVersion: "2.0.0",
@@ -189,7 +191,7 @@ describe("VersionUpdateCheckService", () => {
       })
     prisma.version.findMany.mockResolvedValueOnce([])
 
-    const service = new VersionUpdateCheckService(prisma as never)
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
     const result = await service.checkUpdateByProjectKey(
       "project-1",
       createDto({ current_version: "1.5.0" }),
@@ -203,7 +205,7 @@ describe("VersionUpdateCheckService", () => {
 
   it("sets required=true when outside optional update range", async () => {
     const prisma = createPrismaMock()
-    prisma.project.findUnique.mockResolvedValueOnce({
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
       projectKey: "project-1",
       optionalUpdateMinComparableVersion: "1.5.0",
       optionalUpdateMaxComparableVersion: "1.9.0",
@@ -226,7 +228,7 @@ describe("VersionUpdateCheckService", () => {
       })
     prisma.version.findMany.mockResolvedValueOnce([])
 
-    const service = new VersionUpdateCheckService(prisma as never)
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
     const result = await service.checkUpdateByProjectKey(
       "project-1",
       createDto({ current_version: "1.0.0" }),
@@ -239,7 +241,7 @@ describe("VersionUpdateCheckService", () => {
 
   it("sets required=false when in optional update range and not deprecated", async () => {
     const prisma = createPrismaMock()
-    prisma.project.findUnique.mockResolvedValueOnce({
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
       projectKey: "project-1",
       optionalUpdateMinComparableVersion: "1.0.0",
       optionalUpdateMaxComparableVersion: "2.0.0",
@@ -262,7 +264,7 @@ describe("VersionUpdateCheckService", () => {
       })
     prisma.version.findMany.mockResolvedValueOnce([])
 
-    const service = new VersionUpdateCheckService(prisma as never)
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
     const result = await service.checkUpdateByProjectKey(
       "project-1",
       createDto({ current_version: "1.5.0" }),
@@ -277,7 +279,7 @@ describe("VersionUpdateCheckService", () => {
 
   it("targets nearest milestone between current and latest", async () => {
     const prisma = createPrismaMock()
-    prisma.project.findUnique.mockResolvedValueOnce({
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
       projectKey: "project-1",
       optionalUpdateMinComparableVersion: null,
       optionalUpdateMaxComparableVersion: null,
@@ -313,7 +315,7 @@ describe("VersionUpdateCheckService", () => {
       }),
     ])
 
-    const service = new VersionUpdateCheckService(prisma as never)
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
     const result = await service.checkUpdateByProjectKey(
       "project-1",
       createDto({ current_version: "1.0.0" }),
@@ -328,7 +330,7 @@ describe("VersionUpdateCheckService", () => {
 
   it("targets latest when no milestone between current and latest", async () => {
     const prisma = createPrismaMock()
-    prisma.project.findUnique.mockResolvedValueOnce({
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
       projectKey: "project-1",
       optionalUpdateMinComparableVersion: null,
       optionalUpdateMaxComparableVersion: null,
@@ -351,7 +353,7 @@ describe("VersionUpdateCheckService", () => {
       })
     prisma.version.findMany.mockResolvedValueOnce([])
 
-    const service = new VersionUpdateCheckService(prisma as never)
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
     const result = await service.checkUpdateByProjectKey(
       "project-1",
       createDto({ current_version: "1.5.0" }),
@@ -364,7 +366,7 @@ describe("VersionUpdateCheckService", () => {
 
   it("ignores preview/deprecated milestones in milestone guard", async () => {
     const prisma = createPrismaMock()
-    prisma.project.findUnique.mockResolvedValueOnce({
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
       projectKey: "project-1",
       optionalUpdateMinComparableVersion: null,
       optionalUpdateMaxComparableVersion: null,
@@ -394,7 +396,7 @@ describe("VersionUpdateCheckService", () => {
       }),
     ])
 
-    const service = new VersionUpdateCheckService(prisma as never)
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
     const result = await service.checkUpdateByProjectKey(
       "project-1",
       createDto({ current_version: "1.0.0" }),
@@ -416,7 +418,7 @@ describe("VersionUpdateCheckService", () => {
 
   it("uses current_comparable_version as higher priority", async () => {
     const prisma = createPrismaMock()
-    prisma.project.findUnique.mockResolvedValueOnce({
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
       projectKey: "project-1",
       optionalUpdateMinComparableVersion: null,
       optionalUpdateMaxComparableVersion: null,
@@ -439,7 +441,7 @@ describe("VersionUpdateCheckService", () => {
       })
     prisma.version.findMany.mockResolvedValueOnce([])
 
-    const service = new VersionUpdateCheckService(prisma as never)
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
     const result = await service.checkUpdateByProjectKey(
       "project-1",
       createDto({
@@ -457,7 +459,7 @@ describe("VersionUpdateCheckService", () => {
 
   it("always returns latest_version even when no update needed", async () => {
     const prisma = createPrismaMock()
-    prisma.project.findUnique.mockResolvedValueOnce({
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
       projectKey: "project-1",
       optionalUpdateMinComparableVersion: null,
       optionalUpdateMaxComparableVersion: null,
@@ -486,7 +488,7 @@ describe("VersionUpdateCheckService", () => {
         isDeprecated: false,
       })
 
-    const service = new VersionUpdateCheckService(prisma as never)
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
     const result = await service.checkUpdateByProjectKey(
       "project-1",
       createDto({ current_version: "2.0.0" }),
@@ -500,7 +502,7 @@ describe("VersionUpdateCheckService", () => {
 
   it("includes preview in latest when include_preview is true", async () => {
     const prisma = createPrismaMock()
-    prisma.project.findUnique.mockResolvedValueOnce({
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
       projectKey: "project-1",
       optionalUpdateMinComparableVersion: null,
       optionalUpdateMaxComparableVersion: null,
@@ -530,7 +532,7 @@ describe("VersionUpdateCheckService", () => {
       })
     prisma.version.findMany.mockResolvedValueOnce([])
 
-    const service = new VersionUpdateCheckService(prisma as never)
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
     const result = await service.checkUpdateByProjectKey(
       "project-1",
       createDto({

@@ -127,6 +127,9 @@ pub struct ProjectItem {
     pub optional_update_min_comparable_version: Option<String>,
     pub optional_update_max_comparable_version: Option<String>,
     pub stats_retention_days: i32,
+    /// 改名后保留的旧 Project Key（别名），均可访问到本项目。新到旧排序。
+    #[serde(default)]
+    pub aliases: Vec<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -240,6 +243,20 @@ pub struct ListResponse<T> {
 }
 
 pub type ProjectListResponse = ListResponse<ProjectItem>;
+
+/// 项目别名（改名保留的旧 Project Key）。
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProjectAliasItem {
+    pub alias: String,
+    pub created_at: i64,
+}
+
+/// 别名列表响应，仅含 `data`（无分页 total）。
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProjectAliasListResponse {
+    pub data: Vec<ProjectAliasItem>,
+}
+
 pub type VersionListResponse = ListResponse<VersionItem>;
 pub type AnnouncementListResponse = ListResponse<AnnouncementItem>;
 pub type FeedbackListResponse = ListResponse<FeedbackItem>;

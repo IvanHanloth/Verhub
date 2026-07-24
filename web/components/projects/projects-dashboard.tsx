@@ -38,6 +38,7 @@ import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { MarkdownEditor } from "@/components/markdown/markdown-editor"
 import { GithubWebhookSettings } from "@/components/projects/github-webhook-settings"
+import { ProjectAliasesSettings } from "@/components/projects/project-aliases-settings"
 import { validateComparableVersion } from "@/lib/comparable-version"
 import {
   createProject,
@@ -893,6 +894,11 @@ export function ProjectsDashboard() {
                   showing the previous project's webhook state. */}
               <GithubWebhookSettings
                 key={editingProjectKey ?? "none"}
+                token={token}
+                projectKey={editingProjectKey}
+              />
+              <ProjectAliasesSettings
+                key={`aliases-${editingProjectKey ?? "none"}`}
                 token={token}
                 projectKey={editingProjectKey}
               />

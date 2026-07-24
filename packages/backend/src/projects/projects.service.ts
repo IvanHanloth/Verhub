@@ -5,8 +5,10 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common"
+import { Prisma } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
+import { ProjectResolverService } from "../database/project-resolver.service"
 import { isUniqueViolation, normalizeProjectKey, nowSeconds } from "../common/utils"
 import { parseGithubRepository } from "../versions/github-release.service"
 import { CreateProjectDto } from "./dto/create-project.dto"
@@ -29,9 +31,16 @@ type ProjectItem = {
   optional_update_min_comparable_version: string | null
   optional_update_max_comparable_version: string | null
   stats_retention_days: number
+  /// 该项目改名后保留的旧 Project Key，均可作为别名访问到本项目。新到旧排序。
+  aliases: string[]
   created_at: number
   updated_at: number
 }
+
+/// 查项目时一并带出别名，供 toProjectItem 填充 aliases 字段。
+const PROJECT_WITH_ALIASES = {
+  aliases: { select: { alias: true }, orderBy: { createdAt: "desc" } },
+} as const satisfies Prisma.ProjectInclude
 
 type ProjectListResponse = {
   total: number
@@ -55,7 +64,10 @@ type GithubRepoPreview = {
 
 @Injectable()
 export class ProjectsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly projectResolver: ProjectResolverService,
+  ) {}
 
   async getStatistics(): Promise<{ count: number }> {
     const count = await this.prisma.project.count()
@@ -71,6 +83,7 @@ export class ProjectsService {
         orderBy: {
           createdAt: "desc",
         },
+        include: PROJECT_WITH_ALIASES,
       }),
     ])
 
@@ -83,6 +96,7 @@ export class ProjectsService {
   async findOne(id: string): Promise<ProjectItem> {
     const project = await this.prisma.project.findUnique({
       where: { projectKey: normalizeProjectKey(id) },
+      include: PROJECT_WITH_ALIASES,
     })
     if (!project) {
       throw new NotFoundException("Project not found")
@@ -92,12 +106,12 @@ export class ProjectsService {
   }
 
   async findOneByProjectKey(projectKey: string): Promise<ProjectItem> {
-    const project = await this.prisma.project.findUnique({
-      where: { projectKey: normalizeProjectKey(projectKey) },
+    // 公共详情：旧 key（别名）经解析后仍返回当前项目，客户端无需感知改名。
+    const canonicalKey = await this.projectResolver.resolveCanonicalKeyOrThrow(projectKey)
+    const project = await this.prisma.project.findUniqueOrThrow({
+      where: { projectKey: canonicalKey },
+      include: PROJECT_WITH_ALIASES,
     })
-    if (!project) {
-      throw new NotFoundException("Project not found")
-    }
 
     return this.toProjectItem(project)
   }
@@ -108,10 +122,15 @@ export class ProjectsService {
 
     this.validateComparableRange(optionalMin, optionalMax)
 
+    const projectKey = normalizeProjectKey(dto.project_key)
+    // project 与 alias 共享同一命名空间：新建 key 不能撞上别的项目改名遗留的别名，
+    // 否则旧 key 的跳转目标就有歧义（unique 约束只挡项目之间的重名）。
+    await this.ensureKeyNotAlias(projectKey)
+
     try {
       const project = await this.prisma.project.create({
         data: {
-          projectKey: normalizeProjectKey(dto.project_key),
+          projectKey,
           name: dto.name,
           repoUrl: dto.repo_url,
           description: dto.description,
@@ -125,6 +144,7 @@ export class ProjectsService {
           optionalUpdateMaxComparableVersion: optionalMax,
           statsRetentionDays: dto.stats_retention_days,
         },
+        include: PROJECT_WITH_ALIASES,
       })
 
       return this.toProjectItem(project)
@@ -138,12 +158,10 @@ export class ProjectsService {
   }
 
   async update(id: string, dto: UpdateProjectDto): Promise<ProjectItem> {
-    const project = await this.prisma.project.findUnique({
-      where: { projectKey: normalizeProjectKey(id) },
+    const canonicalKey = await this.projectResolver.resolveCanonicalKeyOrThrow(id)
+    const project = await this.prisma.project.findUniqueOrThrow({
+      where: { projectKey: canonicalKey },
     })
-    if (!project) {
-      throw new NotFoundException("Project not found")
-    }
 
     // Determine effective values: if DTO has explicit value (including null), use it; otherwise use existing
     const effectiveMin =
@@ -157,32 +175,62 @@ export class ProjectsService {
 
     this.validateComparableRange(effectiveMin, effectiveMax)
 
+    const nextKey = dto.project_key === undefined ? undefined : normalizeProjectKey(dto.project_key)
+    const isRename = nextKey !== undefined && nextKey !== project.projectKey
+
+    if (isRename) {
+      await this.ensureRenameTargetAvailable(nextKey, project.projectKey)
+    }
+
+    const data: Prisma.ProjectUpdateInput = {
+      name: dto.name,
+      repoUrl: dto.repo_url,
+      description: dto.description,
+      author: dto.author,
+      authorHomepageUrl: dto.author_homepage_url,
+      iconUrl: dto.icon_url,
+      websiteUrl: dto.website_url,
+      docsUrl: dto.docs_url,
+      publishedAt: dto.published_at,
+      optionalUpdateMinComparableVersion:
+        "optional_update_min_comparable_version" in dto
+          ? this.normalizeOptionalComparable(dto.optional_update_min_comparable_version)
+          : undefined,
+      optionalUpdateMaxComparableVersion:
+        "optional_update_max_comparable_version" in dto
+          ? this.normalizeOptionalComparable(dto.optional_update_max_comparable_version)
+          : undefined,
+      statsRetentionDays: dto.stats_retention_days,
+      updatedAt: nowSeconds(),
+    }
+
     try {
-      const updated = await this.prisma.project.update({
-        where: { projectKey: project.projectKey },
-        data: {
-          projectKey:
-            dto.project_key === undefined ? undefined : normalizeProjectKey(dto.project_key),
-          name: dto.name,
-          repoUrl: dto.repo_url,
-          description: dto.description,
-          author: dto.author,
-          authorHomepageUrl: dto.author_homepage_url,
-          iconUrl: dto.icon_url,
-          websiteUrl: dto.website_url,
-          docsUrl: dto.docs_url,
-          publishedAt: dto.published_at,
-          optionalUpdateMinComparableVersion:
-            "optional_update_min_comparable_version" in dto
-              ? this.normalizeOptionalComparable(dto.optional_update_min_comparable_version)
-              : undefined,
-          optionalUpdateMaxComparableVersion:
-            "optional_update_max_comparable_version" in dto
-              ? this.normalizeOptionalComparable(dto.optional_update_max_comparable_version)
-              : undefined,
-          statsRetentionDays: dto.stats_retention_days,
-          updatedAt: nowSeconds(),
-        },
+      if (!isRename) {
+        const updated = await this.prisma.project.update({
+          where: { projectKey: project.projectKey },
+          data,
+          include: PROJECT_WITH_ALIASES,
+        })
+        return this.toProjectItem(updated)
+      }
+
+      // 改名保留旧 key：三步须原子完成。
+      //   1. 若新 key 曾是本项目的别名（改回旧名），先删掉——它将重新成为主键。
+      //   2. 改主键：子表与其余旧别名经外键 onUpdate CASCADE 自动跟到新 key。
+      //   3. 把旧 key 登记为别名，指向新 key，使旧 key 仍能访问到本项目。
+      const updated = await this.prisma.$transaction(async (tx) => {
+        await tx.projectAlias.deleteMany({ where: { alias: nextKey } })
+        await tx.project.update({
+          where: { projectKey: project.projectKey },
+          data: { ...data, projectKey: nextKey },
+        })
+        await tx.projectAlias.create({
+          data: { alias: project.projectKey, projectKey: nextKey },
+        })
+        return tx.project.findUniqueOrThrow({
+          where: { projectKey: nextKey },
+          include: PROJECT_WITH_ALIASES,
+        })
       })
 
       return this.toProjectItem(updated)
@@ -196,14 +244,67 @@ export class ProjectsService {
   }
 
   async remove(id: string): Promise<void> {
-    const project = await this.prisma.project.findUnique({
-      where: { projectKey: normalizeProjectKey(id) },
+    const canonicalKey = await this.projectResolver.resolveCanonicalKeyOrThrow(id)
+    // 删项目会经外键 onDelete CASCADE 一并清掉它的全部别名。
+    await this.prisma.project.delete({ where: { projectKey: canonicalKey } })
+  }
+
+  /** 列出项目的全部别名（改名遗留的旧 Project Key），新到旧。 */
+  async listAliases(id: string): Promise<{ data: { alias: string; created_at: number }[] }> {
+    const canonicalKey = await this.projectResolver.resolveCanonicalKeyOrThrow(id)
+    const aliases = await this.prisma.projectAlias.findMany({
+      where: { projectKey: canonicalKey },
+      orderBy: { createdAt: "desc" },
+      select: { alias: true, createdAt: true },
     })
-    if (!project) {
-      throw new NotFoundException("Project not found")
+
+    return { data: aliases.map((item) => ({ alias: item.alias, created_at: item.createdAt })) }
+  }
+
+  /**
+   * 删除一个别名。删除后该旧 key 不再指向本项目，此后以它访问会 404，
+   * 且它重新变为可用的 Project Key。别名不属于本项目则 404。
+   */
+  async removeAlias(id: string, alias: string): Promise<void> {
+    const canonicalKey = await this.projectResolver.resolveCanonicalKeyOrThrow(id)
+    const normalizedAlias = normalizeProjectKey(alias)
+    const result = await this.prisma.projectAlias.deleteMany({
+      where: { alias: normalizedAlias, projectKey: canonicalKey },
+    })
+    if (result.count === 0) {
+      throw new NotFoundException("Alias not found")
+    }
+  }
+
+  // 新 key 不能已被别的项目用作别名（project 与 alias 同命名空间，见 create）。
+  private async ensureKeyNotAlias(projectKey: string): Promise<void> {
+    const alias = await this.prisma.projectAlias.findUnique({
+      where: { alias: projectKey },
+      select: { alias: true },
+    })
+    if (alias) {
+      throw new ConflictException("project_key is already used as an alias of another project")
+    }
+  }
+
+  // 改名目标 key 的可用性：不能撞上其它项目，也不能是别的项目的别名；
+  // 若是本项目自己的别名（改回旧名）则放行，改名事务会把它转正为主键。
+  private async ensureRenameTargetAvailable(nextKey: string, currentKey: string): Promise<void> {
+    const existingProject = await this.prisma.project.findUnique({
+      where: { projectKey: nextKey },
+      select: { projectKey: true },
+    })
+    if (existingProject) {
+      throw new ConflictException("project_key already exists")
     }
 
-    await this.prisma.project.delete({ where: { projectKey: project.projectKey } })
+    const alias = await this.prisma.projectAlias.findUnique({
+      where: { alias: nextKey },
+      select: { projectKey: true },
+    })
+    if (alias && alias.projectKey !== currentKey) {
+      throw new ConflictException("project_key is already used as an alias of another project")
+    }
   }
 
   async previewFromGithubRepo(repoUrl: string): Promise<GithubRepoPreview> {
@@ -285,6 +386,7 @@ export class ProjectsService {
     optionalUpdateMinComparableVersion: string | null
     optionalUpdateMaxComparableVersion: string | null
     statsRetentionDays: number
+    aliases?: { alias: string }[]
     createdAt: number
     updatedAt: number
   }): ProjectItem {
@@ -303,6 +405,7 @@ export class ProjectsService {
       optional_update_min_comparable_version: project.optionalUpdateMinComparableVersion,
       optional_update_max_comparable_version: project.optionalUpdateMaxComparableVersion,
       stats_retention_days: project.statsRetentionDays,
+      aliases: project.aliases?.map((item) => item.alias) ?? [],
       created_at: project.createdAt,
       updated_at: project.updatedAt,
     }

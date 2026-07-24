@@ -25,6 +25,7 @@ from .models import (
     LogListResponse,
     LogStatistics,
     ProjectItem,
+    ProjectAliasListResponse,
     ProjectListResponse,
     ProjectStatistics,
     VersionImportResult,
@@ -166,8 +167,8 @@ class AdminApi:
         """
         更新绑定的项目。
 
-        :param new_project_key: 新的项目标识；改键会影响所有引用该键的调用方，
-            改完记得同步更新客户端的绑定（``set_project_key``）
+        :param new_project_key: 新的项目标识；改键后旧 key 会自动登记为别名并继续
+            指向本项目（旧 key 仍可访问），但客户端应同步更新绑定（``set_project_key``）
         :param name: 项目名称
         :param repo_url: 仓库地址
         :param description: 项目描述
@@ -218,6 +219,36 @@ class AdminApi:
             "DELETE",
             "/admin/projects/{projectKey}",
             path_params={"projectKey": self._http.require_project_key()},
+            auth=True,
+        )
+
+    def list_project_aliases(self) -> ProjectAliasListResponse:
+        """
+        列出绑定项目的别名（改名保留的旧 Project Key）。
+
+        :return: 别名列表
+        """
+        return self._http.request(
+            "GET",
+            "/admin/projects/{projectKey}/aliases",
+            path_params={"projectKey": self._http.require_project_key()},
+            auth=True,
+        )
+
+    def delete_project_alias(self, alias: str) -> DeleteSuccessResponse:
+        """
+        删除一个别名。删除后旧 key 不再指向本项目，此后以它访问会 404。
+
+        :param alias: 要删除的别名（旧 Project Key）
+        :return: 删除结果
+        """
+        return self._http.request(
+            "DELETE",
+            "/admin/projects/{projectKey}/aliases/{alias}",
+            path_params={
+                "projectKey": self._http.require_project_key(),
+                "alias": alias,
+            },
             auth=True,
         )
 

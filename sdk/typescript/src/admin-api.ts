@@ -27,6 +27,7 @@ import type {
   LogListResponse,
   LogStatistics,
   PageOptions,
+  ProjectAliasListResponse,
   ProjectItem,
   ProjectListResponse,
   ProjectStatistics,
@@ -97,7 +98,8 @@ export class AdminApi {
   /**
    * 更新绑定的项目。
    *
-   * @param input 要改的字段；提交 `project_key` 会改键，改完记得 `setProjectKey`
+   * @param input 要改的字段；提交 `project_key` 会改键。改键后旧 key 会自动登记为
+   *   别名并继续指向本项目（旧 key 仍可访问），但客户端应 `setProjectKey` 切到新 key。
    */
   updateProject(input: UpdateProjectInput): Promise<ProjectItem> {
     return this.http.request("PATCH", "/admin/projects/{projectKey}", {
@@ -110,6 +112,28 @@ export class AdminApi {
   deleteProject(): Promise<DeleteSuccessResponse> {
     return this.http.request("DELETE", "/admin/projects/{projectKey}", {
       pathParams: { projectKey: this.http.requireProjectKey() },
+      auth: true,
+    })
+  }
+
+  /**
+   * 列出绑定项目的别名（改名保留的旧 Project Key）。
+   */
+  listProjectAliases(): Promise<ProjectAliasListResponse> {
+    return this.http.request("GET", "/admin/projects/{projectKey}/aliases", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      auth: true,
+    })
+  }
+
+  /**
+   * 删除一个别名。删除后旧 key 不再指向本项目，此后以它访问会 404。
+   *
+   * @param alias 要删除的别名（旧 Project Key）
+   */
+  deleteProjectAlias(alias: string): Promise<DeleteSuccessResponse> {
+    return this.http.request("DELETE", "/admin/projects/{projectKey}/aliases/{alias}", {
+      pathParams: { projectKey: this.http.requireProjectKey(), alias },
       auth: true,
     })
   }

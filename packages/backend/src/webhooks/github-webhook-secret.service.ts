@@ -12,7 +12,8 @@ import { randomBytes } from "node:crypto"
 import { Injectable, NotFoundException } from "@nestjs/common"
 
 import { PrismaService } from "../database/prisma.service"
-import { normalizeProjectKey, nowSeconds } from "../common/utils"
+import { ProjectResolverService } from "../database/project-resolver.service"
+import { nowSeconds } from "../common/utils"
 import type { GithubWebhookSecretRevealed, GithubWebhookSettings } from "./types"
 
 type ProjectWebhookRecord = {
@@ -23,7 +24,10 @@ type ProjectWebhookRecord = {
 
 @Injectable()
 export class GithubWebhookSecretService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly projectResolver: ProjectResolverService,
+  ) {}
 
   async getSettings(projectKey: string): Promise<GithubWebhookSettings> {
     return toSettings(await this.requireProject(projectKey))
@@ -66,15 +70,15 @@ export class GithubWebhookSecretService {
   }
 
   private async requireProject(projectKey: string): Promise<ProjectWebhookRecord> {
-    const project = await this.prisma.project.findUnique({
-      where: { projectKey: normalizeProjectKey(projectKey) },
-      select: SELECT_WEBHOOK_FIELDS,
-    })
-    if (!project) {
+    const canonicalKey = await this.projectResolver.resolveCanonicalKey(projectKey)
+    if (!canonicalKey) {
       throw new NotFoundException("Project not found")
     }
 
-    return project
+    return this.prisma.project.findUniqueOrThrow({
+      where: { projectKey: canonicalKey },
+      select: SELECT_WEBHOOK_FIELDS,
+    })
   }
 }
 

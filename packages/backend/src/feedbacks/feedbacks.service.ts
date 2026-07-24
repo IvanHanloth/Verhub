@@ -3,8 +3,9 @@ import { Injectable, NotFoundException } from "@nestjs/common"
 import { Prisma, Platform } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
+import { ProjectResolverService } from "../database/project-resolver.service"
 import { buildDedupHash, resolveDedupWindowSeconds, stableStringify } from "../common/dedup"
-import { normalizeProjectKey, nowSeconds } from "../common/utils"
+import { nowSeconds } from "../common/utils"
 import { fromPlatform, toPlatform, type PlatformValue } from "../common/platform"
 import type { ClientOrigin } from "../geo/client-origin.service"
 import { CreateFeedbackDto } from "./dto/create-feedback.dto"
@@ -52,7 +53,10 @@ type FeedbackListResponse = {
 
 @Injectable()
 export class FeedbacksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly projectResolver: ProjectResolverService,
+  ) {}
 
   async getStatistics(): Promise<{ count: number; rate_count: number; rate_avg: number | null }> {
     const [count, rated] = await Promise.all([
@@ -75,8 +79,7 @@ export class FeedbacksService {
   }
 
   async findAll(projectKey: string, query: QueryFeedbacksDto): Promise<FeedbackListResponse> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
-    await this.ensureProjectExistsByKey(normalizedProjectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
     const [total, data] = await this.prisma.$transaction([
       this.prisma.feedback.count({ where: { projectKey: normalizedProjectKey } }),
@@ -95,7 +98,7 @@ export class FeedbacksService {
   }
 
   async findOne(projectKey: string, id: string): Promise<FeedbackItem> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
     const feedback = await this.prisma.feedback.findFirst({
       where: {
         id,
@@ -114,17 +117,10 @@ export class FeedbacksService {
     dto: CreateFeedbackDto,
     origin: ClientOrigin,
   ): Promise<FeedbackItem> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
-    const project = await this.prisma.project.findUnique({
-      where: { projectKey: normalizedProjectKey },
-      select: { projectKey: true },
-    })
-    if (!project) {
-      throw new NotFoundException("Project not found")
-    }
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
     const dedupHash = buildDedupHash([
-      project.projectKey,
+      normalizedProjectKey,
       dto.user_id,
       dto.rating,
       dto.content,
@@ -148,7 +144,7 @@ export class FeedbacksService {
 
     const created = await this.prisma.feedback.create({
       data: {
-        projectKey: project.projectKey,
+        projectKey: normalizedProjectKey,
         userId: dto.user_id,
         rating: dto.rating,
         content: dto.content,
@@ -178,8 +174,7 @@ export class FeedbacksService {
    * 只会污染"这条反馈来自哪个客户端"的判断。
    */
   async createByAdmin(projectKey: string, dto: CreateFeedbackDto): Promise<FeedbackItem> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
-    await this.ensureProjectExistsByKey(normalizedProjectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
     const created = await this.prisma.feedback.create({
       data: {
@@ -197,7 +192,7 @@ export class FeedbacksService {
   }
 
   async update(projectKey: string, id: string, dto: UpdateFeedbackDto): Promise<FeedbackItem> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
     const existing = await this.prisma.feedback.findFirst({
       where: {
         id,
@@ -224,7 +219,7 @@ export class FeedbacksService {
   }
 
   async remove(projectKey: string, id: string): Promise<void> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
     const existing = await this.prisma.feedback.findFirst({
       where: {
         id,
@@ -269,14 +264,9 @@ export class FeedbacksService {
     }
   }
 
-  private async ensureProjectExistsByKey(projectKey: string): Promise<void> {
-    const project = await this.prisma.project.findUnique({
-      where: { projectKey },
-      select: { projectKey: true },
-    })
-    if (!project) {
-      throw new NotFoundException("Project not found")
-    }
+  // 把外部 key 解析成当前项目的规范 key（含改名后的别名）；未命中抛 404。
+  private resolveProjectKey(projectKey: string): Promise<string> {
+    return this.projectResolver.resolveCanonicalKeyOrThrow(projectKey)
   }
 
   private toFeedbackItem(feedback: FeedbackRecord): FeedbackItem {

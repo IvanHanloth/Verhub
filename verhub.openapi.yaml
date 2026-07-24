@@ -498,6 +498,9 @@ paths:
     patch:
       tags: [Projects]
       summary: 更新项目
+      description: >-
+        更新项目字段。若变更 project_key（改名），旧 key 会被自动登记为别名并继续
+        指向本项目——旧 key 下的内容仍可透明访问。新 key 不能与任何现有项目或别名冲突。
       security:
         - BearerAuth: []
         - ApiKeyAuth: []
@@ -527,6 +530,60 @@ paths:
       tags: [Projects]
       summary: "删除项目"
       description: "删除项目及其关联管理数据。"
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSuccessResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/projects/{projectKey}/aliases:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+    get:
+      tags: [Projects]
+      summary: 列出项目别名
+      description: >-
+        列出该项目改名后保留的旧 Project Key（别名）。以别名访问项目的公共与
+        管理接口都会透明命中当前项目，别名因此是旧 key 的跳转来源。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectAliasListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/projects/{projectKey}/aliases/{alias}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+      - name: alias
+        in: path
+        required: true
+        schema:
+          type: string
+        description: 要删除的别名（旧 Project Key）。
+    delete:
+      tags: [Projects]
+      summary: 删除项目别名
+      description: >-
+        删除一个别名。删除后旧 key 不再指向本项目，此后以它访问会返回 404，
+        且该 key 重新变为可用的 Project Key。
       x-verhub-doc: true
       security:
         - BearerAuth: []
@@ -3012,6 +3069,7 @@ components:
           optional_update_min_comparable_version,
           optional_update_max_comparable_version,
           stats_retention_days,
+          aliases,
           created_at,
           updated_at,
         ]
@@ -3046,6 +3104,13 @@ components:
         stats_retention_days:
           type: integer
           description: 接口请求统计保留时长（天）
+        aliases:
+          type: array
+          items:
+            type: string
+          description: >-
+            项目改名后保留的旧 Project Key（别名），按新到旧排序。以其中任一别名访问
+            项目的公共与管理接口，都会透明命中当前项目。
         created_at:
           type: integer
           format: int64
@@ -3067,8 +3132,37 @@ components:
         optional_update_min_comparable_version: 1.0.0
         optional_update_max_comparable_version: 1.9.9
         stats_retention_days: 365
+        aliases: [verhub-old]
         created_at: 1760000000
         updated_at: 1760000000
+
+    ProjectAliasItem:
+      type: object
+      required: [alias, created_at]
+      properties:
+        alias:
+          type: string
+          description: 旧 Project Key。
+        created_at:
+          type: integer
+          format: int64
+          description: 该别名登记时间（改名发生时），Unix 秒。
+      example:
+        alias: verhub-old
+        created_at: 1760000000
+
+    ProjectAliasListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectAliasItem"
+      example:
+        data:
+          - alias: verhub-old
+            created_at: 1760000000
 
     GithubWebhookSettings:
       type: object

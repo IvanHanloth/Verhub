@@ -2,7 +2,8 @@ import { Injectable, NotFoundException } from "@nestjs/common"
 import { Platform, Prisma } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
-import { normalizeProjectKey, nowSeconds } from "../common/utils"
+import { ProjectResolverService } from "../database/project-resolver.service"
+import { nowSeconds } from "../common/utils"
 import { fromPlatforms, type PlatformValue } from "../common/platform"
 import { CreateAnnouncementDto } from "./dto/create-announcement.dto"
 import { QueryAnnouncementsDto } from "./dto/query-announcements.dto"
@@ -36,7 +37,10 @@ type AnnouncementListResponse = {
 
 @Injectable()
 export class AnnouncementsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly projectResolver: ProjectResolverService,
+  ) {}
 
   async getStatistics(): Promise<{ count: number; pinned_count: number }> {
     const [count, pinnedCount] = await Promise.all([
@@ -54,8 +58,7 @@ export class AnnouncementsService {
     projectKey: string,
     query: QueryAnnouncementsDto,
   ): Promise<AnnouncementListResponse> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
-    await this.ensureProjectExists(normalizedProjectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
     const where: Prisma.AnnouncementWhereInput = {
       projectKey: normalizedProjectKey,
@@ -78,7 +81,7 @@ export class AnnouncementsService {
   }
 
   async findOne(projectKey: string, id: string): Promise<AnnouncementItem> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
     const announcement = await this.prisma.announcement.findFirst({
       where: {
         id,
@@ -96,8 +99,7 @@ export class AnnouncementsService {
     projectKey: string,
     query: QueryAnnouncementsDto,
   ): Promise<AnnouncementListResponse> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
-    await this.ensureProjectExists(normalizedProjectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
     const where: Prisma.AnnouncementWhereInput = {
       projectKey: normalizedProjectKey,
@@ -132,17 +134,10 @@ export class AnnouncementsService {
     projectKey: string,
     query?: Pick<QueryAnnouncementsDto, "platform">,
   ): Promise<AnnouncementItem> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
-    const project = await this.prisma.project.findUnique({
-      where: { projectKey: normalizedProjectKey },
-      select: { projectKey: true },
-    })
-    if (!project) {
-      throw new NotFoundException("Project not found")
-    }
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
     const where: Prisma.AnnouncementWhereInput = {
-      projectKey: project.projectKey,
+      projectKey: normalizedProjectKey,
       isHidden: false,
       ...(query?.platform
         ? {
@@ -166,8 +161,7 @@ export class AnnouncementsService {
   }
 
   async create(projectKey: string, dto: CreateAnnouncementDto): Promise<AnnouncementItem> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
-    await this.ensureProjectExists(normalizedProjectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
     const created = await this.prisma.announcement.create({
       data: {
@@ -197,7 +191,7 @@ export class AnnouncementsService {
     id: string,
     dto: UpdateAnnouncementDto,
   ): Promise<AnnouncementItem> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
     const announcement = await this.prisma.announcement.findFirst({
       where: {
         id,
@@ -226,7 +220,7 @@ export class AnnouncementsService {
   }
 
   async remove(projectKey: string, id: string): Promise<void> {
-    const normalizedProjectKey = normalizeProjectKey(projectKey)
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
     const announcement = await this.prisma.announcement.findFirst({
       where: {
         id,
@@ -271,11 +265,9 @@ export class AnnouncementsService {
     }
   }
 
-  private async ensureProjectExists(projectKey: string): Promise<void> {
-    const project = await this.prisma.project.findUnique({ where: { projectKey } })
-    if (!project) {
-      throw new NotFoundException("Project not found")
-    }
+  // 把外部 key 解析成当前项目的规范 key（含改名后的别名）；未命中抛 404。
+  private resolveProjectKey(projectKey: string): Promise<string> {
+    return this.projectResolver.resolveCanonicalKeyOrThrow(projectKey)
   }
 
   private toAnnouncementItem(announcement: {

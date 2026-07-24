@@ -16,6 +16,7 @@ import {
 import { Prisma } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
+import { ProjectResolverService } from "../database/project-resolver.service"
 import { CreateVersionDto } from "./dto/create-version.dto"
 import { QueryVersionsDto } from "./dto/query-versions.dto"
 import { UpdateVersionDto } from "./dto/update-version.dto"
@@ -31,11 +32,14 @@ import {
 } from "./version-mapping"
 import { toPlatform } from "../common/platform"
 import type { VersionItem, VersionListResponse } from "./types"
-import { normalizeProjectKey, nowSeconds } from "./types"
+import { nowSeconds } from "./types"
 
 @Injectable()
 export class VersionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly projectResolver: ProjectResolverService,
+  ) {}
 
   // ── Statistics ──
 
@@ -74,8 +78,7 @@ export class VersionsService {
   // ── Queries ──
 
   async findAll(projectKey: string, query: QueryVersionsDto): Promise<VersionListResponse> {
-    const normalizedKey = normalizeProjectKey(projectKey)
-    await this.ensureProjectExists(normalizedKey)
+    const normalizedKey = await this.resolveProjectKey(projectKey)
 
     const [total, data] = await this.prisma.$transaction([
       this.prisma.version.count({ where: { projectKey: normalizedKey } }),
@@ -94,7 +97,7 @@ export class VersionsService {
   }
 
   async findOne(projectKey: string, id: string): Promise<VersionItem> {
-    const normalizedKey = normalizeProjectKey(projectKey)
+    const normalizedKey = await this.resolveProjectKey(projectKey)
     const version = await this.prisma.version.findFirst({
       where: { id, projectKey: normalizedKey },
     })
@@ -120,17 +123,10 @@ export class VersionsService {
   }
 
   async findLatestByProjectKey(projectKey: string): Promise<VersionItem> {
-    const normalizedKey = normalizeProjectKey(projectKey)
-    const project = await this.prisma.project.findUnique({
-      where: { projectKey: normalizedKey },
-      select: { projectKey: true },
-    })
-    if (!project) {
-      throw new NotFoundException("Project not found")
-    }
+    const normalizedKey = await this.resolveProjectKey(projectKey)
 
     const latest = await this.prisma.version.findFirst({
-      where: { projectKey: project.projectKey, isLatest: true },
+      where: { projectKey: normalizedKey, isLatest: true },
       orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
     })
     if (latest) {
@@ -138,7 +134,7 @@ export class VersionsService {
     }
 
     const fallbackStable = await this.prisma.version.findFirst({
-      where: { projectKey: project.projectKey, isPreview: false },
+      where: { projectKey: normalizedKey, isPreview: false },
       orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
     })
     if (fallbackStable) {
@@ -146,7 +142,7 @@ export class VersionsService {
     }
 
     const fallbackAny = await this.prisma.version.findFirst({
-      where: { projectKey: project.projectKey },
+      where: { projectKey: normalizedKey },
       orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
     })
     if (!fallbackAny) {
@@ -156,8 +152,7 @@ export class VersionsService {
   }
 
   async findLatestPreviewByProjectKey(projectKey: string): Promise<VersionItem | null> {
-    const normalizedKey = normalizeProjectKey(projectKey)
-    await this.ensureProjectExists(normalizedKey)
+    const normalizedKey = await this.resolveProjectKey(projectKey)
 
     const latestPreview = await this.prisma.version.findFirst({
       where: { projectKey: normalizedKey, isPreview: true },
@@ -167,8 +162,7 @@ export class VersionsService {
   }
 
   async findByVersionNumber(projectKey: string, version: string): Promise<VersionItem> {
-    const normalizedKey = normalizeProjectKey(projectKey)
-    await this.ensureProjectExists(normalizedKey)
+    const normalizedKey = await this.resolveProjectKey(projectKey)
 
     const trimmedVersion = version.trim()
 
@@ -189,8 +183,7 @@ export class VersionsService {
   // ── Mutations ──
 
   async create(projectKey: string, dto: CreateVersionDto): Promise<VersionItem> {
-    const normalizedKey = normalizeProjectKey(projectKey)
-    await this.ensureProjectExists(normalizedKey)
+    const normalizedKey = await this.resolveProjectKey(projectKey)
 
     // Validate business rules
     await this.validateVersionRules(normalizedKey, dto)
@@ -266,7 +259,6 @@ export class VersionsService {
     version: string,
     dto: UpsertVersionDto,
   ): Promise<{ item: VersionItem; created: boolean }> {
-    const normalizedKey = normalizeProjectKey(projectKey)
     const targetVersion = version.trim()
     if (!targetVersion) {
       throw new BadRequestException("version path segment is required")
@@ -275,7 +267,7 @@ export class VersionsService {
       throw new BadRequestException("version in body must match the version in the path")
     }
 
-    await this.ensureProjectExists(normalizedKey)
+    const normalizedKey = await this.resolveProjectKey(projectKey)
 
     const existing = await this.prisma.version.findUnique({
       where: { projectKey_version: { projectKey: normalizedKey, version: targetVersion } },
@@ -314,7 +306,7 @@ export class VersionsService {
   }
 
   async update(projectKey: string, id: string, dto: UpdateVersionDto): Promise<VersionItem> {
-    const normalizedKey = normalizeProjectKey(projectKey)
+    const normalizedKey = await this.resolveProjectKey(projectKey)
     const version = await this.prisma.version.findFirst({
       where: { id, projectKey: normalizedKey },
     })
@@ -413,7 +405,7 @@ export class VersionsService {
   }
 
   async remove(projectKey: string, id: string): Promise<void> {
-    const normalizedKey = normalizeProjectKey(projectKey)
+    const normalizedKey = await this.resolveProjectKey(projectKey)
     const version = await this.prisma.version.findFirst({
       where: { id, projectKey: normalizedKey },
     })
@@ -512,11 +504,9 @@ export class VersionsService {
     return candidate
   }
 
-  private async ensureProjectExists(projectKey: string): Promise<void> {
-    const project = await this.prisma.project.findUnique({ where: { projectKey } })
-    if (!project) {
-      throw new NotFoundException("Project not found")
-    }
+  // 把外部 key 解析成当前项目的规范 key（含改名后的别名）；未命中抛 404。
+  private resolveProjectKey(projectKey: string): Promise<string> {
+    return this.projectResolver.resolveCanonicalKeyOrThrow(projectKey)
   }
 
   // 接受事务客户端而非直接用 this.prisma：调用方在 update 的事务内选出新 latest，

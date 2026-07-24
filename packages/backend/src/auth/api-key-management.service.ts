@@ -13,6 +13,7 @@ import { Injectable, Logger, UnauthorizedException } from "@nestjs/common"
 import { ConfigService } from "@nestjs/config"
 
 import { PrismaService } from "../database/prisma.service"
+import { ProjectResolverService } from "../database/project-resolver.service"
 import { normalizeProjectKey, nowSeconds } from "../common/utils"
 import { AVAILABLE_API_SCOPES, DEFAULT_API_SCOPES } from "./constants/api-scopes"
 import { CreateApiKeyDto } from "./dto/create-api-key.dto"
@@ -51,6 +52,7 @@ export class ApiKeyManagementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly projectResolver: ProjectResolverService,
   ) {}
 
   async validateApiKey(
@@ -432,15 +434,14 @@ export class ApiKeyManagementService {
       return false
     }
 
-    const project = await this.prisma.project.findUnique({
-      where: { projectKey: normalizeProjectKey(scope.projectKey) },
-      select: { projectKey: true },
-    })
-    if (!project) {
+    // 经别名解析成规范 key 再比对：scope 里存的是当前 projectKey，
+    // 用改名前的旧 key 请求也要能命中同一项目的授权。
+    const canonicalKey = await this.projectResolver.resolveCanonicalKey(scope.projectKey)
+    if (!canonicalKey) {
       return false
     }
 
-    return record.projectIds.includes(project.projectKey)
+    return record.projectIds.includes(canonicalKey)
   }
 
   private hashApiKey(rawApiKey: string): string {

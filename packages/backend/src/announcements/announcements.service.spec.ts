@@ -1,4 +1,5 @@
 import { NotFoundException } from "@nestjs/common"
+import { makeResolver } from "../../test/project-resolver.testkit"
 
 import { AnnouncementsService } from "./announcements.service"
 
@@ -37,7 +38,7 @@ describe("AnnouncementsService", () => {
       updatedAt: 1774078200000,
     })
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     const publishedAt = new Date("2026-03-21T08:00:00.000Z").getTime()
     const result = await service.create("project-1", {
       title: "发布说明",
@@ -89,7 +90,7 @@ describe("AnnouncementsService", () => {
       ],
     ])
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     await service.findAllByProjectKey("project-1", {
       limit: 20,
       offset: 0,
@@ -130,7 +131,7 @@ describe("AnnouncementsService", () => {
       updatedAt: 1774078200,
     })
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     await service.findLatestByProjectKey("project-1")
 
     expect(prisma.announcement.findFirst).toHaveBeenCalledWith({
@@ -143,7 +144,7 @@ describe("AnnouncementsService", () => {
     const prisma = createPrismaMock()
     prisma.announcement.findFirst.mockResolvedValue(null)
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
 
     await expect(service.findOne("project-1", "missing")).rejects.toBeInstanceOf(NotFoundException)
   })
@@ -152,7 +153,7 @@ describe("AnnouncementsService", () => {
     const prisma = createPrismaMock()
     prisma.announcement.count.mockResolvedValueOnce(10).mockResolvedValueOnce(3)
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     const stats = await service.getStatistics()
 
     expect(stats.count).toBe(10)
@@ -180,7 +181,7 @@ describe("AnnouncementsService", () => {
       ],
     ])
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     const result = await service.findAll("proj", { limit: 10, offset: 0 })
 
     expect(result.total).toBe(2)
@@ -191,7 +192,7 @@ describe("AnnouncementsService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     await expect(service.findAll("missing", { limit: 10, offset: 0 })).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -201,7 +202,7 @@ describe("AnnouncementsService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     await expect(service.findLatestByProjectKey("missing")).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -212,7 +213,7 @@ describe("AnnouncementsService", () => {
     prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
     prisma.announcement.findFirst.mockResolvedValue(null)
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     await expect(service.findLatestByProjectKey("proj")).rejects.toBeInstanceOf(NotFoundException)
   })
 
@@ -232,7 +233,7 @@ describe("AnnouncementsService", () => {
       updatedAt: 1000,
     })
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     await service.findLatestByProjectKey("proj", { platform: "ios" })
 
     expect(prisma.announcement.findFirst).toHaveBeenCalledWith({
@@ -261,7 +262,7 @@ describe("AnnouncementsService", () => {
       updatedAt: 2000,
     })
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     const result = await service.update("proj", "a1", { title: "Updated", is_pinned: true })
 
     expect(result.title).toBe("Updated")
@@ -272,7 +273,7 @@ describe("AnnouncementsService", () => {
     const prisma = createPrismaMock()
     prisma.announcement.findFirst.mockResolvedValue(null)
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     await expect(service.update("proj", "missing", { title: "x" })).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -283,7 +284,7 @@ describe("AnnouncementsService", () => {
     prisma.announcement.findFirst.mockResolvedValue({ id: "a1" })
     prisma.announcement.delete.mockResolvedValue({})
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     await service.remove("proj", "a1")
 
     expect(prisma.announcement.delete).toHaveBeenCalledWith({ where: { id: "a1" } })
@@ -293,7 +294,7 @@ describe("AnnouncementsService", () => {
     const prisma = createPrismaMock()
     prisma.announcement.findFirst.mockResolvedValue(null)
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     await expect(service.remove("proj", "missing")).rejects.toBeInstanceOf(NotFoundException)
   })
 
@@ -314,7 +315,7 @@ describe("AnnouncementsService", () => {
       updatedAt: 2000,
     })
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     const result = await service.updateById("a1", { title: "Updated" })
 
     expect(result.title).toBe("Updated")
@@ -324,7 +325,7 @@ describe("AnnouncementsService", () => {
     const prisma = createPrismaMock()
     prisma.announcement.findUnique.mockResolvedValue(null)
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     await expect(service.updateById("missing", { title: "x" })).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -336,7 +337,7 @@ describe("AnnouncementsService", () => {
     prisma.announcement.findFirst.mockResolvedValue({ id: "a1" })
     prisma.announcement.delete.mockResolvedValue({})
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     await service.removeById("a1")
 
     expect(prisma.announcement.delete).toHaveBeenCalledWith({ where: { id: "a1" } })
@@ -346,13 +347,13 @@ describe("AnnouncementsService", () => {
     const prisma = createPrismaMock()
     prisma.announcement.findUnique.mockResolvedValue(null)
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     await expect(service.removeById("missing")).rejects.toBeInstanceOf(NotFoundException)
   })
 
   it("getStatus returns module info", () => {
     const prisma = createPrismaMock()
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     expect(service.getStatus()).toEqual({ module: "announcements", implemented: true })
   })
 
@@ -361,7 +362,7 @@ describe("AnnouncementsService", () => {
     prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
     prisma.$transaction.mockResolvedValue([0, []])
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     const result = await service.findAllByProjectKey("proj", { limit: 10, offset: 0 })
 
     expect(result.total).toBe(0)
@@ -386,7 +387,7 @@ describe("AnnouncementsService", () => {
       updatedAt: 1000,
     })
 
-    const service = new AnnouncementsService(prisma as never)
+    const service = new AnnouncementsService(prisma as never, makeResolver(prisma))
     const result = await service.createByProjectKey("proj", { title: "T", content: "C" })
 
     expect(result.id).toBe("a1")

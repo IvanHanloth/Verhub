@@ -47,6 +47,8 @@ export type ProjectItem = {
   optional_update_min_comparable_version: string | null
   optional_update_max_comparable_version: string | null
   stats_retention_days: number
+  /** 改名后保留的旧 Project Key（别名），均可访问到本项目。新到旧排序。 */
+  aliases: string[]
   created_at: number
   updated_at: number
 }
@@ -149,6 +151,15 @@ export type ListResponse<T> = {
 }
 
 export type ProjectListResponse = ListResponse<ProjectItem>
+
+export type ProjectAliasItem = {
+  alias: string
+  created_at: number
+}
+
+export type ProjectAliasListResponse = {
+  data: ProjectAliasItem[]
+}
 export type VersionListResponse = ListResponse<VersionItem>
 export type AnnouncementListResponse = ListResponse<AnnouncementItem>
 export type FeedbackListResponse = ListResponse<FeedbackItem>

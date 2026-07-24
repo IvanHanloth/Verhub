@@ -118,6 +118,24 @@ model Project {
   requestStats                       ApiRequestStat[]
   clientVersionStats                 ClientVersionStat[]
   platformVersionStats               PlatformVersionStat[]
+  aliases                            ProjectAlias[]
+}
+
+/// 项目改名（变更 projectKey）后保留下来的旧 key。旧 key 作为别名指回当前项目，
+/// 公共与管理接口经 ProjectResolverService 解析后，用旧 key 仍能透明访问到项目内容。
+///
+/// `alias` 直接做主键：别名全局唯一，且不得与任何现存 projectKey 或其它别名重复
+/// —— 这层跨表唯一性由应用层在建项目/改名时校验，单表约束无法表达。
+/// onUpdate: Cascade —— 项目再次改名时，指向它的别名自动跟到新 projectKey，
+/// 别名链始终扁平地指向当前项目，不会退化成需要多跳解析的链条。
+model ProjectAlias {
+  alias      String @id
+  projectKey String
+  createdAt  Int    @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([projectKey])
 }
 
 /// Hourly rollup of public API requests, one row per

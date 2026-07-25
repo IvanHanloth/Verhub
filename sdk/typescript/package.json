@@ -46,6 +46,7 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
+    "test": "node --test tests/platform-declaration.test.mjs",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {

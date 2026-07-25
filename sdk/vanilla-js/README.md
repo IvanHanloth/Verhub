@@ -70,7 +70,10 @@ const client = new VerhubClient({
 - `undefined` 的字段不提交；显式 `null` 提交为 JSON null（更新接口用来置空）
 - 默认按环境探测平台**与系统版本**（浏览器记作 `web`、版本留空；Node 里能取到
   Windows `11` / `ubuntu 24.04` 等），经两个 `x-verhub-platform*` 头声明，仅用于统计；
-  可用 `setPlatform` / `setPlatformVersion` 事后更新
+  可用 `setPlatform` / `setPlatformVersion` 事后更新。两项各管各的：显式给了就用给的，
+  没给就自己探测；只有 `platform: null` 这个明确的退出声明会连带停掉版本探测。
+  两个值都会清洗成能安全进 HTTP 头的形式（非可打印 ASCII 按空白处理、折叠空白、
+  按 32 字符截断，洗完为空则不发），免得脏值让 `fetch` 抛 `TypeError` 弄挂请求
 - 错误分三类：`VerhubAuthError`（缺凭据的本地前置校验，请求没发出去）、
   `VerhubApiError`（非 2xx）、`VerhubConnectionError`（没到服务端），都继承自
   `VerhubError`

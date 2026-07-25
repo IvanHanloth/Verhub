@@ -47,8 +47,9 @@ class VerhubClient:
         :param token: 管理员 JWT 或 API Key；只调 public 接口时不用给
         :param platform: 平台声明；省略则按运行环境自动探测，传 ``None`` 则不声明。
             仅用于服务端请求统计，不影响接口返回内容
-        :param platform_version: 系统版本明细，如 ``11`` / ``ubuntu 24.04``；省略时
-            若平台也是自动探测，则一并从系统信息自动提取，传 ``None`` 则不声明
+        :param platform_version: 系统版本明细，如 ``11`` / ``ubuntu 24.04``；省略则
+            从系统信息自动提取（``platform`` 被显式关成 ``None`` 时除外），传
+            ``None`` 则不声明
         :param timeout: 单次请求超时（秒）；传 ``(connect, read)`` 元组可分别指定
             连接与读取超时
         :param retries: 连接失败与幂等请求的自动重试次数，默认 2；POST 不自动重试，

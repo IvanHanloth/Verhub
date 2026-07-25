@@ -37,6 +37,44 @@ PLATFORM_VERSION_HEADER = "x-verhub-platform-version"
 #: 系统版本明细的长度上限，与服务端一致，超出直接截断。
 MAX_PLATFORM_VERSION_LENGTH = 32
 
+#: 老 Windows 的 NT 内核号 → 市场版本号。Win10/11 都是 10.0，另按构建号区分。
+WINDOWS_NT_TO_MARKET = {(6, 1): "7", (6, 2): "8", (6, 3): "8.1"}
+
+
+def sanitize_platform_version(value: str) -> str:
+    """
+    把系统版本明细规整成能安全放进 HTTP 头的形式。
+
+    请求头只能承载 ASCII，而这个值未必干净：调用方用错编码读系统版本时拿到的
+    就是 ``Microsoft Windows [\\ufffd汾 10.0.26200.8875]`` 这种串。不清洗的话，
+    ``requests`` 会在 latin-1 编码这一步抛异常，整个请求跟着失败——一个纯统计
+    用的头不该有本事弄挂业务请求。
+
+    清洗规则：非可打印 ASCII 的字符一律当作空白（版本号本身是 ASCII，能完整
+    留下），折叠连续空白，再按 :data:`MAX_PLATFORM_VERSION_LENGTH` 截断。
+    四个语言的 SDK 用同一套规则。
+
+    :param value: 原始版本明细
+    :return: 清洗后的版本明细；空串表示无从得知，此时不发这个头
+    """
+    ascii_only = "".join(c if " " < c <= "~" else " " for c in value)
+    return " ".join(ascii_only.split())[:MAX_PLATFORM_VERSION_LENGTH].rstrip()
+
+
+def _header_safe(value: Optional[str]) -> Optional[str]:
+    """
+    清洗一个要进请求头的来源声明，洗完是空串就收敛成 ``None``（即不发这个头）。
+
+    平台声明同样走这一步：它在 Python 里是自由字符串，调用方塞进非 ASCII 一样
+    会让 ``requests`` 抛异常，而 Rust / TS 那边平台是枚举，天然没这个口子。
+
+    :param value: 原始声明
+    :return: 可安全进头的值，或 ``None``
+    """
+    if not value:
+        return None
+    return sanitize_platform_version(value) or None
+
 
 def detect_platform() -> str:
     """
@@ -72,14 +110,15 @@ def detect_platform_version() -> str:
         if name.startswith("win"):
             info = sys.getwindowsversion()  # type: ignore[attr-defined]
             # Win11 仍上报内核 10.0，只有构建号 >= 22000 能区分出来。
-            if info.major == 10 and info.build >= 22000:
-                return "11"
-            return str(info.major)
+            if info.major == 10 and info.minor == 0:
+                return "11" if info.build >= 22000 else "10"
+            # 更老的 Windows 只能靠 NT 内核号还原市场版本号。
+            return WINDOWS_NT_TO_MARKET.get((info.major, info.minor), "")
 
         if name == "darwin":
             import platform as _platform
 
-            return _platform.mac_ver()[0] or ""
+            return sanitize_platform_version(_platform.mac_ver()[0] or "")
 
         if name.startswith("linux"):
             import platform as _platform
@@ -90,9 +129,7 @@ def detect_platform_version() -> str:
                     data = read_os_release()
                     distro = (data.get("ID") or "").strip().lower()
                     version = (data.get("VERSION_ID") or "").strip()
-                    combined = f"{distro} {version}".strip()
-                    if combined:
-                        return combined[:MAX_PLATFORM_VERSION_LENGTH]
+                    return sanitize_platform_version(f"{distro} {version}")
                 except OSError:
                     pass
             return ""
@@ -185,9 +222,10 @@ class HttpClient:
         :param base_url: API 根地址，须包含 ``/api/v1`` 前缀
         :param project_key: 绑定的项目标识；项目作用域的方法默认用它
         :param token: 管理员 JWT 或 API Key，仅 admin 接口需要
-        :param platform: 平台声明；省略则自动探测，传 ``None`` 则不声明
-        :param platform_version: 系统版本明细；省略时若平台也是自动探测则一并
-            自动探测，传 ``None`` 则不声明
+        :param platform: 平台声明；省略则自动探测，传 ``None`` 则不声明。指定它
+            不影响系统版本明细，后者仍会自动探测
+        :param platform_version: 系统版本明细；省略则自动探测（平台被显式关成
+            ``None`` 时除外），传 ``None`` 则不声明
         :param timeout: 单次请求超时（秒）。单值表示连接与读取共用，传
             ``(connect, read)`` 元组可分别指定——更新检查常希望连接快速失败、
             读取宽松些
@@ -213,17 +251,19 @@ class HttpClient:
             if app_identifier:
                 self.user_agent = f"{self.user_agent} {app_identifier.strip()}"
 
-        auto_platform = isinstance(platform, UnsetType)
-        self.platform = detect_platform() if auto_platform else platform
+        # 两个维度各管各的：显式给了就用给的，没给就自己探测。显式指定平台不再
+        # 连带禁掉版本探测——那样会让「声明了平台」的调用方彻底报不上系统版本，
+        # 而这正是绝大多数客户端的用法。唯一的例外是显式传 platform=None：那是
+        # 明确的退出声明，版本一并不报。
+        self.platform = _header_safe(
+            detect_platform() if isinstance(platform, UnsetType) else platform
+        )
 
         if isinstance(platform_version, UnsetType):
-            # 平台是自己探测出来的，才顺带把版本也探测了——用户指定了平台却由我们
-            # 猜版本，很容易出现「平台 linux、版本却是 windows 11」的错配。
-            self.platform_version = (
-                (detect_platform_version() or None) if (auto_platform and self.platform) else None
-            )
+            self.platform_version = detect_platform_version() if self.platform else None
         else:
             self.platform_version = platform_version
+        self.platform_version = _header_safe(self.platform_version)
 
     def set_token(self, token: str) -> None:
         """
@@ -245,13 +285,14 @@ class HttpClient:
         """
         :param platform: 平台声明；传 ``None`` 则不再声明平台
         """
-        self.platform = platform
+        self.platform = _header_safe(platform)
 
     def set_platform_version(self, platform_version: Optional[str]) -> None:
         """
         :param platform_version: 系统版本明细；传 ``None`` 则不再声明
         """
-        self.platform_version = platform_version
+        # 存进来就已清洗过，请求路径上拿到的一定是能进头的值。
+        self.platform_version = _header_safe(platform_version)
 
     def require_project_key(self) -> str:
         """

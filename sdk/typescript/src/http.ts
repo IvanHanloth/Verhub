@@ -11,6 +11,33 @@ export const PLATFORM_VERSION_HEADER = "x-verhub-platform-version"
 /** 系统版本明细的长度上限，与服务端一致，超出直接截断。 */
 const MAX_PLATFORM_VERSION_LENGTH = 32
 
+/**
+ * 把系统版本明细规整成能安全放进 HTTP 头的形式。
+ *
+ * 请求头只能承载 ASCII，而这个值未必干净：调用方用错编码读系统版本时拿到的就是
+ * `Microsoft Windows [�汾 10.0.26200.8875]` 这种串。不清洗的话 `fetch` 会
+ * 直接抛 `TypeError`，整个请求跟着失败——一个纯统计用的头不该有本事弄挂业务请求。
+ *
+ * 清洗规则：非可打印 ASCII 的字符一律当作空白（版本号本身是 ASCII，能完整留下），
+ * 折叠连续空白，再按 {@link MAX_PLATFORM_VERSION_LENGTH} 截断。返回空串表示无从
+ * 得知，此时不发这个头。四个语言的 SDK 用同一套规则。
+ *
+ * @param value 原始声明
+ */
+export function sanitizePlatformVersion(value: string): string {
+  return value
+    .replace(/[^\x21-\x7e]/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, MAX_PLATFORM_VERSION_LENGTH)
+    .trimEnd()
+}
+
+/** {@link sanitizePlatformVersion} 的 null 版：洗完是空串就收敛成 null（不发这个头）。 */
+function headerSafe(value: string | null): string | null {
+  return value ? sanitizePlatformVersion(value) || null : null
+}
+
 /** 默认重试次数。只作用于连接失败与幂等方法（GET/HEAD），POST 不自动重试。 */
 const DEFAULT_RETRIES = 2
 
@@ -42,9 +69,9 @@ export type VerhubClientOptions = {
   projectKey?: string
   /** 管理员 JWT 或 API Key；只调 public 接口时不用给。 */
   token?: string
-  /** 平台声明；省略则按运行环境自动探测，传 null 则不声明。 */
+  /** 平台声明；省略则按运行环境自动探测，传 null 则不声明。不影响下面的系统版本明细。 */
   platform?: Platform | null
-  /** 系统版本明细；省略时若平台也是自动探测则一并自动提取，传 null 则不声明。 */
+  /** 系统版本明细；省略则自动提取（`platform` 被显式关成 null 时除外），传 null 则不声明。 */
   platformVersion?: string | null
   /** 单次请求超时（毫秒），默认 15000；传 0 表示不超时。 */
   timeoutMs?: number
@@ -162,7 +189,7 @@ function linuxDistroVersion(): string {
     const unquote = (value: string | undefined) => (value ?? "").trim().replace(/^["']|["']$/g, "")
     const id = unquote(/^ID=(.*)$/m.exec(text)?.[1]).toLowerCase()
     const version = unquote(/^VERSION_ID=(.*)$/m.exec(text)?.[1])
-    return `${id} ${version}`.trim().slice(0, MAX_PLATFORM_VERSION_LENGTH)
+    return sanitizePlatformVersion(`${id} ${version}`)
   } catch {
     return ""
   }
@@ -284,16 +311,16 @@ export class HttpClient {
       ? `verhub-sdk-js/${VERHUB_SDK_VERSION}${appId ? ` ${appId}` : ""}`
       : null
 
-    const autoPlatform = options.platform === undefined
-    // 内联三元让 TS 能收窄掉 undefined；用 autoPlatform 变量则窄不了。
+    // 两个维度各管各的：显式给了就用给的，没给就自己探测。显式指定平台不再连带
+    // 禁掉版本探测——那样会让「声明了平台」的调用方彻底报不上系统版本，而这正是
+    // 绝大多数客户端的用法。唯一的例外是显式传 platform: null：那是明确的退出
+    // 声明，版本一并不报。
     this.platform = options.platform === undefined ? detectPlatform() : options.platform
 
     if (options.platformVersion === undefined) {
-      // 平台是自己探测出来的，才顺带把版本也探测了——用户指定了平台却由我们
-      // 猜版本，很容易出现「平台 linux、版本却是 windows 11」的错配。
-      this.platformVersion = autoPlatform && this.platform ? detectPlatformVersion() || null : null
+      this.platformVersion = this.platform ? headerSafe(detectPlatformVersion()) : null
     } else {
-      this.platformVersion = options.platformVersion
+      this.platformVersion = headerSafe(options.platformVersion)
     }
 
     const fetcher = options.fetch ?? globalThis.fetch
@@ -334,7 +361,8 @@ export class HttpClient {
    * @param platformVersion 系统版本明细；传 null 则不再声明
    */
   setPlatformVersion(platformVersion: string | null): void {
-    this.platformVersion = platformVersion
+    // 存进来就已清洗过，请求路径上拿到的一定是能进头的值。
+    this.platformVersion = headerSafe(platformVersion)
   }
 
   /** 当前绑定的项目标识。 */

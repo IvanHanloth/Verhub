@@ -85,6 +85,13 @@ client.setPlatform("linux") // 事后更新
 client.setPlatformVersion("ubuntu 24.04")
 ```
 
+两项各管各的：显式给了就用给的，没给就自己探测——指定 `platform` 不影响版本探测。
+只有 `platform: null` 会连带停掉版本探测（此时仍可单独给 `platformVersion`）。
+
+版本明细会在存入时清洗成能安全进 HTTP 头的形式：非可打印 ASCII 按空白处理、折叠
+空白、按 32 字符截断，洗完为空则不发这个头。用错编码读出来的 `...[�汾 10.0...]`
+这类串因此不会让 `fetch` 抛 `TypeError`，把整个请求带下水。
+
 ## 错误处理
 
 ```ts

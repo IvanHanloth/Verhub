@@ -21,6 +21,41 @@ pub const PLATFORM_VERSION_HEADER: &str = "x-verhub-platform-version";
 /// 系统版本明细的长度上限，与服务端一致，超出直接截断。
 const MAX_PLATFORM_VERSION_LENGTH: usize = 32;
 
+/// 老 Windows 的 NT 内核号 → 市场版本号。Win10/11 都是 10.0，另按构建号区分。
+const WINDOWS_NT_TO_MARKET: [(&str, &str); 3] = [("6.1", "7"), ("6.2", "8"), ("6.3", "8.1")];
+
+/// 把系统版本明细规整成能安全放进 HTTP 头的形式。
+///
+/// 请求头只能承载 ASCII，而这个值未必干净：调用方用错编码读系统版本时拿到的
+/// 就是 `Microsoft Windows [\u{FFFD}汾 10.0.26200.8875]` 这种串。不清洗的话，
+/// reqwest 会让 `HeaderValue::from_str` 失败、这个头被静默丢掉（数据无声消失），
+/// 而 Python 的 requests 与 JS 的 fetch 则会直接让整个请求失败。
+///
+/// 清洗规则：非可打印 ASCII 的字符一律当作空白（版本号本身是 ASCII，能完整留
+/// 下），折叠连续空白，再按 [`MAX_PLATFORM_VERSION_LENGTH`] 截断。返回空串表示
+/// 无从得知，此时不发这个头。四个语言的 SDK 用同一套规则。
+fn sanitize_platform_version(value: &str) -> String {
+    value
+        .chars()
+        .map(|c| if c.is_ascii_graphic() { c } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(MAX_PLATFORM_VERSION_LENGTH)
+        .collect::<String>()
+        .trim_end()
+        .to_string()
+}
+
+/// [`sanitize_platform_version`] 的 `Option` 版：洗完是空串就收敛成 `None`，
+/// 免得每个调用点各自判空。
+fn clean_version(value: String) -> Option<String> {
+    let cleaned = sanitize_platform_version(&value);
+    (!cleaned.is_empty()).then_some(cleaned)
+}
+
 /// 默认重试次数。只作用于连接失败与幂等方法（GET），POST 不自动重试。
 const DEFAULT_RETRIES: usize = 2;
 
@@ -58,11 +93,16 @@ pub fn detect_platform_version() -> String {
 
     let info = os_info::get();
 
-    // Win11 内核仍是 10.0，只有构建号 >= 22000 能区分出来。
     if info.os_type() == Type::Windows {
         if let Version::Semantic(major, minor, build) = info.version() {
+            // Win11 内核仍是 10.0，只有构建号 >= 22000 能区分出来。
             if *major == 10 && *minor == 0 {
                 return if *build >= 22000 { "11".into() } else { "10".into() };
+            }
+            // 更老的 Windows 只能靠 NT 内核号还原市场版本号。
+            let nt = format!("{major}.{minor}");
+            if let Some((_, market)) = WINDOWS_NT_TO_MARKET.iter().find(|(key, _)| *key == nt) {
+                return (*market).to_string();
             }
         }
     }
@@ -78,7 +118,7 @@ pub fn detect_platform_version() -> String {
         other => format!("{} {}", other.to_string().to_lowercase(), version),
     };
 
-    combined.chars().take(MAX_PLATFORM_VERSION_LENGTH).collect()
+    sanitize_platform_version(&combined)
 }
 
 /// 两个命名空间共用的连接、凭据与来源声明。
@@ -128,7 +168,8 @@ impl Inner {
     }
 
     pub(crate) fn set_platform_version(&self, version: Option<String>) {
-        *write_lock(&self.platform_version) = version;
+        // 存进来就已清洗过，请求路径上拿到的一定是能进头的值。
+        *write_lock(&self.platform_version) = version.and_then(clean_version);
     }
 
     fn token(&self) -> String {
@@ -181,6 +222,7 @@ impl Inner {
             if let Some(platform) = platform {
                 builder = builder.header(PLATFORM_HEADER, platform.as_str());
             }
+            // 存的时候已清洗成可打印 ASCII，from_str 不会失败。
             if let Some(version) = &platform_version {
                 if let Ok(value) = HeaderValue::from_str(version) {
                     builder = builder.header(PLATFORM_VERSION_HEADER, value);
@@ -318,20 +360,20 @@ impl VerhubClientBuilder {
         self
     }
 
-    /// 覆盖自动探测出的平台。
+    /// 覆盖自动探测出的平台。不影响系统版本明细，后者仍会自动探测。
     pub fn platform(mut self, platform: Platform) -> Self {
         self.platform = Some(Some(platform));
         self
     }
 
-    /// 完全不声明平台（同时也不会自动探测系统版本）。
+    /// 完全不声明平台。这是明确的退出声明，系统版本明细也随之不再自动探测；
+    /// 仍想报版本的话显式调用 [`Self::platform_version`]。
     pub fn without_platform(mut self) -> Self {
         self.platform = Some(None);
         self
     }
 
-    /// 系统版本明细，如 `11` / `ubuntu 24.04`；省略时若平台也是自动探测则一并
-    /// 从系统信息自动提取。
+    /// 系统版本明细，如 `11` / `ubuntu 24.04`；省略则从系统信息自动提取。
     pub fn platform_version(mut self, version: impl Into<String>) -> Self {
         self.platform_version = Some(version.into());
         self
@@ -401,16 +443,14 @@ impl VerhubClientBuilder {
             HeaderValue::from_str(&user_agent).map_err(|_| Error::InvalidBaseUrl(user_agent))?,
         );
 
-        // 平台是自己探测出来的，才顺带把版本也探测了——用户指定了平台却由我们
-        // 猜版本，很容易出现「平台 linux、版本却是 windows 11」的错配。
-        let auto_platform = self.platform.is_none();
+        // 两个维度各管各的：显式给了就用给的，没给就自己探测。显式指定平台
+        // 不再连带禁掉版本探测——那样会让「声明了平台」的调用方彻底报不上系统
+        // 版本，而这正是绝大多数客户端的用法。
+        // 唯一的例外是 without_platform()：那是明确的退出声明，版本一并不报。
         let platform = self.platform.unwrap_or_else(|| Some(detect_platform()));
         let platform_version = match self.platform_version {
-            Some(version) => Some(version),
-            None if auto_platform && platform.is_some() => {
-                let detected = detect_platform_version();
-                (!detected.is_empty()).then_some(detected)
-            }
+            Some(version) => clean_version(version),
+            None if platform.is_some() => clean_version(detect_platform_version()),
             None => None,
         };
 
@@ -431,5 +471,116 @@ impl VerhubClientBuilder {
             platform: RwLock::new(platform),
             platform_version: RwLock::new(platform_version),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 用错编码读出来的系统版本：非 ASCII 部分必须被剔掉，ASCII 的版本号留下，
+    /// 且结果一定进得了 HTTP 头。
+    #[test]
+    fn sanitize_strips_mojibake_but_keeps_the_version_number() {
+        let raw = "Microsoft Windows [\u{FFFD}汾 10.0.26200.8875]";
+        let cleaned = sanitize_platform_version(raw);
+        assert_eq!(cleaned, "Microsoft Windows [ 10.0.26200.8");
+        assert!(
+            HeaderValue::from_str(&cleaned).is_ok(),
+            "清洗后必须能进请求头，否则这个头会被静默丢掉"
+        );
+    }
+
+    #[test]
+    fn sanitize_folds_whitespace_and_trims() {
+        assert_eq!(sanitize_platform_version("  ubuntu\t\n 24.04  "), "ubuntu 24.04");
+        assert_eq!(sanitize_platform_version("11"), "11");
+    }
+
+    #[test]
+    fn sanitize_truncates_to_the_server_limit() {
+        let cleaned = sanitize_platform_version(&"9".repeat(100));
+        assert_eq!(cleaned.chars().count(), MAX_PLATFORM_VERSION_LENGTH);
+    }
+
+    #[test]
+    fn sanitize_yields_empty_when_nothing_survives() {
+        assert_eq!(sanitize_platform_version("版本"), "");
+        assert_eq!(sanitize_platform_version("   "), "");
+        assert_eq!(clean_version("版本".to_string()), None, "空串收敛成 None");
+        assert_eq!(clean_version("11".to_string()), Some("11".to_string()));
+    }
+
+    /// 换行 / 回车若混进头值会构成响应头注入，必须一并清掉。
+    #[test]
+    fn sanitize_removes_control_characters() {
+        let cleaned = sanitize_platform_version("11\r\nX-Injected: 1");
+        assert!(!cleaned.contains('\r') && !cleaned.contains('\n'), "{cleaned}");
+        assert!(HeaderValue::from_str(&cleaned).is_ok());
+    }
+
+    /// 显式声明平台不该再连带禁掉版本探测。
+    #[test]
+    fn explicit_platform_keeps_auto_detected_version() {
+        let inner = VerhubClientBuilder::new("https://example.com/api/v1")
+            .platform(Platform::Windows)
+            .build_inner()
+            .expect("构造客户端");
+        assert_eq!(*read_lock(&inner.platform), Some(Platform::Windows));
+        assert_eq!(
+            read_lock(&inner.platform_version).clone(),
+            clean_version(detect_platform_version()),
+            "指定平台后版本仍应自动探测并带上"
+        );
+    }
+
+    /// 显式给的版本优先于探测值，且同样要过清洗。
+    #[test]
+    fn explicit_version_wins_and_is_sanitized() {
+        let inner = VerhubClientBuilder::new("https://example.com/api/v1")
+            .platform_version("  Windows\u{FFFD} 11  ")
+            .build_inner()
+            .expect("构造客户端");
+        assert_eq!(
+            read_lock(&inner.platform_version).clone(),
+            Some("Windows 11".to_string())
+        );
+    }
+
+    /// without_platform 是明确的退出声明，版本也一并不报。
+    #[test]
+    fn without_platform_reports_nothing() {
+        let inner = VerhubClientBuilder::new("https://example.com/api/v1")
+            .without_platform()
+            .build_inner()
+            .expect("构造客户端");
+        assert_eq!(*read_lock(&inner.platform), None);
+        assert_eq!(read_lock(&inner.platform_version).clone(), None);
+    }
+
+    /// 但退出声明只针对自动探测：显式给的版本仍然照发。
+    #[test]
+    fn without_platform_still_honours_an_explicit_version() {
+        let inner = VerhubClientBuilder::new("https://example.com/api/v1")
+            .without_platform()
+            .platform_version("ubuntu 24.04")
+            .build_inner()
+            .expect("构造客户端");
+        assert_eq!(
+            read_lock(&inner.platform_version).clone(),
+            Some("ubuntu 24.04".to_string())
+        );
+    }
+
+    /// 探测值本身必须是干净的 ASCII——它会直接进请求头。
+    #[test]
+    fn detected_version_is_header_safe() {
+        let detected = detect_platform_version();
+        assert!(
+            detected.chars().all(|c| c.is_ascii_graphic() || c == ' '),
+            "探测出的系统版本含非 ASCII 字符: {detected:?}"
+        );
+        assert!(detected.chars().count() <= MAX_PLATFORM_VERSION_LENGTH);
+        assert!(HeaderValue::from_str(&detected).is_ok());
     }
 }

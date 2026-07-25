@@ -20,6 +20,42 @@ const PLATFORM_VERSION_HEADER = "x-verhub-platform-version"
 /** 系统版本明细的长度上限，与服务端一致，超出直接截断。 */
 const MAX_PLATFORM_VERSION_LENGTH = 32
 
+/**
+ * 把系统版本明细规整成能安全放进 HTTP 头的形式。
+ *
+ * 请求头只能承载 ASCII，而这个值未必干净：调用方用错编码读系统版本时拿到的就是
+ * `Microsoft Windows [�汾 10.0.26200.8875]` 这种串。不清洗的话 fetch 会直接抛
+ * TypeError，整个请求跟着失败——一个纯统计用的头不该有本事弄挂业务请求。
+ *
+ * 清洗规则：非可打印 ASCII 的字符一律当作空白（版本号本身是 ASCII，能完整留下），
+ * 折叠连续空白，再按 MAX_PLATFORM_VERSION_LENGTH 截断。返回空串表示无从得知，
+ * 此时不发这个头。四个语言的 SDK 用同一套规则。
+ *
+ * @param {string} value 原始声明
+ * @returns {string}
+ */
+function sanitizePlatformVersion(value) {
+  return String(value || "")
+    .replace(/[^\x21-\x7e]/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, MAX_PLATFORM_VERSION_LENGTH)
+    .trimEnd()
+}
+
+/**
+ * sanitizePlatformVersion 的 null 版：洗完是空串就收敛成 null（不发这个头）。
+ *
+ * 平台声明同样走这一步：它在纯 JS 里是自由字符串，调用方塞进非 ASCII 一样会让
+ * fetch 抛异常，而 Rust / TS 那边平台是枚举，天然没这个口子。
+ *
+ * @param {string | null | undefined} value
+ * @returns {string | null}
+ */
+function headerSafe(value) {
+  return value ? sanitizePlatformVersion(value) || null : null
+}
+
 /** 默认重试次数。只作用于连接失败与幂等方法（GET/HEAD），POST 不自动重试。 */
 const DEFAULT_RETRIES = 2
 
@@ -186,7 +222,7 @@ function linuxDistroVersion() {
     const unquote = (value) => (value || "").trim().replace(/^["']|["']$/g, "")
     const id = unquote((/^ID=(.*)$/m.exec(text) || [])[1]).toLowerCase()
     const version = unquote((/^VERSION_ID=(.*)$/m.exec(text) || [])[1])
-    return `${id} ${version}`.trim().slice(0, MAX_PLATFORM_VERSION_LENGTH)
+    return sanitizePlatformVersion(`${id} ${version}`)
   } catch {
     return ""
   }
@@ -307,15 +343,16 @@ class HttpClient {
       ? `verhub-sdk-js/${VERHUB_SDK_VERSION}${appId ? ` ${appId}` : ""}`
       : null
 
-    const autoPlatform = options.platform === undefined
-    this.platform = autoPlatform ? detectPlatform() : options.platform
+    // 两个维度各管各的：显式给了就用给的，没给就自己探测。显式指定平台不再连带
+    // 禁掉版本探测——那样会让「声明了平台」的调用方彻底报不上系统版本，而这正是
+    // 绝大多数客户端的用法。唯一的例外是显式传 platform: null：那是明确的退出
+    // 声明，版本一并不报。
+    this.platform = headerSafe(options.platform === undefined ? detectPlatform() : options.platform)
 
     if (options.platformVersion === undefined) {
-      // 平台是自己探测出来的，才顺带把版本也探测了——用户指定了平台却由我们
-      // 猜版本，很容易出现「平台 linux、版本却是 windows 11」的错配。
-      this.platformVersion = autoPlatform && this.platform ? detectPlatformVersion() || null : null
+      this.platformVersion = this.platform ? headerSafe(detectPlatformVersion()) : null
     } else {
-      this.platformVersion = options.platformVersion
+      this.platformVersion = headerSafe(options.platformVersion)
     }
 
     const fetcher = options.fetch || globalThis.fetch
@@ -349,14 +386,15 @@ class HttpClient {
    * @param {string | null} platform 平台声明；传 null 则不再声明平台
    */
   setPlatform(platform) {
-    this.platform = platform
+    this.platform = headerSafe(platform)
   }
 
   /**
    * @param {string | null} platformVersion 系统版本明细；传 null 则不再声明
    */
   setPlatformVersion(platformVersion) {
-    this.platformVersion = platformVersion
+    // 存进来就已清洗过，请求路径上拿到的一定是能进头的值。
+    this.platformVersion = headerSafe(platformVersion)
   }
 
   /**
@@ -1284,6 +1322,7 @@ export {
   VerhubConnectionError,
   detectPlatform,
   detectPlatformVersion,
+  sanitizePlatformVersion,
   compact,
   PLATFORM_HEADER,
   PLATFORM_VERSION_HEADER,

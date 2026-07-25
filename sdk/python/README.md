@@ -72,9 +72,16 @@ client = VerhubClient(base_url, "verhub", platform="linux", platform_version="ub
 client.set_platform("linux")
 client.set_platform_version("ubuntu 24.04")
 
-# 完全不声明平台（也就不再自动探测版本）
+# 完全不声明平台（这是明确的退出声明，也就不再自动探测版本）
 client = VerhubClient(base_url, "verhub", platform=None)
 ```
+
+两项各管各的：显式给了就用给的，没给就自己探测——指定 `platform` 不影响版本探测。
+只有 `platform=None` 会连带停掉版本探测（此时仍可单独给 `platform_version`）。
+
+版本明细会在存入时清洗成能安全进 HTTP 头的形式：非可打印 ASCII 按空白处理、折叠
+空白、按 32 字符截断，洗完为空则不发这个头。用错编码读出来的 `...[�汾 10.0...]`
+这类串因此不会让 `requests` 在编码请求头时抛异常，把整个请求带下水。
 
 ## 异步用法
 

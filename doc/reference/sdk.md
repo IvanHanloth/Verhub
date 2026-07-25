@@ -355,9 +355,17 @@ Linux / iOS / Android 各归其位，浏览器与 Worker 记作 `web`，认不�
 - 完全不声明平台：Python / TS 传 `platform=None` / `platform: null`，Rust 用
   `.without_platform()`。
 
-注意：只有平台是**自动探测**出来的时候才会顺带自动探测版本；一旦你显式指定了
-`platform`，版本就不再自动填（避免「平台 linux、版本却是 windows 11」的错配），需要
-时请一并显式给 `platform_version`。
+两个维度**各管各的**：某一项显式给了就用给的，没给就自己探测。显式指定 `platform`
+不会连带禁掉版本探测——绝大多数客户端都会声明自己的平台，若因此彻底报不上系统版本，
+这个维度就形同虚设。唯一的例外是**显式关闭平台**（`platform=None` / `platform: null`
+/ `.without_platform()`）：那是明确的退出声明，版本随之也不再自动探测；此时仍想报版本
+的话，单独显式给 `platform_version` 即可。
+
+::: warning 编码
+`x-verhub-platform-version` 是 HTTP 头，只能承载 ASCII。SDK 在**存入时**就把这个值
+（无论自动探测还是你显式给的）清洗一遍：非可打印 ASCII 的字符按空白处理、折叠连续
+空白、按 32 字符截断，洗完为空则干脆不发这个头。
+:::
 
 ## 发布说明
 

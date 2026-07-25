@@ -14,6 +14,7 @@ export {
   PLATFORM_HEADER,
   PLATFORM_VERSION_HEADER,
   type RequestQuery,
+  sanitizePlatformVersion,
   type VerhubClientOptions,
 } from "./http"
 export * from "./models"

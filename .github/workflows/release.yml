@@ -1,18 +1,20 @@
 name: Release
 
 # 手动触发的唯一发版入口：填一个版本号，工作流会
-#   1. 把版本号写进所有可发布包的 package.json（scripts/version.mjs）；
-#   2. 提交这次改动并推回当前分支，然后打上 v<版本号> 的 tag 并推送；
+#   1. 把版本号写进所有可发布物（scripts/version.mjs）；
+#   2. 以 OIDC 身份向 octo-sts（https://octo-sts.dev）换取本仓库 contents:write
+#      的短期 token，经 GraphQL createCommitOnBranch 把变更提交到触发分支——
+#      API 创建的提交由 GitHub 服务端签名（Verified 徽章）——再打上 v<版本> 附注 tag；
 #   3. 用该版本号构建 backend / frontend 镜像并推送到 ghcr.io 与 Docker Hub；
-#   4. 发布 GitHub Release。
-#
+#   4. 发布各语言 SDK 与 GitHub Release。
+
 # 这是仓库里唯一会构建并推送 Docker 镜像的工作流——push 到 main 不再自动打包。
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "要发布的版本号，例如 1.2.3 或 1.3.0-rc.1（可带前导 v）"
+        description: "要发布的版本号，例如 1.2.3 或 1.3.0-rc.1（可带前导 v）；对应 tag 已存在时仅重新构建发布"
         required: true
         type: string
 
@@ -20,12 +22,13 @@ jobs:
   bump:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read # 推送走 octo-sts 换来的 token，GITHUB_TOKEN 只读
+      id-token: write # octo-sts 换 token 依赖 OIDC
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       is_prerelease: ${{ steps.version.outputs.is_prerelease }}
-      published_at: ${{ steps.bump.outputs.published_at }}
+      published_at: ${{ steps.mode.outputs.published_at }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,35 +46,96 @@ jobs:
       - name: Rebuild vanilla-js global bundle
         run: node sdk/vanilla-js/build.mjs
 
-      - name: Commit, tag and push
-        id: bump
+      - name: Determine release mode
+        id: mode
         env:
           TAG: ${{ steps.version.outputs.tag }}
         run: |
-          # tag 已存在说明这个版本发过了，直接失败而不是覆盖历史
           if git ls-remote --tags --exit-code origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "::error::tag $TAG 已存在于远端，请换一个新版本号"
+            echo "tag $TAG 已存在，本次仅重新构建发布"
+            echo "rebuild=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag $TAG 不存在，本次为新发版"
+            echo "rebuild=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "published_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      # 以 OIDC 身份向 octo-sts 换取本仓库 contents:write 的短期 token，
+      # job 结束时由该 action 的 post 步骤吊销
+      - name: Federate token via octo-sts
+        if: steps.mode.outputs.rebuild != 'true'
+        id: sts
+        uses: octo-sts/action@main
+        with:
+          scope: ${{ github.repository }}
+          identity: tag-release
+
+      - name: Create verified commit and tag
+        if: steps.mode.outputs.rebuild != 'true'
+        env:
+          STS_TOKEN: ${{ steps.sts.outputs.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          # 版本号真源与所有跟随文件，与 scripts/version.mjs 的目标清单保持一致
+          files=(
+            package.json
+            packages/backend/package.json
+            packages/ui/package.json
+            web/package.json
+            doc/package.json
+            sdk/typescript/package.json
+            sdk/typescript/src/version.ts
+            sdk/vanilla-js/package.json
+            sdk/vanilla-js/verhub-sdk.js
+            sdk/vanilla-js/verhub-sdk.global.js
+            sdk/python/verhub_sdk/_version.py
+            sdk/rust/Cargo.toml
+            sdk/rust/src/lib.rs
+          )
+
+          additions='[]'
+          for f in "${files[@]}"; do
+            additions=$(jq --arg path "$f" --arg contents "$(base64 -w0 "$f")" \
+              '. + [{path: $path, contents: $contents}]' <<<"$additions")
+          done
+
+          jq -n \
+            --arg query 'mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }' \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg branch "$GITHUB_REF_NAME" \
+            --arg head "$GITHUB_SHA" \
+            --arg headline "chore(release): $TAG" \
+            --argjson additions "$additions" \
+            '{query: $query, variables: {input: {
+                branch: {repositoryNameWithOwner: $repo, branchName: $branch},
+                expectedHeadOid: $head,
+                message: {headline: $headline},
+                fileChanges: {additions: $additions}}}}' > /tmp/commit-body.json
+
+          resp=$(curl -sS -H "Authorization: Bearer $STS_TOKEN" \
+            -d @/tmp/commit-body.json https://api.github.com/graphql)
+          commit_oid=$(jq -r '.data.createCommitOnBranch.commit.oid // empty' <<<"$resp")
+          if [ -z "$commit_oid" ]; then
+            echo "::error::创建提交失败：$(jq -r '.errors[0].message // .message // "未知错误"' <<<"$resp")"
+            exit 1
+          fi
+          echo "版本号已提交至 $GITHUB_REF_NAME：$commit_oid"
+
+          # 带 message 的附注 tag
+          tag_sha=$(curl -sS -H "Authorization: Bearer $STS_TOKEN" \
+            -d "$(jq -n --arg tag "$TAG" --arg oid "$commit_oid" \
+              '{tag: $tag, message: "verhub \($tag)", object: $oid, type: "commit"}')" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/tags" | jq -r '.sha // empty')
+          if [ -z "$tag_sha" ]; then
+            echo "::error::创建 tag 对象失败（Octo STS 是否已放行 tag 规则？）"
             exit 1
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # 版本号真源与所有跟随文件，与 scripts/version.mjs 的目标清单保持一致
-          git add package.json packages/backend/package.json packages/ui/package.json \
-                  web/package.json doc/package.json \
-                  sdk/typescript/package.json sdk/typescript/src/version.ts \
-                  sdk/vanilla-js/package.json sdk/vanilla-js/verhub-sdk.js \
-                  sdk/vanilla-js/verhub-sdk.global.js \
-                  sdk/python/verhub_sdk/_version.py \
-                  sdk/rust/Cargo.toml sdk/rust/src/lib.rs
-          git commit -m "chore(release): $TAG"
-          git tag "$TAG"
-
-          git push origin "HEAD:${GITHUB_REF_NAME}"
-          git push origin "refs/tags/$TAG"
-
-          echo "published_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          curl -sS --fail-with-body -H "Authorization: Bearer $STS_TOKEN" \
+            -d "$(jq -n --arg tag "$TAG" --arg sha "$tag_sha" \
+              '{ref: "refs/tags/\($tag)", sha: $sha}')" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/git/refs" >/dev/null
+          echo "tag $TAG 已创建"
 
   # 构建并推送刚刚打好的 tag 对应的镜像
   docker:
@@ -218,9 +282,9 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
-          package-manager-cache: false 
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
 
       - name: Verify version matches tag
         working-directory: .

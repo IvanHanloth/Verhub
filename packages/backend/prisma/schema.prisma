@@ -348,6 +348,11 @@ model Feedback {
   userId          String?
   rating          Int?
   content         String
+  /// 提交者留下的联系方式（邮箱 / 手机号 / IM 账号等），自由文本，可空。
+  contact         String?
+  /// 隐藏后不在后台列表默认返回（需显式 include_hidden），但记录仍在，
+  /// 评分也照常计入统计 —— 隐藏只影响展示，不影响数据。
+  isHidden        Boolean   @default(false)
   /// Declared by the client when it submits, else inferred from the User-Agent.
   platform        Platform?
   /// 系统版本明细（`platform_version` 字段、`x-verhub-platform-version` 头，或从

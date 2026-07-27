@@ -2306,7 +2306,8 @@ export const openApiDocument: OpenApiDocument = {
       get: {
         tags: ["Feedbacks"],
         summary: "查询反馈列表",
-        description: "按项目分页查询反馈。",
+        description:
+          "按项目分页查询反馈。默认不返回已隐藏的反馈，`include_hidden=true` 时一并返回。",
         "x-verhub-doc": true,
         security: [
           {
@@ -2322,6 +2323,16 @@ export const openApiDocument: OpenApiDocument = {
           },
           {
             $ref: "#/components/parameters/Offset",
+          },
+          {
+            name: "include_hidden",
+            in: "query",
+            required: false,
+            schema: {
+              type: "boolean",
+              default: false,
+            },
+            description: "是否连已隐藏的反馈一起返回。",
           },
         ],
         responses: {
@@ -6830,6 +6841,16 @@ export const openApiDocument: OpenApiDocument = {
             type: "string",
             maxLength: 4096,
           },
+          contact: {
+            type: "string",
+            maxLength: 128,
+            description: "联系方式，邮箱 / 手机号 / IM 账号皆可，不做格式校验。",
+          },
+          is_hidden: {
+            type: "boolean",
+            default: false,
+            description: "隐藏后后台列表默认不返回（需 `include_hidden=true`），评分仍计入统计。",
+          },
           platform: {
             $ref: "#/components/schemas/Platform",
           },
@@ -6847,6 +6868,7 @@ export const openApiDocument: OpenApiDocument = {
           user_id: "user-001",
           rating: 5,
           content: "更新检查很好用。",
+          contact: "user@example.com",
           platform: "windows",
           platform_version: "11",
           custom_data: {
@@ -6870,6 +6892,15 @@ export const openApiDocument: OpenApiDocument = {
             type: "string",
             maxLength: 4096,
           },
+          contact: {
+            type: "string",
+            maxLength: 128,
+            description: "联系方式，邮箱 / 手机号 / IM 账号皆可，不做格式校验。",
+          },
+          is_hidden: {
+            type: "boolean",
+            description: "隐藏后后台列表默认不返回（需 `include_hidden=true`），评分仍计入统计。",
+          },
           platform: {
             $ref: "#/components/schemas/Platform",
           },
@@ -6886,6 +6917,7 @@ export const openApiDocument: OpenApiDocument = {
         example: {
           rating: 4,
           content: "补充说明：偶发网络超时。",
+          is_hidden: true,
         },
       },
       FeedbackItem: {
@@ -6895,6 +6927,8 @@ export const openApiDocument: OpenApiDocument = {
           "user_id",
           "rating",
           "content",
+          "contact",
+          "is_hidden",
           "platform",
           "platform_version",
           "custom_data",
@@ -6918,6 +6952,14 @@ export const openApiDocument: OpenApiDocument = {
           },
           content: {
             type: "string",
+          },
+          contact: {
+            type: ["string", "null"],
+            description: "提交者留下的联系方式；未填写为 null。",
+          },
+          is_hidden: {
+            type: "boolean",
+            description: "隐藏的反馈默认不出现在后台列表里，但记录与评分统计都保留。",
           },
           platform: {
             oneOf: [
@@ -6977,6 +7019,8 @@ export const openApiDocument: OpenApiDocument = {
           user_id: "user-001",
           rating: 5,
           content: "更新检查很好用。",
+          contact: "user@example.com",
+          is_hidden: false,
           platform: "windows",
           platform_version: "11",
           custom_data: {

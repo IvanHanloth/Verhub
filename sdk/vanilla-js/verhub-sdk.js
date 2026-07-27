@@ -695,7 +695,7 @@ class PublicApi {
   }
 
   /**
-   * @param {{content: string, user_id?: string, rating?: number, platform?: string, platform_version?: string, custom_data?: object}} input 反馈字段
+   * @param {{content: string, user_id?: string, rating?: number, contact?: string, is_hidden?: boolean, platform?: string, platform_version?: string, custom_data?: object}} input 反馈字段
    */
   createFeedback(input) {
     return this.http.request("POST", "/public/{projectKey}/feedbacks", {
@@ -1007,12 +1007,16 @@ class AdminApi {
   // ---- 反馈 ----
 
   /**
-   * @param {{limit?: number, offset?: number}} [options] 分页参数
+   * @param {{limit?: number, offset?: number, include_hidden?: boolean}} [options] 分页参数与是否包含隐藏反馈
    */
   listFeedbacks(options = {}) {
     return this.http.request("GET", "/admin/projects/{projectKey}/feedbacks", {
       pathParams: { projectKey: this.http.requireProjectKey() },
-      query: { limit: options.limit, offset: options.offset },
+      query: {
+        limit: options.limit,
+        offset: options.offset,
+        include_hidden: options.include_hidden,
+      },
       auth: true,
     })
   }

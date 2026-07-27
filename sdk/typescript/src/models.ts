@@ -91,6 +91,10 @@ export type FeedbackItem = {
   user_id: string | null
   rating: number | null
   content: string
+  /** 提交者留下的联系方式；未填写为 null。 */
+  contact: string | null
+  /** 隐藏的反馈默认不出现在后台列表里，评分仍计入统计。 */
+  is_hidden: boolean
   platform: Platform | null
   platform_version: string | null
   custom_data: JsonObject | null
@@ -283,11 +287,20 @@ export type ListAnnouncementsOptions = PageOptions & {
   platform?: Platform
 }
 
+export type ListFeedbacksOptions = PageOptions & {
+  /** 是否把已隐藏的反馈一起列出来，默认 false。 */
+  include_hidden?: boolean
+}
+
 export type CreateFeedbackInput = {
   content: string
   user_id?: string
   /** 评分，1..5。 */
   rating?: number
+  /** 联系方式，邮箱 / 手机号 / IM 账号皆可。 */
+  contact?: string
+  /** 隐藏后后台列表默认不返回，评分仍计入统计。 */
+  is_hidden?: boolean
   platform?: Platform
   /** 系统版本明细，如 `11` / `ubuntu 24.04`。 */
   platform_version?: string

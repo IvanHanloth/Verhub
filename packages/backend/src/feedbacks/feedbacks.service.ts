@@ -17,6 +17,8 @@ type FeedbackItem = {
   user_id: string | null
   rating: number | null
   content: string
+  contact: string | null
+  is_hidden: boolean
   platform: PlatformValue | null
   platform_version: string | null
   custom_data: Prisma.JsonValue | null
@@ -34,6 +36,8 @@ type FeedbackRecord = {
   userId: string | null
   rating: number | null
   content: string
+  contact: string | null
+  isHidden: boolean
   platform: Platform | null
   platformVersion: string | null
   customData: Prisma.JsonValue | null
@@ -58,6 +62,7 @@ export class FeedbacksService {
     private readonly projectResolver: ProjectResolverService,
   ) {}
 
+  /** 全量统计，隐藏的反馈同样计入：隐藏只是不展示，不是撤回评分。 */
   async getStatistics(): Promise<{ count: number; rate_count: number; rate_avg: number | null }> {
     const [count, rated] = await Promise.all([
       this.prisma.feedback.count(),
@@ -81,10 +86,16 @@ export class FeedbacksService {
   async findAll(projectKey: string, query: QueryFeedbacksDto): Promise<FeedbackListResponse> {
     const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
+    // 隐藏的反馈只是不出现在列表里；统计接口照旧全量计算，所以隐藏不会改变平均分。
+    const where: Prisma.FeedbackWhereInput = {
+      projectKey: normalizedProjectKey,
+      ...(query.include_hidden ? {} : { isHidden: false }),
+    }
+
     const [total, data] = await this.prisma.$transaction([
-      this.prisma.feedback.count({ where: { projectKey: normalizedProjectKey } }),
+      this.prisma.feedback.count({ where }),
       this.prisma.feedback.findMany({
-        where: { projectKey: normalizedProjectKey },
+        where,
         take: query.limit,
         skip: query.offset,
         orderBy: { createdAt: "desc" },
@@ -124,6 +135,7 @@ export class FeedbacksService {
       dto.user_id,
       dto.rating,
       dto.content,
+      dto.contact,
       origin.ip,
       stableStringify(dto.custom_data),
     ])
@@ -148,6 +160,8 @@ export class FeedbacksService {
         userId: dto.user_id,
         rating: dto.rating,
         content: dto.content,
+        contact: dto.contact,
+        isHidden: dto.is_hidden ?? false,
         // The client's own declaration wins; the User-Agent guess only fills a gap.
         platform: toPlatform(dto.platform) ?? origin.platform,
         // 明细统一取 origin：它已经把 body / query / header / UA 四个来源按同一
@@ -182,6 +196,8 @@ export class FeedbacksService {
         userId: dto.user_id,
         rating: dto.rating,
         content: dto.content,
+        contact: dto.contact,
+        isHidden: dto.is_hidden ?? false,
         platform: toPlatform(dto.platform),
         platformVersion: dto.platform_version,
         customData: dto.custom_data as Prisma.InputJsonValue | undefined,
@@ -209,6 +225,8 @@ export class FeedbacksService {
         userId: dto.user_id,
         rating: dto.rating,
         content: dto.content,
+        contact: dto.contact,
+        isHidden: dto.is_hidden,
         platform: toPlatform(dto.platform),
         platformVersion: dto.platform_version,
         customData: dto.custom_data as Prisma.InputJsonValue | undefined,
@@ -275,6 +293,8 @@ export class FeedbacksService {
       user_id: feedback.userId,
       rating: feedback.rating,
       content: feedback.content,
+      contact: feedback.contact,
+      is_hidden: feedback.isHidden,
       platform: fromPlatform(feedback.platform),
       platform_version: feedback.platformVersion,
       custom_data: feedback.customData,

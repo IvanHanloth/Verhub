@@ -65,6 +65,46 @@ describe("FeedbacksService", () => {
     expect(result.created_at).toBe(1767225600)
   })
 
+  it("stores contact and the hidden flag on submit", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "verhub" })
+    prisma.feedback.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+      ...data,
+      id: "feedback-3",
+      createdAt: 1767225600,
+    }))
+
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const result = await service.createByProjectKey(
+      "verhub",
+      { content: "崩溃了", contact: "user@example.com", is_hidden: true },
+      emptyOrigin,
+    )
+
+    expect(result.contact).toBe("user@example.com")
+    expect(result.is_hidden).toBe(true)
+  })
+
+  it("defaults the hidden flag to false when the client omits it", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "verhub" })
+    prisma.feedback.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+      ...data,
+      id: "feedback-4",
+      createdAt: 1767225600,
+    }))
+
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const result = await service.createByProjectKey("verhub", { content: "还行" }, emptyOrigin)
+
+    expect(result.is_hidden).toBe(false)
+    expect(prisma.feedback.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ contact: undefined, isHidden: false }),
+      }),
+    )
+  })
+
   it("skips dedup and origin capture when an admin backfills a feedback", async () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue({ projectKey: "verhub" })
@@ -175,10 +215,25 @@ describe("FeedbacksService", () => {
     ])
 
     const service = new FeedbacksService(prisma as never, makeResolver(prisma))
-    const result = await service.findAll("proj", { limit: 10, offset: 0 })
+    const result = await service.findAll("proj", { limit: 10, offset: 0, include_hidden: false })
 
     expect(result.total).toBe(1)
     expect(result.data[0]?.platform).toBe("web")
+  })
+
+  it("findAll hides hidden feedbacks unless include_hidden is set", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.$transaction.mockResolvedValue([0, []])
+
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    await service.findAll("proj", { limit: 10, offset: 0, include_hidden: false })
+    expect(prisma.feedback.count).toHaveBeenCalledWith({
+      where: { projectKey: "proj", isHidden: false },
+    })
+
+    await service.findAll("proj", { limit: 10, offset: 0, include_hidden: true })
+    expect(prisma.feedback.count).toHaveBeenLastCalledWith({ where: { projectKey: "proj" } })
   })
 
   it("findAll throws when project does not exist", async () => {
@@ -186,9 +241,9 @@ describe("FeedbacksService", () => {
     prisma.project.findUnique.mockResolvedValue(null)
 
     const service = new FeedbacksService(prisma as never, makeResolver(prisma))
-    await expect(service.findAll("missing", { limit: 10, offset: 0 })).rejects.toBeInstanceOf(
-      NotFoundException,
-    )
+    await expect(
+      service.findAll("missing", { limit: 10, offset: 0, include_hidden: false }),
+    ).rejects.toBeInstanceOf(NotFoundException)
   })
 
   it("findOne returns a single feedback", async () => {

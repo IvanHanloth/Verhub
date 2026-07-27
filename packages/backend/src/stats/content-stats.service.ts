@@ -61,6 +61,8 @@ export class ContentStatsService {
    *
    * `unrated` 单独给出而不是并进某一档：没打分的反馈仍是一条反馈，混进 1 星会
    * 让平均分变成谎话，丢掉又会让 total 对不上反馈列表的条数。
+   *
+   * 已隐藏的反馈照样计入：隐藏只是不在后台列表里露出，评分本身依然作数。
    */
   async getFeedbackRatingBreakdown(
     projectKey: string,

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { AlertTriangle, Copy, PencilLine, Plus, Save, Trash2 } from "lucide-react"
+import { AlertTriangle, Copy, Eye, EyeOff, PencilLine, Plus, Save, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
@@ -36,6 +36,8 @@ type FeedbackFormState = {
   user_id: string
   rating: string
   content: string
+  contact: string
+  is_hidden: boolean
   platform: "" | Platform
   custom_data: string
 }
@@ -44,6 +46,8 @@ const emptyForm: FeedbackFormState = {
   user_id: "",
   rating: "",
   content: "",
+  contact: "",
+  is_hidden: false,
   platform: "",
   custom_data: "",
 }
@@ -66,6 +70,8 @@ function toMutationInput(form: FeedbackFormState): FeedbackMutationInput {
   const payload: FeedbackMutationInput = {
     content: form.content.trim(),
     user_id: form.user_id.trim() || undefined,
+    contact: form.contact.trim() || undefined,
+    is_hidden: form.is_hidden,
     platform: form.platform || undefined,
     custom_data: parseJsonObject(form.custom_data),
   }
@@ -123,6 +129,17 @@ function FeedbackFormFields({
         />
       </label>
       <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">联系方式</span>
+        <input
+          type="text"
+          placeholder="邮箱 / 手机号 / IM 账号"
+          value={form.contact}
+          onChange={(event) => setForm((prev) => ({ ...prev, contact: event.target.value }))}
+          className={FIELD_CLASS}
+          maxLength={128}
+        />
+      </label>
+      <label className="space-y-1 text-sm">
         <span className="text-slate-700 dark:text-slate-300">平台</span>
         <select
           value={form.platform}
@@ -160,6 +177,15 @@ function FeedbackFormFields({
           className="w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 font-mono text-xs dark:border-white/20 dark:bg-white/10"
         />
       </label>
+      <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+        <input
+          type="checkbox"
+          checked={form.is_hidden}
+          onChange={(event) => setForm((prev) => ({ ...prev, is_hidden: event.target.checked }))}
+          className="size-4"
+        />
+        隐藏反馈（列表默认不显示，评分仍计入统计）
+      </label>
     </>
   )
 }
@@ -187,6 +213,7 @@ export function FeedbacksDashboard() {
   } = usePagination({ pageSize: PAGE_SIZE })
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [includeHidden, setIncludeHidden] = React.useState(false)
 
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [form, setForm] = React.useState<FeedbackFormState>(emptyForm)
@@ -213,7 +240,7 @@ export function FeedbacksDashboard() {
         const response = await listFeedbacks(
           token,
           selectedProjectKey,
-          { limit: PAGE_SIZE, offset: nextOffset },
+          { limit: PAGE_SIZE, offset: nextOffset, includeHidden },
           signal,
         )
         setFeedbacks(response.data)
@@ -237,7 +264,7 @@ export function FeedbacksDashboard() {
         }
       }
     },
-    [selectedProjectKey, token, setTotal],
+    [selectedProjectKey, token, setTotal, includeHidden],
   )
 
   React.useEffect(() => {
@@ -269,6 +296,8 @@ export function FeedbacksDashboard() {
       user_id: item.user_id ?? "",
       rating: item.rating ? String(item.rating) : "",
       content: item.content,
+      contact: item.contact ?? "",
+      is_hidden: item.is_hidden,
       platform: item.platform ?? "",
       custom_data: toPrettyJson(item.custom_data),
     })
@@ -280,6 +309,8 @@ export function FeedbacksDashboard() {
       user_id: item.user_id ?? "",
       rating: item.rating ? String(item.rating) : "",
       content: item.content,
+      contact: item.contact ?? "",
+      is_hidden: item.is_hidden,
       platform: item.platform ?? "",
       custom_data: toPrettyJson(item.custom_data),
     })
@@ -386,6 +417,36 @@ export function FeedbacksDashboard() {
     }
   }
 
+  /** 行内隐藏/取消隐藏。隐藏后若列表未开启"显示隐藏反馈"，该行会从当前页消失。 */
+  async function handleToggleHidden(item: FeedbackItem) {
+    if (!token || !selectedProjectKey) {
+      toast.error("请先登录并选择项目。")
+      return
+    }
+
+    try {
+      await updateFeedback(token, selectedProjectKey, item.id, { is_hidden: !item.is_hidden })
+      toast.success(item.is_hidden ? "反馈已取消隐藏。" : "反馈已隐藏。")
+
+      // 隐藏会让该行从当前视图里消失，和删除一样可能把最后一页掏空。
+      const leavesList = !includeHidden && !item.is_hidden
+      if (leavesList) {
+        adjustAfterDelete(feedbacks.length - 1)
+      }
+      const nextOffset =
+        leavesList && feedbacks.length === 1 && offset > 0
+          ? Math.max(0, offset - PAGE_SIZE)
+          : offset
+      await loadFeedbacks(nextOffset)
+    } catch (toggleError) {
+      if (isAuthError(toggleError)) {
+        setToken("")
+        setAuthError("登录状态已过期，请重新登录。")
+      }
+      toast.error(getErrorMessage(toggleError))
+    }
+  }
+
   async function handleDelete(id: string) {
     if (!token || !selectedProjectKey) {
       setError("请先登录并选择项目。")
@@ -426,7 +487,7 @@ export function FeedbacksDashboard() {
     <section className="space-y-6">
       <AdminPageHeader
         title="用户反馈管理"
-        description="查看并维护反馈内容、评分、平台信息与扩展数据。"
+        description="查看并维护反馈内容、评分、联系方式、平台信息与扩展数据。"
         badge="Verhub Feedbacks"
         actions={
           <>
@@ -452,6 +513,20 @@ export function FeedbacksDashboard() {
 
       <AdminCard as="section">
         <AdminListHeader title="反馈列表" total={total} page={page} totalPages={totalPages} />
+
+        {/* 隐藏的反馈默认不列出；开关只影响展示，评分统计始终按全量算。 */}
+        <label className="mb-3 inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+          <input
+            type="checkbox"
+            checked={includeHidden}
+            onChange={(event) => {
+              setIncludeHidden(event.target.checked)
+              resetOffset()
+            }}
+            className="size-4"
+          />
+          显示隐藏的反馈
+        </label>
 
         {!hasToken ? (
           <div className="rounded-2xl border border-dashed border-rose-200/30 bg-rose-100/5 p-6 text-sm text-rose-100">
@@ -495,6 +570,12 @@ export function FeedbacksDashboard() {
                   {feedbacks.map((item) => (
                     <tr key={item.id} className="border-b border-white/5 align-top">
                       <td className="px-3 py-2 text-slate-200">
+                        {item.is_hidden ? (
+                          <span className="mb-1 inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-300/10 px-2 py-0.5 text-xs text-amber-200">
+                            <EyeOff className="size-3" />
+                            已隐藏
+                          </span>
+                        ) : null}
                         <p>{item.content}</p>
                         {item.custom_data ? (
                           <div className="mt-2 max-w-md">
@@ -505,6 +586,7 @@ export function FeedbacksDashboard() {
                       <td className="px-3 py-2 text-xs text-slate-300">
                         <p>{item.user_id ?? "匿名"}</p>
                         <p>评分：{item.rating ?? "未评分"}</p>
+                        <p>联系方式：{item.contact ?? "未留"}</p>
                       </td>
                       {/* 平台已并入来源徽章，避免同一信息占两列。 */}
                       <td className="max-w-xs px-3 py-2 text-xs text-slate-300">
@@ -524,6 +606,21 @@ export function FeedbacksDashboard() {
                             onClick={() => copyFromFeedback(item)}
                           >
                             <Copy className="size-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="border-white/20 bg-white/5"
+                            title={item.is_hidden ? "取消隐藏" : "隐藏"}
+                            aria-label={item.is_hidden ? "取消隐藏" : "隐藏"}
+                            onClick={() => void handleToggleHidden(item)}
+                          >
+                            {item.is_hidden ? (
+                              <Eye className="size-4" />
+                            ) : (
+                              <EyeOff className="size-4" />
+                            )}
                           </Button>
                           <Button
                             type="button"
@@ -578,7 +675,7 @@ export function FeedbacksDashboard() {
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
         title="编辑反馈"
-        description="修改反馈内容、评分、平台与扩展数据。"
+        description="修改反馈内容、评分、联系方式、平台、扩展数据与隐藏状态。"
         submitLabel="保存反馈"
         submitIcon={<Save className="size-4" />}
         submitting={submitLoading}

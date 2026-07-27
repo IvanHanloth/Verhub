@@ -163,6 +163,8 @@ class PublicApi:
         content: str,
         user_id: Any = UNSET,
         rating: Any = UNSET,
+        contact: Any = UNSET,
+        is_hidden: Any = UNSET,
         platform: Any = UNSET,
         platform_version: Any = UNSET,
         custom_data: Any = UNSET,
@@ -171,6 +173,8 @@ class PublicApi:
         :param content: 反馈内容，最长 4096
         :param user_id: 调用方自己的用户标识
         :param rating: 评分，1..5
+        :param contact: 联系方式，最长 128
+        :param is_hidden: 是否隐藏；隐藏后后台列表默认不返回，评分仍计入统计
         :param platform: 平台声明；省略时服务端按 User-Agent 与请求头推断
         :param platform_version: 系统版本明细，如 ``11`` / ``ubuntu 24.04``
         :param custom_data: 自定义数据
@@ -185,6 +189,8 @@ class PublicApi:
                     "content": content,
                     "user_id": user_id,
                     "rating": rating,
+                    "contact": contact,
+                    "is_hidden": is_hidden,
                     "platform": platform,
                     "platform_version": platform_version,
                     "custom_data": custom_data,

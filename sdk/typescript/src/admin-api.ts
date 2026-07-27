@@ -22,6 +22,7 @@ import type {
   GithubRepoProjectPreview,
   GithubWebhookSecretRevealed,
   GithubWebhookSettings,
+  ListFeedbacksOptions,
   ListLogsOptions,
   LogItem,
   LogListResponse,
@@ -336,12 +337,16 @@ export class AdminApi {
   // ---- 反馈 ----
 
   /**
-   * @param options 分页参数
+   * @param options 分页参数与是否包含隐藏反馈
    */
-  listFeedbacks(options: PageOptions = {}): Promise<FeedbackListResponse> {
+  listFeedbacks(options: ListFeedbacksOptions = {}): Promise<FeedbackListResponse> {
     return this.http.request("GET", "/admin/projects/{projectKey}/feedbacks", {
       pathParams: { projectKey: this.http.requireProjectKey() },
-      query: { limit: options.limit, offset: options.offset },
+      query: {
+        limit: options.limit,
+        offset: options.offset,
+        include_hidden: options.include_hidden,
+      },
       auth: true,
     })
   }

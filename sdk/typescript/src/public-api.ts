@@ -107,7 +107,7 @@ export class PublicApi {
   }
 
   /**
-   * @param input 反馈内容与可选的评分、平台、自定义数据
+   * @param input 反馈内容与可选的评分、联系方式、平台、自定义数据
    */
   createFeedback(input: CreateFeedbackInput): Promise<FeedbackItem> {
     return this.http.request("POST", "/public/{projectKey}/feedbacks", {

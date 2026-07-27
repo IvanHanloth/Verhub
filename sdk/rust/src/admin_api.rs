@@ -402,14 +402,24 @@ impl AdminApi<'_> {
 
     // ---- 反馈 ----
 
-    /// 取反馈列表。
-    pub async fn list_feedbacks(&self, options: &PageOptions) -> Result<FeedbackListResponse> {
+    /// 取反馈列表。默认不含已隐藏的反馈，`include_hidden` 为真时一并返回。
+    pub async fn list_feedbacks(
+        &self,
+        options: &ListFeedbacksOptions,
+    ) -> Result<FeedbackListResponse> {
         let key = self.inner.require_project_key()?;
         self.inner
             .request::<_, ()>(
                 Method::GET,
                 &format!("/admin/projects/{}/feedbacks", segment(&key)),
-                &page(options),
+                &[
+                    ("limit", options.limit.map(|v| v.to_string())),
+                    ("offset", options.offset.map(|v| v.to_string())),
+                    (
+                        "include_hidden",
+                        options.include_hidden.map(|v| v.to_string()),
+                    ),
+                ],
                 None,
                 true,
             )

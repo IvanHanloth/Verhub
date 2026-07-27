@@ -178,6 +178,10 @@ pub struct FeedbackItem {
     pub user_id: Option<String>,
     pub rating: Option<i32>,
     pub content: String,
+    /// 提交者留下的联系方式；未填写为 None。
+    pub contact: Option<String>,
+    /// 隐藏的反馈默认不出现在后台列表里，评分仍计入统计。
+    pub is_hidden: bool,
     pub platform: Option<Platform>,
     pub platform_version: Option<String>,
     pub custom_data: Option<JsonObject>,
@@ -418,6 +422,15 @@ pub struct ListAnnouncementsOptions {
     pub platform: Option<Platform>,
 }
 
+/// 反馈列表的分页与隐藏项开关。
+#[derive(Debug, Clone, Default)]
+pub struct ListFeedbacksOptions {
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+    /// 是否把已隐藏的反馈一起列出来，默认 false。
+    pub include_hidden: Option<bool>,
+}
+
 /// 日志列表的分页、等级与时间范围。
 #[derive(Debug, Clone, Default)]
 pub struct ListLogsOptions {
@@ -452,6 +465,12 @@ pub struct CreateFeedbackInput {
     /// 评分，1..=5。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rating: Option<u8>,
+    /// 联系方式，邮箱 / 手机号 / IM 账号皆可。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contact: Option<String>,
+    /// 隐藏后后台列表默认不返回，评分仍计入统计。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_hidden: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub platform: Option<Platform>,
     /// 系统版本明细，如 `11` / `ubuntu 24.04`。
@@ -469,6 +488,12 @@ pub struct UpdateFeedbackInput {
     pub user_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rating: Option<u8>,
+    /// 联系方式，邮箱 / 手机号 / IM 账号皆可。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contact: Option<String>,
+    /// 隐藏后后台列表默认不返回，评分仍计入统计。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_hidden: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub platform: Option<Platform>,
     #[serde(skip_serializing_if = "Option::is_none")]

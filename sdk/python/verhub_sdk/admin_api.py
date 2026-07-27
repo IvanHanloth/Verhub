@@ -671,17 +671,19 @@ class AdminApi:
         *,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
+        include_hidden: Optional[bool] = None,
     ) -> FeedbackListResponse:
         """
         :param limit: 分页大小，1..100，默认 20
         :param offset: 分页偏移，默认 0
+        :param include_hidden: 是否把已隐藏的反馈一起列出来，默认 False
         :return: 反馈列表
         """
         return self._http.request(
             "GET",
             "/admin/projects/{projectKey}/feedbacks",
             path_params={"projectKey": self._http.require_project_key()},
-            query={"limit": limit, "offset": offset},
+            query={"limit": limit, "offset": offset, "include_hidden": include_hidden},
             auth=True,
         )
 
@@ -691,6 +693,8 @@ class AdminApi:
         content: str,
         user_id: Any = UNSET,
         rating: Any = UNSET,
+        contact: Any = UNSET,
+        is_hidden: Any = UNSET,
         platform: Any = UNSET,
         platform_version: Any = UNSET,
         custom_data: Any = UNSET,
@@ -701,6 +705,8 @@ class AdminApi:
         :param content: 反馈内容
         :param user_id: 用户标识
         :param rating: 评分，1..5
+        :param contact: 联系方式
+        :param is_hidden: 是否隐藏；隐藏后列表默认不返回，评分仍计入统计
         :param platform: 平台
         :param platform_version: 系统版本明细
         :param custom_data: 自定义数据
@@ -715,6 +721,8 @@ class AdminApi:
                     "content": content,
                     "user_id": user_id,
                     "rating": rating,
+                    "contact": contact,
+                    "is_hidden": is_hidden,
                     "platform": platform,
                     "platform_version": platform_version,
                     "custom_data": custom_data,
@@ -742,6 +750,8 @@ class AdminApi:
         content: Any = UNSET,
         user_id: Any = UNSET,
         rating: Any = UNSET,
+        contact: Any = UNSET,
+        is_hidden: Any = UNSET,
         platform: Any = UNSET,
         platform_version: Any = UNSET,
         custom_data: Any = UNSET,
@@ -751,6 +761,8 @@ class AdminApi:
         :param content: 反馈内容
         :param user_id: 用户标识
         :param rating: 评分，1..5
+        :param contact: 联系方式
+        :param is_hidden: 是否隐藏；隐藏后列表默认不返回，评分仍计入统计
         :param platform: 平台
         :param platform_version: 系统版本明细
         :param custom_data: 自定义数据
@@ -765,6 +777,8 @@ class AdminApi:
                     "content": content,
                     "user_id": user_id,
                     "rating": rating,
+                    "contact": contact,
+                    "is_hidden": is_hidden,
                     "platform": platform,
                     "platform_version": platform_version,
                     "custom_data": custom_data,

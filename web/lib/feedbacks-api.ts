@@ -6,6 +6,10 @@ export type FeedbackItem = {
   user_id: string | null
   rating: number | null
   content: string
+  /** 提交者留下的联系方式；未填写为 null。 */
+  contact: string | null
+  /** 隐藏的反馈默认不出现在列表里，评分仍计入统计。 */
+  is_hidden: boolean
   platform: Platform | null
   platform_version: string | null
   custom_data: unknown
@@ -28,6 +32,8 @@ export type FeedbackMutationInput = {
   user_id?: string
   rating?: number
   content?: string
+  contact?: string
+  is_hidden?: boolean
   platform?: Platform
   platform_version?: string
   custom_data?: Record<string, unknown>
@@ -36,13 +42,16 @@ export type FeedbackMutationInput = {
 export async function listFeedbacks(
   token: string,
   projectKey: string,
-  params: { limit: number; offset: number },
+  params: { limit: number; offset: number; includeHidden?: boolean },
   signal?: AbortSignal,
 ): Promise<ListFeedbacksResponse> {
   const query = new URLSearchParams({
     limit: String(params.limit),
     offset: String(params.offset),
   })
+  if (params.includeHidden) {
+    query.set("include_hidden", "true")
+  }
 
   return requestJson<ListFeedbacksResponse>(
     `/admin/projects/${projectKey}/feedbacks?${query.toString()}`,

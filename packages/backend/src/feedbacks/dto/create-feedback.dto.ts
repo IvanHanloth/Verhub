@@ -1,4 +1,14 @@
-import { IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from "class-validator"
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from "class-validator"
 
 import { NormalizePlatform, PLATFORM_VALUES, type PlatformValue } from "../../common/platform"
 import { MAX_PLATFORM_VERSION_LENGTH } from "../../stats/platform-detection"
@@ -18,6 +28,17 @@ export class CreateFeedbackDto {
   @IsString()
   @MaxLength(4096)
   content!: string
+
+  /** 联系方式，邮箱 / 手机号 / IM 账号皆可，不做格式校验。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  contact?: string
+
+  /** 隐藏后后台列表默认不返回；评分仍计入统计。 */
+  @IsOptional()
+  @IsBoolean()
+  is_hidden?: boolean
 
   @IsOptional()
   @NormalizePlatform()

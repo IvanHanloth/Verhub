@@ -96,6 +96,10 @@ class FeedbackItem(TypedDict):
     user_id: Optional[str]
     rating: Optional[int]
     content: str
+    #: 提交者留下的联系方式；未填写为 None。
+    contact: Optional[str]
+    #: 隐藏的反馈默认不出现在后台列表里，评分仍计入统计。
+    is_hidden: bool
     platform: Optional[Platform]
     platform_version: Optional[str]
     custom_data: Optional[Dict[str, Any]]

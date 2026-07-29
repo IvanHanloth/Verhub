@@ -1,7 +1,17 @@
 "use client"
 
 import * as React from "react"
-import { AlertTriangle, Copy, Eye, EyeOff, PencilLine, Plus, Save, Trash2 } from "lucide-react"
+import {
+  AlertTriangle,
+  Copy,
+  Eye,
+  EyeOff,
+  Github,
+  PencilLine,
+  Plus,
+  Save,
+  Trash2,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
@@ -94,6 +104,38 @@ function toPrettyJson(value: unknown): string {
 
 const FIELD_CLASS =
   "w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+
+const ISSUE_BADGE_CLASS =
+  "inline-flex items-center gap-1 rounded-full border border-sky-300/40 bg-sky-300/10 px-2 py-0.5 text-xs text-sky-200"
+
+/**
+ * 已转成 GitHub Issue 的标记。编号与链接是分别尽力记录的，所以两者缺任何一个
+ * 都还要能显示：缺链接就退成纯文字徽章，缺编号就只说「已转 Issue」。
+ */
+function GithubIssueBadge({ item }: { item: FeedbackItem }) {
+  const label = item.github_issue_number ? `Issue #${item.github_issue_number}` : "已转 Issue"
+  if (!item.github_issue_url) {
+    return (
+      <span className={ISSUE_BADGE_CLASS}>
+        <Github className="size-3" />
+        {label}
+      </span>
+    )
+  }
+
+  return (
+    <a
+      className={`${ISSUE_BADGE_CLASS} hover:bg-sky-300/20`}
+      href={item.github_issue_url}
+      target="_blank"
+      rel="noreferrer"
+      title={item.github_issue_url}
+    >
+      <Github className="size-3" />
+      {label}
+    </a>
+  )
+}
 
 /** 反馈字段。新建与编辑共用，避免两处能改的范围不一致。 */
 function FeedbackFormFields({
@@ -570,11 +612,16 @@ export function FeedbacksDashboard() {
                   {feedbacks.map((item) => (
                     <tr key={item.id} className="border-b border-white/5 align-top">
                       <td className="px-3 py-2 text-slate-200">
-                        {item.is_hidden ? (
-                          <span className="mb-1 inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-300/10 px-2 py-0.5 text-xs text-amber-200">
-                            <EyeOff className="size-3" />
-                            已隐藏
-                          </span>
+                        {item.is_hidden || item.forwarded_to_github ? (
+                          <div className="mb-1 flex flex-wrap items-center gap-1">
+                            {item.is_hidden ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-300/10 px-2 py-0.5 text-xs text-amber-200">
+                                <EyeOff className="size-3" />
+                                已隐藏
+                              </span>
+                            ) : null}
+                            {item.forwarded_to_github ? <GithubIssueBadge item={item} /> : null}
+                          </div>
                         ) : null}
                         <p>{item.content}</p>
                         {item.custom_data ? (

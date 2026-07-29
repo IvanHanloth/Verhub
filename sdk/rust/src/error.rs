@@ -36,6 +36,10 @@ pub enum Error {
     /// 调用项目作用域的方法但客户端没有绑定 project_key。
     #[error("未设置 project_key：请在创建客户端时传入，或调用 set_project_key()")]
     MissingProjectKey,
+
+    /// 选了把反馈转成 GitHub Issue，却没填联系方式。请求没发出去。
+    #[error("转发到 GitHub Issue 需要联系方式：请先填写 contact")]
+    MissingContact,
 }
 
 impl Error {

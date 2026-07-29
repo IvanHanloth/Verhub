@@ -31,6 +31,8 @@ Verhub 采用 Monorepo + 模块化单体架构：
 - `logs`：日志上报与日志查询
 - `actions`：行为定义管理与行为记录上报
 - `webhooks`：GitHub Release 推送接收（`GithubWebhookService`）与项目级 webhook secret 管理（`GithubWebhookSecretService`）
+- `github-app`：GitHub App 集成。实例级凭据与功能开关（`GithubAppConfigService`，私钥经 `secret-box` AES-256-GCM 加密落库）、出站 API 客户端（`GithubAppClientService`，App JWT → installation token）、项目级功能配置（`ProjectGithubIntegrationService`）、反馈转发 Issue（`FeedbackIssueService`，模板来源与内置模板见 `feedback-issue-template.ts`，单 IP 转发限流见 `FeedbackForwardThrottler`）与评论命令触发工作流（`CommentCommandsService`，走 `POST /webhooks/github-app`）。功能采用三级判定：实例级 enabledFeatures 是总闸，项目级开关只能在总闸开启后打开且只表示「允许」，最终是否转发由提交者在 `forward_to_github` 里逐条选择。转发是提交事务的一部分而非旁路：Issue 建成功才保留反馈行（并记下 `forwardedToGithub` 与 Issue 编号/链接），失败则连带删除刚落库的行并把 503 返回给客户端——不能让用户以为问题已经报到仓库里
+- `terms`：实例级条款文档（`TermsService`）。登记表见 `terms-documents.ts`，目前两份：《隐私政策》与《SDK 合规性文档》，内置正文在 `builtin/` 下、不入库。与反馈 Issue 模板同一套「开关 + 自定义正文」结构：关掉开关或草稿为空一律回落到内置正文，所以 `GET /public/terms/{slug}` 对已登记的文档任何时候都有正文可读。《隐私政策》面向最终用户，《SDK 合规性文档》面向接入方开发者（供其在自己的隐私政策里披露）、同时对最终用户公开；两份都逐项对应实际实现（各端点 DTO、行为记录的 http 字段、三张统计表、去重指纹、归属地缓存与保留期清理），改动采集行为时必须同步修订，否则公示即失实。内置正文是模板：运营主体、联系方式等只有运营者知道的内容留成 `{{占位符}}`，键登记在 `placeholders.ts`（正文出现未登记的键会在模块加载时抛错），管理端据 `TermsDocumentConfigView.placeholders` 渲染填空表单、替换后把成品提交保存 —— 替换只发生在管理端，库里与前台都只有成品
 - `geo`：调用方来源解析。`GeoLocationService` 做 IP → 国家/地区解析与缓存，`ClientOriginService` 把请求拼装成各上报表要写入的来源字段。模块声明为 `@Global`，因为四个采集点都要用，且服务持有进程级缓存，不能被重复实例化
 - `database`：PrismaService 与数据库连接能力
 - `health`：服务健康检查
@@ -93,7 +95,7 @@ Webhook 鉴权（Project）：
 
 - `githubWebhookSecret` 明文存储：HMAC-SHA256 需要用原始密钥重算签名，单向哈希（ApiKey 的做法）在这里不可用。
 - 该端点不接受管理员 JWT 或 API Key，secret 为空即拒绝所有推送。
-- 完整 secret 仅在设置/重新生成时返回一次，此后管理接口只返回末 4 位提示，避免 `projects:read` 凭据能够伪造推送。
+- 完整 secret 仅在设置/重新生成时返回一次，此后管理接口只返回末 6 位提示，避免 `projects:read` 凭据能够伪造推送。
 - `main.ts` 以 `rawBody: true` 启动：签名覆盖请求体原始字节，重新序列化解析后的对象会改变键序与空白，签名必然对不上。反向代理同样不得改写请求体。
 
 项目级更新治理（Project）：

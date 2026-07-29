@@ -35,6 +35,14 @@ export class CreateFeedbackDto {
   @MaxLength(128)
   contact?: string
 
+  /**
+   * 由提交者选择是否把这条反馈转发成 GitHub Issue。默认 false：项目开了转发
+   * 只是「允许」，不代表每条反馈都往仓库里丢。选 true 时联系方式必填且单 IP 限流。
+   */
+  @IsOptional()
+  @IsBoolean()
+  forward_to_github?: boolean
+
   /** 隐藏后后台列表默认不返回；评分仍计入统计。 */
   @IsOptional()
   @IsBoolean()

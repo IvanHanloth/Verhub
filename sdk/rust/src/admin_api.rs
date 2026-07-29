@@ -657,7 +657,7 @@ impl AdminApi<'_> {
 
     // ---- GitHub Webhook ----
 
-    /// 查绑定项目的 webhook 配置。secret 不回显，只给末 4 位提示。
+    /// 查绑定项目的 webhook 配置。secret 不回显，只给末 6 位提示。
     pub async fn get_github_webhook(&self) -> Result<GithubWebhookSettings> {
         let key = self.inner.require_project_key()?;
         self.inner
@@ -710,6 +710,86 @@ impl AdminApi<'_> {
                 Method::DELETE,
                 &format!("/admin/projects/{}/github-webhook", segment(&key)),
                 &[],
+                None,
+                true,
+            )
+            .await
+    }
+
+    // ---- GitHub App ----
+
+    /// 查实例级 GitHub App 配置。仅管理员 JWT 可访问，API key 会得到 401。
+    pub async fn get_github_app_config(&self) -> Result<GithubAppConfig> {
+        self.inner
+            .request::<_, ()>(Method::GET, "/admin/github-app", &[], None, true)
+            .await
+    }
+
+    /// 部分更新实例级 GitHub App 配置。`private_key` / `webhook_secret` 传空串表示清除。
+    pub async fn update_github_app_config(
+        &self,
+        input: &UpdateGithubAppConfigInput,
+    ) -> Result<GithubAppConfig> {
+        self.inner
+            .request(Method::PUT, "/admin/github-app", &[], Some(input), true)
+            .await
+    }
+
+    /// 清空实例级 GitHub App 配置。所有项目的 GitHub App 功能随即失效。
+    pub async fn clear_github_app_config(&self) -> Result<GithubAppConfig> {
+        self.inner
+            .request::<_, ()>(Method::DELETE, "/admin/github-app", &[], None, true)
+            .await
+    }
+
+    /// 查绑定项目的 GitHub 集成配置。
+    pub async fn get_github_integration(&self) -> Result<ProjectGithubIntegration> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request::<_, ()>(
+                Method::GET,
+                &format!("/admin/projects/{}/github-integration", segment(&key)),
+                &[],
+                None,
+                true,
+            )
+            .await
+    }
+
+    /// 部分更新绑定项目的 GitHub 集成配置。打开功能开关要求实例级已启用对应功能。
+    pub async fn update_github_integration(
+        &self,
+        input: &UpdateProjectGithubIntegrationInput,
+    ) -> Result<ProjectGithubIntegration> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request(
+                Method::PUT,
+                &format!("/admin/projects/{}/github-integration", segment(&key)),
+                &[],
+                Some(input),
+                true,
+            )
+            .await
+    }
+
+    /// 预览目标仓库里的反馈 Issue 模板（模板来源为 `repo` 时使用）。
+    ///
+    /// `refresh` 为 true 时先作废服务端缓存再重新拉取。拉取失败不会返回 Err，
+    /// 原因放在返回值的 `error` 字段里。
+    pub async fn get_github_integration_repo_template(
+        &self,
+        refresh: bool,
+    ) -> Result<FeedbackIssueRepoTemplatePreview> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request::<_, ()>(
+                Method::GET,
+                &format!(
+                    "/admin/projects/{}/github-integration/repo-template",
+                    segment(&key)
+                ),
+                &[("refresh", refresh.then(|| "true".to_string()))],
                 None,
                 true,
             )

@@ -25,6 +25,7 @@ export type OpenApiSchema = {
   maxLength?: number
   minItems?: number
   maxItems?: number
+  pattern?: string
   additionalProperties?: boolean | OpenApiSchema
 }
 

@@ -185,57 +185,83 @@ HTTP 列里的 `{k}` 是项目 key，由客户端绑定自动填入，方法本�
 | 检查更新       | `check_update`               | `checkUpdate`             | `POST /public/{k}/versions/check-update`  |
 | 公告列表       | `list_announcements`         | `listAnnouncements`       | `GET /public/{k}/announcements`           |
 | 最新公告       | `get_latest_announcement`    | `getLatestAnnouncement`   | `GET /public/{k}/announcements/latest`    |
+| 反馈提交选项   | `get_feedback_options`       | `getFeedbackOptions`      | `GET /public/{k}/feedbacks/options`       |
 | 提交反馈       | `create_feedback`            | `createFeedback`          | `POST /public/{k}/feedbacks`              |
 | 上报日志       | `upload_log`                 | `uploadLog`               | `POST /public/{k}/logs`                   |
 | 上报行为       | `create_action_record`       | `createActionRecord`      | `POST /public/{k}/actions`                |
 
+> 反馈能否转发到 GitHub Issue 由项目配置决定，先用 `get_feedback_options` 查
+> `github_forward_available` 再决定是否给用户显示「同时提交到 GitHub Issue」的选项。
+> 勾选后在 `create_feedback` 里传 `forward_to_github: true`，此时：
+>
+> - `contact` 必填。这条 SDK 在本地就拒绝（Python/TS/纯 JS 抛 `VerhubError`，Rust 返回
+>   `Error::MissingContact`），请求不会发出，省掉一次注定失败的往返。
+> - 项目是否开放转发只有服务端知道（客户端可能拿着缓存的旧选项）。未开放时提交返回
+>   400，超出单 IP 转发限流返回 429，两者的原因文案都可直接展示给用户。
+> - **只有 Issue 建成功，这条反馈才会被记录**。GitHub 侧失败时返回 503 且服务端不留任何
+>   记录，客户端应提示用户稍后重试、或去掉转发再提交——不要当成「已提交」。
+> - 成功返回的 `FeedbackItem` 带 `forwarded_to_github`、`github_issue_number` 与
+>   `github_issue_url`，可直接把 Issue 链接展示给用户。
+>
+> 服务端拒绝一律以 `VerhubApiError`（Rust `Error::Api`）原样抛给调用方，由客户端决定
+> 如何提示用户。
+
 ### `admin` 命名空间
 
-| 操作                | Python / Rust                      | TS / 纯 JS                      | HTTP                                                      |
-| ------------------- | ---------------------------------- | ------------------------------- | --------------------------------------------------------- |
-| 项目列表            | `list_projects`                    | `listProjects`                  | `GET /admin/projects`                                     |
-| 创建项目            | `create_project`                   | `createProject`                 | `POST /admin/projects`                                    |
-| 项目详情            | `get_project`                      | `getProject`                    | `GET /admin/projects/{k}`                                 |
-| 更新项目            | `update_project`                   | `updateProject`                 | `PATCH /admin/projects/{k}`                               |
-| 删除项目            | `delete_project`                   | `deleteProject`                 | `DELETE /admin/projects/{k}`                              |
-| 项目统计            | `get_project_statistics`           | `getProjectStatistics`          | `GET /admin/projects/statistics`                          |
-| 预览 GitHub 仓库    | `preview_github_repo`              | `previewGithubRepo`             | `GET /admin/projects/github-repo-preview`                 |
-| 版本列表            | `list_versions`                    | `listVersions`                  | `GET /admin/projects/{k}/versions`                        |
-| 创建版本            | `create_version`                   | `createVersion`                 | `POST /admin/projects/{k}/versions`                       |
-| 版本详情            | `get_version`                      | `getVersion`                    | `GET /admin/projects/{k}/versions/{id}`                   |
-| 更新版本            | `update_version`                   | `updateVersion`                 | `PATCH /admin/projects/{k}/versions/{id}`                 |
-| 按版本号建/改       | `upsert_version`                   | `upsertVersion`                 | `PUT /admin/projects/{k}/versions/by-version/{v}`         |
-| 删除版本            | `delete_version`                   | `deleteVersion`                 | `DELETE /admin/projects/{k}/versions/{id}`                |
-| 版本统计            | `get_version_statistics`           | `getVersionStatistics`          | `GET /admin/versions/statistics`                          |
-| 预览 GitHub Release | `preview_github_release`           | `previewGithubRelease`          | `GET /admin/projects/{k}/versions/github-release-preview` |
-| 导入 GitHub Release | `import_github_releases`           | `importGithubReleases`          | `POST /admin/projects/{k}/versions/github-release-import` |
-| 公告列表            | `list_announcements`               | `listAnnouncements`             | `GET /admin/projects/{k}/announcements`                   |
-| 创建公告            | `create_announcement`              | `createAnnouncement`            | `POST /admin/projects/{k}/announcements`                  |
-| 公告详情            | `get_announcement`                 | `getAnnouncement`               | `GET /admin/projects/{k}/announcements/{id}`              |
-| 更新公告            | `update_announcement`              | `updateAnnouncement`            | `PATCH /admin/projects/{k}/announcements/{id}`            |
-| 删除公告            | `delete_announcement`              | `deleteAnnouncement`            | `DELETE /admin/projects/{k}/announcements/{id}`           |
-| 公告统计            | `get_announcement_statistics`      | `getAnnouncementStatistics`     | `GET /admin/announcements/statistics`                     |
-| 反馈列表            | `list_feedbacks`                   | `listFeedbacks`                 | `GET /admin/projects/{k}/feedbacks`                       |
-| 补录反馈            | `create_feedback`                  | `createFeedback`                | `POST /admin/projects/{k}/feedbacks`                      |
-| 反馈详情            | `get_feedback`                     | `getFeedback`                   | `GET /admin/projects/{k}/feedbacks/{id}`                  |
-| 更新反馈            | `update_feedback`                  | `updateFeedback`                | `PATCH /admin/projects/{k}/feedbacks/{id}`                |
-| 删除反馈            | `delete_feedback`                  | `deleteFeedback`                | `DELETE /admin/projects/{k}/feedbacks/{id}`               |
-| 反馈统计            | `get_feedback_statistics`          | `getFeedbackStatistics`         | `GET /admin/feedbacks/statistics`                         |
-| 日志列表            | `list_logs`                        | `listLogs`                      | `GET /admin/projects/{k}/logs`                            |
-| 补录日志            | `create_log`                       | `createLog`                     | `POST /admin/projects/{k}/logs`                           |
-| 日志统计            | `get_log_statistics`               | `getLogStatistics`              | `GET /admin/logs/statistics`                              |
-| 行为定义列表        | `list_actions`                     | `listActions`                   | `GET /admin/projects/{k}/actions`                         |
-| 创建行为定义        | `create_action`                    | `createAction`                  | `POST /admin/projects/actions`                            |
-| 更新行为定义        | `update_action`                    | `updateAction`                  | `PATCH /admin/actions/{id}`                               |
-| 删除行为定义        | `delete_action`                    | `deleteAction`                  | `DELETE /admin/actions/{id}`                              |
-| 行为记录列表        | `list_action_records`              | `listActionRecords`             | `GET /admin/actions/{id}`                                 |
-| 行为记录详情        | `get_action_record`                | `getActionRecord`               | `GET /admin/actions/record/{id}`                          |
-| 行为定义统计        | `get_action_statistics`            | `getActionStatistics`           | `GET /admin/actions/statistics`                           |
-| 行为记录统计        | `get_action_record_statistics`     | `getActionRecordStatistics`     | `GET /admin/actions/record/statistics`                    |
-| 查 Webhook 配置     | `get_github_webhook`               | `getGithubWebhook`              | `GET /admin/projects/{k}/github-webhook`                  |
-| 设置 Webhook secret | `set_github_webhook_secret`        | `setGithubWebhookSecret`        | `PUT /admin/projects/{k}/github-webhook`                  |
-| 重置 Webhook secret | `regenerate_github_webhook_secret` | `regenerateGithubWebhookSecret` | `POST /admin/projects/{k}/github-webhook/regenerate`      |
-| 清除 Webhook secret | `clear_github_webhook_secret`      | `clearGithubWebhookSecret`      | `DELETE /admin/projects/{k}/github-webhook`               |
+| 操作                | Python / Rust                          | TS / 纯 JS                         | HTTP                                                       |
+| ------------------- | -------------------------------------- | ---------------------------------- | ---------------------------------------------------------- |
+| 项目列表            | `list_projects`                        | `listProjects`                     | `GET /admin/projects`                                      |
+| 创建项目            | `create_project`                       | `createProject`                    | `POST /admin/projects`                                     |
+| 项目详情            | `get_project`                          | `getProject`                       | `GET /admin/projects/{k}`                                  |
+| 更新项目            | `update_project`                       | `updateProject`                    | `PATCH /admin/projects/{k}`                                |
+| 删除项目            | `delete_project`                       | `deleteProject`                    | `DELETE /admin/projects/{k}`                               |
+| 项目统计            | `get_project_statistics`               | `getProjectStatistics`             | `GET /admin/projects/statistics`                           |
+| 预览 GitHub 仓库    | `preview_github_repo`                  | `previewGithubRepo`                | `GET /admin/projects/github-repo-preview`                  |
+| 版本列表            | `list_versions`                        | `listVersions`                     | `GET /admin/projects/{k}/versions`                         |
+| 创建版本            | `create_version`                       | `createVersion`                    | `POST /admin/projects/{k}/versions`                        |
+| 版本详情            | `get_version`                          | `getVersion`                       | `GET /admin/projects/{k}/versions/{id}`                    |
+| 更新版本            | `update_version`                       | `updateVersion`                    | `PATCH /admin/projects/{k}/versions/{id}`                  |
+| 按版本号建/改       | `upsert_version`                       | `upsertVersion`                    | `PUT /admin/projects/{k}/versions/by-version/{v}`          |
+| 删除版本            | `delete_version`                       | `deleteVersion`                    | `DELETE /admin/projects/{k}/versions/{id}`                 |
+| 版本统计            | `get_version_statistics`               | `getVersionStatistics`             | `GET /admin/versions/statistics`                           |
+| 预览 GitHub Release | `preview_github_release`               | `previewGithubRelease`             | `GET /admin/projects/{k}/versions/github-release-preview`  |
+| 导入 GitHub Release | `import_github_releases`               | `importGithubReleases`             | `POST /admin/projects/{k}/versions/github-release-import`  |
+| 公告列表            | `list_announcements`                   | `listAnnouncements`                | `GET /admin/projects/{k}/announcements`                    |
+| 创建公告            | `create_announcement`                  | `createAnnouncement`               | `POST /admin/projects/{k}/announcements`                   |
+| 公告详情            | `get_announcement`                     | `getAnnouncement`                  | `GET /admin/projects/{k}/announcements/{id}`               |
+| 更新公告            | `update_announcement`                  | `updateAnnouncement`               | `PATCH /admin/projects/{k}/announcements/{id}`             |
+| 删除公告            | `delete_announcement`                  | `deleteAnnouncement`               | `DELETE /admin/projects/{k}/announcements/{id}`            |
+| 公告统计            | `get_announcement_statistics`          | `getAnnouncementStatistics`        | `GET /admin/announcements/statistics`                      |
+| 反馈列表            | `list_feedbacks`                       | `listFeedbacks`                    | `GET /admin/projects/{k}/feedbacks`                        |
+| 补录反馈            | `create_feedback`                      | `createFeedback`                   | `POST /admin/projects/{k}/feedbacks`                       |
+| 反馈详情            | `get_feedback`                         | `getFeedback`                      | `GET /admin/projects/{k}/feedbacks/{id}`                   |
+| 更新反馈            | `update_feedback`                      | `updateFeedback`                   | `PATCH /admin/projects/{k}/feedbacks/{id}`                 |
+| 删除反馈            | `delete_feedback`                      | `deleteFeedback`                   | `DELETE /admin/projects/{k}/feedbacks/{id}`                |
+| 反馈统计            | `get_feedback_statistics`              | `getFeedbackStatistics`            | `GET /admin/feedbacks/statistics`                          |
+| 日志列表            | `list_logs`                            | `listLogs`                         | `GET /admin/projects/{k}/logs`                             |
+| 补录日志            | `create_log`                           | `createLog`                        | `POST /admin/projects/{k}/logs`                            |
+| 日志统计            | `get_log_statistics`                   | `getLogStatistics`                 | `GET /admin/logs/statistics`                               |
+| 行为定义列表        | `list_actions`                         | `listActions`                      | `GET /admin/projects/{k}/actions`                          |
+| 创建行为定义        | `create_action`                        | `createAction`                     | `POST /admin/projects/actions`                             |
+| 更新行为定义        | `update_action`                        | `updateAction`                     | `PATCH /admin/actions/{id}`                                |
+| 删除行为定义        | `delete_action`                        | `deleteAction`                     | `DELETE /admin/actions/{id}`                               |
+| 行为记录列表        | `list_action_records`                  | `listActionRecords`                | `GET /admin/actions/{id}`                                  |
+| 行为记录详情        | `get_action_record`                    | `getActionRecord`                  | `GET /admin/actions/record/{id}`                           |
+| 行为定义统计        | `get_action_statistics`                | `getActionStatistics`              | `GET /admin/actions/statistics`                            |
+| 行为记录统计        | `get_action_record_statistics`         | `getActionRecordStatistics`        | `GET /admin/actions/record/statistics`                     |
+| 查 Webhook 配置     | `get_github_webhook`                   | `getGithubWebhook`                 | `GET /admin/projects/{k}/github-webhook`                   |
+| 设置 Webhook secret | `set_github_webhook_secret`            | `setGithubWebhookSecret`           | `PUT /admin/projects/{k}/github-webhook`                   |
+| 重置 Webhook secret | `regenerate_github_webhook_secret`     | `regenerateGithubWebhookSecret`    | `POST /admin/projects/{k}/github-webhook/regenerate`       |
+| 清除 Webhook secret | `clear_github_webhook_secret`          | `clearGithubWebhookSecret`         | `DELETE /admin/projects/{k}/github-webhook`                |
+| 查 GitHub App 配置  | `get_github_app_config`                | `getGithubAppConfig`               | `GET /admin/github-app`                                    |
+| 改 GitHub App 配置  | `update_github_app_config`             | `updateGithubAppConfig`            | `PUT /admin/github-app`                                    |
+| 清 GitHub App 配置  | `clear_github_app_config`              | `clearGithubAppConfig`             | `DELETE /admin/github-app`                                 |
+| 查 GitHub 集成      | `get_github_integration`               | `getGithubIntegration`             | `GET /admin/projects/{k}/github-integration`               |
+| 改 GitHub 集成      | `update_github_integration`            | `updateGithubIntegration`          | `PUT /admin/projects/{k}/github-integration`               |
+| 预览仓库 Issue 模板 | `get_github_integration_repo_template` | `getGithubIntegrationRepoTemplate` | `GET /admin/projects/{k}/github-integration/repo-template` |
+
+> GitHub App 实例配置（`/admin/github-app`）只接受管理员 JWT；用 API key 调用会得到 401。
+> 仓库模板预览拉取失败不抛异常，原因放在返回值的 `error` 字段里。
 
 ## 常见流程：检查更新
 

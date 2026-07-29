@@ -2,6 +2,21 @@ import { clearSessionToken } from "@/lib/auth-session"
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/v1"
 
+/**
+ * 把后端给的绝对路径（如 webhook 的 payload_path）拼成完整 URL。
+ *
+ * API 独立部署时以 API_BASE_URL 为源，否则用当前站点源 —— 这正是要粘进 GitHub
+ * 表单里的那个地址，猜错源等于给出一个打不通的 webhook。SSR 阶段没有 window，
+ * 原样返回路径，等客户端水合后再补全。
+ */
+export function resolveApiUrl(path: string): string {
+  if (typeof window === "undefined") {
+    return path
+  }
+  const base = API_BASE_URL.startsWith("http") ? API_BASE_URL : window.location.origin
+  return new URL(path, base).toString()
+}
+
 export class ApiError extends Error {
   readonly status: number
   readonly details: unknown

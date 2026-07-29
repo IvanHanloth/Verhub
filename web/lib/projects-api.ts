@@ -66,8 +66,10 @@ export type GithubWebhookSettings = {
   enabled: boolean
   payload_path: string
   content_type: "application/json"
-  /** 末 4 位提示，完整 secret 只在设置/重新生成时返回一次。 */
+  /** 末 6 位提示，完整 secret 只在设置/重新生成时返回一次。 */
   secret_hint: string | null
+  /** 已存 secret 的字符数，用于把掩码铺到真实长度。 */
+  secret_length: number | null
   secret_updated_at: number | null
 }
 

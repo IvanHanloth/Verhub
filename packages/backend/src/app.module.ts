@@ -9,10 +9,12 @@ import { AuthModule } from "./auth/auth.module"
 import { DatabaseModule } from "./database/database.module"
 import { FeedbacksModule } from "./feedbacks/feedbacks.module"
 import { GeoModule } from "./geo/geo.module"
+import { GithubAppModule } from "./github-app/github-app.module"
 import { HealthModule } from "./health/health.module"
 import { LogsModule } from "./logs/logs.module"
 import { ProjectsModule } from "./projects/projects.module"
 import { StatsModule } from "./stats/stats.module"
+import { TermsModule } from "./terms/terms.module"
 import { VersionsModule } from "./versions/versions.module"
 import { WebhooksModule } from "./webhooks/webhooks.module"
 
@@ -50,6 +52,8 @@ function publicRateLimit(): number {
     ActionsModule,
     StatsModule,
     WebhooksModule,
+    GithubAppModule,
+    TermsModule,
   ],
 })
 export class AppModule {}

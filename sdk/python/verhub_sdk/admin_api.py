@@ -16,11 +16,14 @@ from .models import (
     DeleteSuccessResponse,
     FeedbackItem,
     FeedbackListResponse,
+    FeedbackIssueRepoTemplatePreview,
     FeedbackStatistics,
+    GithubAppConfig,
     GithubReleaseVersionPreview,
     GithubRepoProjectPreview,
     GithubWebhookSecretRevealed,
     GithubWebhookSettings,
+    ProjectGithubIntegration,
     LogItem,
     LogListResponse,
     LogStatistics,
@@ -1016,7 +1019,7 @@ class AdminApi:
 
     def get_github_webhook(self) -> GithubWebhookSettings:
         """
-        :return: 绑定项目的 webhook 配置；``secret`` 不回显，只给末 4 位提示
+        :return: 绑定项目的 webhook 配置；``secret`` 不回显，只给末 6 位提示
         """
         return self._http.request(
             "GET",
@@ -1057,5 +1060,145 @@ class AdminApi:
             "DELETE",
             "/admin/projects/{projectKey}/github-webhook",
             path_params={"projectKey": self._http.require_project_key()},
+            auth=True,
+        )
+
+    # ---- GitHub App ----
+
+    def get_github_app_config(self) -> GithubAppConfig:
+        """
+        实例级 GitHub App 配置。仅管理员 JWT 可访问，API key 会得到 401。
+
+        :return: 配置状态；私钥永不回读，只有指纹
+        """
+        return self._http.request("GET", "/admin/github-app", auth=True)
+
+    def update_github_app_config(
+        self,
+        *,
+        app_id: Any = UNSET,
+        private_key: Any = UNSET,
+        webhook_secret: Any = UNSET,
+        enabled_features: Any = UNSET,
+        feedback_issue_custom_template: Any = UNSET,
+        feedback_issue_title_template: Any = UNSET,
+        feedback_issue_body_template: Any = UNSET,
+    ) -> GithubAppConfig:
+        """
+        :param app_id: GitHub App 的数字 ID
+        :param private_key: App 私钥 PEM 原文，只写不读；传空串表示清除
+        :param webhook_secret: App 级 webhook secret；传空串表示清除
+        :param enabled_features: 启用的功能列表，如 ["feedback_issue"]
+        :param feedback_issue_custom_template: 是否启用自定义模板；关闭时下面两个模板字段被忽略，
+            实例缺省回到内置模板
+        :param feedback_issue_title_template: 反馈转发 Issue 标题模板（实例级缺省）
+        :param feedback_issue_body_template: 反馈转发 Issue 正文模板（实例级缺省）
+        :return: 更新后的配置
+        """
+        return self._http.request(
+            "PUT",
+            "/admin/github-app",
+            body=compact(
+                {
+                    "app_id": app_id,
+                    "private_key": private_key,
+                    "webhook_secret": webhook_secret,
+                    "enabled_features": enabled_features,
+                    "feedback_issue_custom_template": feedback_issue_custom_template,
+                    "feedback_issue_title_template": feedback_issue_title_template,
+                    "feedback_issue_body_template": feedback_issue_body_template,
+                }
+            ),
+            auth=True,
+        )
+
+    def clear_github_app_config(self) -> GithubAppConfig:
+        """
+        :return: 清空后的配置；所有项目的 GitHub App 功能随即失效
+        """
+        return self._http.request("DELETE", "/admin/github-app", auth=True)
+
+    def get_github_integration(self) -> ProjectGithubIntegration:
+        """
+        :return: 绑定项目的 GitHub 集成配置
+        """
+        return self._http.request(
+            "GET",
+            "/admin/projects/{projectKey}/github-integration",
+            path_params={"projectKey": self._http.require_project_key()},
+            auth=True,
+        )
+
+    def update_github_integration(
+        self,
+        *,
+        repo_full_name: Any = UNSET,
+        feedback_issue_enabled: Any = UNSET,
+        feedback_issue_template_source: Any = UNSET,
+        feedback_issue_template_repo_path: Any = UNSET,
+        feedback_issue_template_repo_ref: Any = UNSET,
+        feedback_issue_title_template: Any = UNSET,
+        feedback_issue_body_template: Any = UNSET,
+        feedback_issue_labels: Any = UNSET,
+        comment_commands_enabled: Any = UNSET,
+        command_allowed_associations: Any = UNSET,
+        command_allowed_users: Any = UNSET,
+        commands: Any = UNSET,
+    ) -> ProjectGithubIntegration:
+        """
+        :param repo_full_name: 目标仓库 "owner/repo"；传空串表示清除并连带关闭依赖开关
+        :param feedback_issue_enabled: 允许把反馈转发成 Issue；打开要求实例级已启用该功能。
+            只是「允许」，是否转发由提交者逐条选择
+        :param feedback_issue_template_source: 模板来源 "inherit" / "custom" / "repo"
+        :param feedback_issue_template_repo_path: source="repo" 时必填，仓库内的相对路径
+        :param feedback_issue_template_repo_ref: 读取模板文件使用的分支/标签，留空取默认分支
+        :param feedback_issue_title_template: Issue 标题模板（项目级优先）
+        :param feedback_issue_body_template: Issue 正文模板
+        :param feedback_issue_labels: Issue 标签列表
+        :param comment_commands_enabled: 评论命令开关；打开要求实例级已启用该功能
+        :param command_allowed_associations: 允许触发命令的 author_association 列表
+        :param command_allowed_users: 额外放行的 GitHub 用户名列表
+        :param commands: 命令定义列表，如 [{"name": "release", "workflow": "release.yml", "ref": "main", "input": "version"}]
+        :return: 更新后的集成配置
+        """
+        return self._http.request(
+            "PUT",
+            "/admin/projects/{projectKey}/github-integration",
+            path_params={"projectKey": self._http.require_project_key()},
+            body=compact(
+                {
+                    "repo_full_name": repo_full_name,
+                    "feedback_issue_enabled": feedback_issue_enabled,
+                    "feedback_issue_template_source": feedback_issue_template_source,
+                    "feedback_issue_template_repo_path": feedback_issue_template_repo_path,
+                    "feedback_issue_template_repo_ref": feedback_issue_template_repo_ref,
+                    "feedback_issue_title_template": feedback_issue_title_template,
+                    "feedback_issue_body_template": feedback_issue_body_template,
+                    "feedback_issue_labels": feedback_issue_labels,
+                    "comment_commands_enabled": comment_commands_enabled,
+                    "command_allowed_associations": command_allowed_associations,
+                    "command_allowed_users": command_allowed_users,
+                    "commands": commands,
+                }
+            ),
+            auth=True,
+        )
+
+    def get_github_integration_repo_template(
+        self,
+        *,
+        refresh: bool = False,
+    ) -> FeedbackIssueRepoTemplatePreview:
+        """
+        预览目标仓库里的反馈 Issue 模板（模板来源为 "repo" 时使用）。
+
+        :param refresh: 先作废服务端缓存再重新拉取
+        :return: 解析后的模板；拉取失败时 error 字段给出原因，不抛异常
+        """
+        return self._http.request(
+            "GET",
+            "/admin/projects/{projectKey}/github-integration/repo-template",
+            path_params={"projectKey": self._http.require_project_key()},
+            query={"refresh": "true"} if refresh else None,
             auth=True,
         )

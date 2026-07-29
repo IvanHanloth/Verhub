@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   Copy,
   ExternalLink,
+  Github,
   Loader2,
   PencilLine,
   Plus,
@@ -37,7 +38,7 @@ import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
 import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { MarkdownEditor } from "@/components/markdown/markdown-editor"
-import { GithubWebhookSettings } from "@/components/projects/github-webhook-settings"
+import { GithubIntegrationDialog } from "@/components/projects/github-integration-dialog"
 import { ProjectAliasesSettings } from "@/components/projects/project-aliases-settings"
 import { validateComparableVersion } from "@/lib/comparable-version"
 import {
@@ -372,6 +373,10 @@ export function ProjectsDashboard() {
   const [githubLoading, setGithubLoading] = React.useState(false)
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
   const [editingProjectKey, setEditingProjectKey] = React.useState<string | null>(null)
+  const [githubDialogOpen, setGithubDialogOpen] = React.useState(false)
+  const [githubProjectKey, setGithubProjectKey] = React.useState<string | null>(null)
+  // 目标仓库默认跟项目自己的仓库走，开弹窗时一并带过去。
+  const [githubProjectRepoUrl, setGithubProjectRepoUrl] = React.useState<string | null>(null)
   const [editForm, setEditForm] = React.useState<FormState>(emptyForm)
   const [savingEdit, setSavingEdit] = React.useState(false)
 
@@ -806,6 +811,21 @@ export function ProjectsDashboard() {
                             size="icon"
                             variant="outline"
                             className="border-white/20 bg-white/5"
+                            title="GitHub 集成"
+                            aria-label="GitHub 集成"
+                            onClick={() => {
+                              setGithubProjectKey(project.project_key)
+                              setGithubProjectRepoUrl(project.repo_url)
+                              setGithubDialogOpen(true)
+                            }}
+                          >
+                            <Github className="size-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="border-white/20 bg-white/5"
                             title="编辑"
                             aria-label="编辑"
                             onClick={() => beginEdit(project)}
@@ -890,13 +910,8 @@ export function ProjectsDashboard() {
                 maxComparableError={editMaxComparableError}
                 theme="light"
               />
-              {/* Keyed on the project so switching rows refetches instead of
-                  showing the previous project's webhook state. */}
-              <GithubWebhookSettings
-                key={editingProjectKey ?? "none"}
-                token={token}
-                projectKey={editingProjectKey}
-              />
+              {/* GitHub 相关配置（App 功能 + Release Webhook）已整体移至
+                  行内「GitHub 集成」弹窗，编辑弹窗只保留项目自身信息。 */}
               <ProjectAliasesSettings
                 key={`aliases-${editingProjectKey ?? "none"}`}
                 token={token}
@@ -920,6 +935,15 @@ export function ProjectsDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <GithubIntegrationDialog
+        key={`github-${githubProjectKey ?? "none"}`}
+        open={githubDialogOpen}
+        onOpenChange={setGithubDialogOpen}
+        token={token}
+        projectKey={githubProjectKey}
+        projectRepoUrl={githubProjectRepoUrl}
+      />
     </section>
   )
 }

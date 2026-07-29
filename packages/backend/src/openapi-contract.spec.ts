@@ -22,12 +22,17 @@ import { AnnouncementsController } from "./announcements/announcements.controlle
 import { AuthController } from "./auth/auth.controller"
 import { FeedbacksCompatController } from "./feedbacks/feedbacks-compat.controller"
 import { FeedbacksController } from "./feedbacks/feedbacks.controller"
+import { GithubAppConfigController } from "./github-app/github-app-config.controller"
+import { GithubAppWebhookController } from "./github-app/github-app-webhook.controller"
+import { ProjectGithubIntegrationController } from "./github-app/project-github-integration.controller"
 import { HealthController } from "./health/health.controller"
 import { LogsController } from "./logs/logs.controller"
 import { ProjectsPublicController } from "./projects/projects-public.controller"
 import { ProjectsController } from "./projects/projects.controller"
 import { ContentStatsController } from "./stats/content-stats.controller"
 import { RequestStatsController } from "./stats/request-stats.controller"
+import { TermsController } from "./terms/terms.controller"
+import { TermsPublicController } from "./terms/terms-public.controller"
 import { VersionsCompatController } from "./versions/versions-compat.controller"
 import { VersionsPublicController } from "./versions/versions-public.controller"
 import { VersionsStatsController } from "./versions/versions-stats.controller"
@@ -45,13 +50,18 @@ const CONTROLLERS = [
   AuthController,
   FeedbacksCompatController,
   FeedbacksController,
+  GithubAppConfigController,
+  GithubAppWebhookController,
   GithubWebhookController,
   GithubWebhookSecretController,
   HealthController,
+  ProjectGithubIntegrationController,
   LogsController,
   ProjectsController,
   ProjectsPublicController,
   RequestStatsController,
+  TermsController,
+  TermsPublicController,
   VersionsCompatController,
   VersionsController,
   VersionsPublicController,

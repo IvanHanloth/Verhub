@@ -98,6 +98,11 @@ export type FeedbackItem = {
   platform: Platform | null
   platform_version: string | null
   custom_data: JsonObject | null
+  /** 是否已转成 GitHub Issue。转发失败的提交不会落库，所以拿到的记录一定是成功的那些。 */
+  forwarded_to_github: boolean
+  /** 生成的 Issue 编号与链接；未转发时都是 null。 */
+  github_issue_number: number | null
+  github_issue_url: string | null
   ip: string | null
   user_agent: string | null
   country_code: string | null
@@ -219,12 +224,123 @@ export type GithubWebhookSettings = {
   payload_path: string
   content_type: string
   secret_hint: string | null
+  /** 已存 secret 的字符数，供渲染与真实长度一致的掩码。 */
+  secret_length: number | null
   secret_updated_at: number | null
 }
 
 export type GithubWebhookSecretRevealed = GithubWebhookSettings & {
   /** 完整 secret，只在设置或重新生成时返回一次。 */
   secret: string
+}
+
+/** 可启用的 GitHub App 功能。 */
+export type GithubAppFeature = "feedback_issue" | "comment_commands"
+
+/** 实例级 GitHub App 配置视图。私钥永不回读，仅返回指纹。 */
+export type GithubAppConfig = {
+  configured: boolean
+  app_id: string | null
+  has_private_key: boolean
+  private_key_fingerprint: string | null
+  private_key_updated_at: number | null
+  has_webhook_secret: boolean
+  webhook_secret_hint: string | null
+  /** 已存 secret 的字符数，供渲染与真实长度一致的掩码。 */
+  webhook_secret_length: number | null
+  webhook_secret_updated_at: number | null
+  webhook_payload_path: string
+  enabled_features: GithubAppFeature[]
+  /** 关闭时忽略下面两个模板字段，实例缺省即内置模板。 */
+  feedback_issue_custom_template: boolean
+  feedback_issue_title_template: string | null
+  feedback_issue_body_template: string | null
+  /** 内置模板原文，可直接作为自定义模板编辑器的初值。内置正文不含评分。 */
+  builtin_feedback_issue_title_template: string
+  builtin_feedback_issue_body_template: string
+  /** 模板可用变量名清单。 */
+  feedback_issue_template_variables: string[]
+  updated_at: number | null
+}
+
+/** 部分更新实例级 GitHub App 配置。private_key / webhook_secret 传空串表示清除。 */
+export type UpdateGithubAppConfigInput = {
+  app_id?: string
+  /** App 私钥 PEM 原文，只写不读。 */
+  private_key?: string
+  webhook_secret?: string
+  enabled_features?: GithubAppFeature[]
+  /** 关闭时下面两个模板字段被忽略，实例缺省回到内置模板。 */
+  feedback_issue_custom_template?: boolean
+  feedback_issue_title_template?: string
+  feedback_issue_body_template?: string
+}
+
+/**
+ * 反馈转发 Issue 的模板来源。
+ * - `inherit`：跟随实例级模板
+ * - `custom`：使用项目自己的 feedback_issue_*_template
+ * - `repo`：读目标仓库里的模板文件，内容带缓存定期重取
+ */
+export type FeedbackIssueTemplateSource = "inherit" | "custom" | "repo"
+
+/** 仓库模板文件的拉取结果。拉不到时 error 给出原因，其余字段为空。 */
+export type FeedbackIssueRepoTemplatePreview = {
+  path: string
+  ref: string | null
+  fetched_at: number | null
+  title_template: string | null
+  body_template: string | null
+  /** 模板 front matter 里声明的标签，优先于项目上单独配置的标签。 */
+  labels: string[]
+  error: string | null
+}
+
+/** 评论命令定义：/verhub-<name> <args> → workflow_dispatch。 */
+export type GithubCommandDefinition = {
+  name: string
+  workflow: string
+  ref: string
+  /** 参数写入 workflow inputs 的键名，缺省 "args"。 */
+  input?: string
+}
+
+/** 项目级 GitHub 集成配置视图。*_active 是综合实例配置后的实际生效状态。 */
+export type ProjectGithubIntegration = {
+  project_key: string
+  repo_full_name: string | null
+  /** 只表示「允许转发」；是否转发由提交者逐条选择。 */
+  feedback_issue_enabled: boolean
+  feedback_issue_active: boolean
+  feedback_issue_template_source: FeedbackIssueTemplateSource
+  feedback_issue_template_repo_path: string | null
+  feedback_issue_template_repo_ref: string | null
+  feedback_issue_title_template: string | null
+  feedback_issue_body_template: string | null
+  feedback_issue_labels: string[]
+  comment_commands_enabled: boolean
+  comment_commands_active: boolean
+  command_allowed_associations: string[]
+  command_allowed_users: string[]
+  commands: GithubCommandDefinition[]
+  updated_at: number | null
+}
+
+/** 部分更新项目级 GitHub 集成配置。repo_full_name 传空串表示清除并连带关闭依赖开关。 */
+export type UpdateProjectGithubIntegrationInput = {
+  repo_full_name?: string
+  feedback_issue_enabled?: boolean
+  feedback_issue_template_source?: FeedbackIssueTemplateSource
+  /** source=repo 时必填，仓库内的相对路径。 */
+  feedback_issue_template_repo_path?: string
+  feedback_issue_template_repo_ref?: string
+  feedback_issue_title_template?: string
+  feedback_issue_body_template?: string
+  feedback_issue_labels?: string[]
+  comment_commands_enabled?: boolean
+  command_allowed_associations?: string[]
+  command_allowed_users?: string[]
+  commands?: GithubCommandDefinition[]
 }
 
 export type GithubRepoProjectPreview = {
@@ -299,6 +415,12 @@ export type CreateFeedbackInput = {
   rating?: number
   /** 联系方式，邮箱 / 手机号 / IM 账号皆可。 */
   contact?: string
+  /**
+   * 由提交者选择是否把这条反馈转发成 GitHub Issue，默认 false。
+   * 传 true 时 contact 必填（SDK 本地就会拒绝）且受单 IP 转发限流约束；
+   * Issue 建失败时这条反馈不会被记录。仅公开提交接口生效。
+   */
+  forward_to_github?: boolean
   /** 隐藏后后台列表默认不返回，评分仍计入统计。 */
   is_hidden?: boolean
   platform?: Platform
@@ -308,6 +430,14 @@ export type CreateFeedbackInput = {
 }
 
 export type UpdateFeedbackInput = Partial<CreateFeedbackInput>
+
+/** 反馈提交选项，决定客户端是否显示「转发到 GitHub Issue」的勾选框。 */
+export type PublicFeedbackOptions = {
+  project_key: string
+  github_forward_available: boolean
+  /** 选择转发时联系方式是否必填；转发不可用时恒为 false。 */
+  contact_required_for_forward: boolean
+}
 
 export type UploadLogInput = {
   level: LogLevel

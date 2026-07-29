@@ -3,6 +3,7 @@ import { headers } from "next/headers"
 
 import type { AnnouncementItem } from "@/lib/announcements-api"
 import type { ProjectItem } from "@/lib/projects-api"
+import type { TermsDocument, TermsDocumentSummary } from "@/lib/terms-api"
 import type { VersionItem } from "@/lib/versions-api"
 
 const FALLBACK_SITE_URL = "http://127.0.0.1:3000"
@@ -93,5 +94,29 @@ export async function getProjectShowcaseData(
     project,
     versions: versionsResult.data,
     announcements: announcementsResult.data,
+  }
+}
+
+/**
+ * 取一份条款文档的生效正文。
+ *
+ * 后端在未自定义时回落到内置正文，所以已登记的文档必有内容；拿不到只可能是
+ * 后端不可达或 slug 不存在，两种都返回 null，由页面区分成提示与 404。
+ */
+export async function getTermsDocument(slug: string): Promise<TermsDocument | null> {
+  try {
+    return await requestPublicJson<TermsDocument>(`/public/terms/${encodeURIComponent(slug)}`)
+  } catch {
+    return null
+  }
+}
+
+/** 条款文档清单，用于文档之间的导航。后端不可达时给空数组，不阻塞正文渲染。 */
+export async function listTermsDocuments(): Promise<TermsDocumentSummary[]> {
+  try {
+    const response = await requestPublicJson<{ data: TermsDocumentSummary[] }>("/public/terms")
+    return response.data
+  } catch {
+    return []
   }
 }

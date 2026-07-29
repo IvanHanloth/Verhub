@@ -3,7 +3,7 @@
  *
  * The secret is readable only once, at the moment it is set or regenerated —
  * the same rule the admin UI already applies to API keys. Afterwards only a
- * 4-character hint is returned, which is enough to tell two secrets apart in
+ * 6-character hint is returned, which is enough to tell two secrets apart in
  * the UI without letting a `projects:read` token forge a delivery.
  */
 
@@ -11,6 +11,7 @@ import { randomBytes } from "node:crypto"
 
 import { Injectable, NotFoundException } from "@nestjs/common"
 
+import { describeSecret } from "../common/secret-box"
 import { PrismaService } from "../database/prisma.service"
 import { ProjectResolverService } from "../database/project-resolver.service"
 import { nowSeconds } from "../common/utils"
@@ -90,12 +91,14 @@ const SELECT_WEBHOOK_FIELDS = {
 
 function toSettings(project: ProjectWebhookRecord): GithubWebhookSettings {
   const secret = project.githubWebhookSecret
+  const { hint, length } = describeSecret(secret)
 
   return {
     enabled: Boolean(secret),
     payload_path: `/api/v1/webhooks/github/${project.projectKey}`,
     content_type: "application/json",
-    secret_hint: secret ? secret.slice(-4) : null,
+    secret_hint: hint,
+    secret_length: length,
     secret_updated_at: project.githubWebhookSecretUpdatedAt,
   }
 }

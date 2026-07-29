@@ -4,6 +4,7 @@ from typing import Any, Optional
 
 from ._http import HttpClient, compact
 from ._unset import UNSET
+from .errors import VerhubError
 from .models import (
     ActionRecordItem,
     AnnouncementItem,
@@ -13,6 +14,7 @@ from .models import (
     LogItem,
     Platform,
     ProjectItem,
+    PublicFeedbackOptions,
     VersionItem,
     VersionListResponse,
 )
@@ -157,6 +159,18 @@ class PublicApi:
             query={"platform": platform},
         )
 
+    def get_feedback_options(self) -> PublicFeedbackOptions:
+        """
+        反馈提交选项。客户端据此决定要不要显示「转发到 GitHub Issue」的勾选框。
+
+        :return: 本项目是否开放转发，以及转发时联系方式是否必填
+        """
+        return self._http.request(
+            "GET",
+            "/public/{projectKey}/feedbacks/options",
+            path_params={"projectKey": self._http.require_project_key()},
+        )
+
     def create_feedback(
         self,
         *,
@@ -164,22 +178,34 @@ class PublicApi:
         user_id: Any = UNSET,
         rating: Any = UNSET,
         contact: Any = UNSET,
+        forward_to_github: Any = UNSET,
         is_hidden: Any = UNSET,
         platform: Any = UNSET,
         platform_version: Any = UNSET,
         custom_data: Any = UNSET,
     ) -> FeedbackItem:
         """
+        提交用户反馈。
+
+        ``forward_to_github`` 为 True 时联系方式必填，这条本地就会拒绝
+        （抛 :class:`VerhubError`），不必往服务端跑一趟；项目是否开放转发只有
+        服务端知道，未开放时提交会拿到 400，Issue 建失败则整条反馈不会被记录（503）。
+
         :param content: 反馈内容，最长 4096
         :param user_id: 调用方自己的用户标识
         :param rating: 评分，1..5
         :param contact: 联系方式，最长 128
+        :param forward_to_github: 是否把这条反馈转发成 GitHub Issue，默认 False；
+            传 True 时联系方式必填且受单 IP 转发限流约束
         :param is_hidden: 是否隐藏；隐藏后后台列表默认不返回，评分仍计入统计
         :param platform: 平台声明；省略时服务端按 User-Agent 与请求头推断
         :param platform_version: 系统版本明细，如 ``11`` / ``ubuntu 24.04``
         :param custom_data: 自定义数据
         :return: 创建出的反馈
+        :raises VerhubError: 选了转发却没填 ``contact``
         """
+        if forward_to_github is True and not (isinstance(contact, str) and contact.strip()):
+            raise VerhubError("转发到 GitHub Issue 需要联系方式：请先填写 contact")
         return self._http.request(
             "POST",
             "/public/{projectKey}/feedbacks",
@@ -190,6 +216,7 @@ class PublicApi:
                     "user_id": user_id,
                     "rating": rating,
                     "contact": contact,
+                    "forward_to_github": forward_to_github,
                     "is_hidden": is_hidden,
                     "platform": platform,
                     "platform_version": platform_version,

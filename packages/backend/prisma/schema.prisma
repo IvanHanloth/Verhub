@@ -87,7 +87,7 @@ model ApiKey {
 }
 
 model Project {
-  projectKey                         String                @id
+  projectKey                         String                    @id
   name                               String
   repoUrl                            String?
   description                        String?
@@ -107,9 +107,9 @@ model Project {
   /// When the webhook secret was last set or regenerated, in Unix seconds.
   githubWebhookSecretUpdatedAt       Int?
   /// How long hourly request statistics are kept, in days. Capped at 365.
-  statsRetentionDays                 Int                   @default(365)
-  createdAt                          Int                   @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  updatedAt                          Int                   @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  statsRetentionDays                 Int                       @default(365)
+  createdAt                          Int                       @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt                          Int                       @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   versions                           Version[]
   announcements                      Announcement[]
   feedbacks                          Feedback[]
@@ -119,6 +119,86 @@ model Project {
   clientVersionStats                 ClientVersionStat[]
   platformVersionStats               PlatformVersionStat[]
   aliases                            ProjectAlias[]
+  githubIntegration                  ProjectGithubIntegration?
+}
+
+/// 实例级 GitHub App 配置，单行表（id 恒为 "default"）。
+///
+/// GitHub App 不是必选项：整行为空/未启用任何功能时，项目级的相关开关一律拒绝打开。
+/// 私钥用 AES-256-GCM 加密存储（密钥派生自 JWT_SECRET），任何接口都不回读原文，
+/// 只暴露 SHA-256 指纹供 UI 区分换没换过钥匙。
+model GithubAppConfig {
+  id                          String   @id @default("default")
+  /// GitHub App 的数字 App ID。
+  appId                       String?
+  /// App 私钥（PEM）加密后的密文，格式 v1:<iv>:<tag>:<data>。
+  privateKeyEncrypted         String?
+  privateKeyFingerprint       String?
+  privateKeyUpdatedAt         Int?
+  /// App 级 webhook secret（App 事件如 issue_comment 投递到实例级端点验签用）。
+  /// 与项目级 release webhook secret 是两套体系。明文存储原因同 Project 上的注释。
+  webhookSecret               String?
+  webhookSecretUpdatedAt      Int?
+  /// 实例级启用的功能开关，取值见 GITHUB_APP_FEATURES（feedback_issue / comment_commands）。
+  /// 未在这里启用的功能，项目级开关不允许打开。
+  enabledFeatures             String[] @default([])
+  /// 关掉时下面两列一律被忽略，实例缺省即内置模板；打开才让自定义值生效。
+  /// 有这个开关，管理员改坏模板后不必逐字删回内置文案。
+  feedbackIssueCustomTemplate Boolean  @default(false)
+  /// 反馈转发 Issue 的实例级缺省模板；项目级模板优先。
+  feedbackIssueTitleTemplate  String?
+  feedbackIssueBodyTemplate   String?
+  updatedAt                   Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+}
+
+/// 实例级条款文档的自定义内容，一份文档一行，按需创建。
+///
+/// slug 取值见 TERMS_DOCUMENT_SLUGS（privacy-policy / sdk-compliance），
+/// 内置正文在代码里，不入库：行不存在即表示该文档沿用内置正文，前台永远有条款可读。
+model TermsDocument {
+  slug             String  @id
+  /// 关掉时忽略下面的自定义正文，前台展示内置正文；打开才让自定义正文生效。
+  /// 有这个开关，运营者改坏正文后不必逐字删回内置文案。
+  custom           Boolean @default(false)
+  /// 自定义正文（Markdown）。null 表示从未编辑过。
+  content          String?
+  /// 自定义正文最近一次保存的时间，供前台显示「最后更新」。
+  /// 与 updatedAt 分开：改开关不该让访问者以为条款内容变了。
+  contentUpdatedAt Int?
+  updatedAt        Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+}
+
+/// 项目级 GitHub 集成配置（GitHub App 相关功能，一项目一行，按需创建）。
+model ProjectGithubIntegration {
+  projectKey                    String   @id
+  /// 目标仓库 "owner/repo"。反馈转发的 Issue 建在这里，comment 命令也按它路由。
+  repoFullName                  String?
+  /// 允许把反馈转发为 GitHub Issue。生效还需实例级启用 feedback_issue 且 App 凭据齐全。
+  /// 只是「允许」：是否真的转发由提交者在客户端逐条选择，选了才要求填联系方式。
+  feedbackIssueEnabled          Boolean  @default(false)
+  /// 模板来源：inherit（跟随实例）/ custom（本项目自定义）/ repo（读目标仓库里的文件）。
+  feedbackIssueTemplateSource   String   @default("inherit")
+  /// source=repo 时模板文件在目标仓库中的路径与 ref（ref 留空取仓库默认分支）。
+  /// 文件内容带缓存定期重取，仓库里改完模板不需要回来点保存。
+  feedbackIssueTemplateRepoPath String?
+  feedbackIssueTemplateRepoRef  String?
+  feedbackIssueTitleTemplate    String?
+  feedbackIssueBodyTemplate     String?
+  feedbackIssueLabels           String[] @default([])
+  /// GitHub comment 命令（/verhub-xxx 触发 workflow_dispatch）。
+  commentCommandsEnabled        Boolean  @default(false)
+  /// 允许触发命令的评论者与仓库的关联（GitHub author_association 取值）。
+  commandAllowedAssociations    String[] @default(["OWNER", "MEMBER", "COLLABORATOR"])
+  /// 关联之外额外放行的 GitHub 用户名；与上面的关联判断取并集。
+  commandAllowedUsers           String[] @default([])
+  /// 命令定义数组：[{ name, workflow, ref, input }]。
+  /// /verhub-<name> <args> 会向 workflow 发 workflow_dispatch，args 作为 inputs[input] 传入。
+  commands                      Json?
+  updatedAt                     Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([repoFullName])
 }
 
 /// 项目改名（变更 projectKey）后保留下来的旧 key。旧 key 作为别名指回当前项目，
@@ -343,33 +423,39 @@ model Announcement {
 }
 
 model Feedback {
-  id              String    @id @default(cuid())
-  projectKey      String
-  userId          String?
-  rating          Int?
-  content         String
+  id                String    @id @default(cuid())
+  projectKey        String
+  userId            String?
+  rating            Int?
+  content           String
   /// 提交者留下的联系方式（邮箱 / 手机号 / IM 账号等），自由文本，可空。
-  contact         String?
+  contact           String?
   /// 隐藏后不在后台列表默认返回（需显式 include_hidden），但记录仍在，
   /// 评分也照常计入统计 —— 隐藏只影响展示，不影响数据。
-  isHidden        Boolean   @default(false)
+  isHidden          Boolean   @default(false)
   /// Declared by the client when it submits, else inferred from the User-Agent.
-  platform        Platform?
+  platform          Platform?
   /// 系统版本明细（`platform_version` 字段、`x-verhub-platform-version` 头，或从
   /// UA 解析），如 "11" / "ubuntu 24.04" / "26"。与 platform 分开存：platform 是
   /// 固定分组维度，这里是随发行版无限增长的自由文本。null 表示无从得知。
-  platformVersion String?
-  customData      Json?
+  platformVersion   String?
+  customData        Json?
+  /// 该反馈是否已转成 GitHub Issue。提交者勾选转发时，Issue 建成功才落库，
+  /// 所以这里为 false 的行一定是没要求转发的普通反馈。
+  forwardedToGithub Boolean   @default(false)
+  /// 生成的 Issue 编号与链接。GitHub 未返回编号时只留链接，二者互不依赖。
+  githubIssueNumber Int?
+  githubIssueUrl    String?
   /// Caller origin, captured at submit time. See the `Log` model.
-  ip              String?
-  userAgent       String?
-  countryCode     String?
-  countryName     String?
-  regionName      String?
-  city            String?
+  ip                String?
+  userAgent         String?
+  countryCode       String?
+  countryName       String?
+  regionName        String?
+  city              String?
   /// Fingerprint for near-duplicate suppression; see `Log.dedupHash`.
-  dedupHash       String?
-  createdAt       Int       @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  dedupHash         String?
+  createdAt         Int       @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 

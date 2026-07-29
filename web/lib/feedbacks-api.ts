@@ -13,6 +13,11 @@ export type FeedbackItem = {
   platform: Platform | null
   platform_version: string | null
   custom_data: unknown
+  /** 是否已转成 GitHub Issue。转发失败的提交不会落库，列表里为 true 的都建成了 Issue。 */
+  forwarded_to_github: boolean
+  /** 生成的 Issue 编号与链接；未转发时都是 null。 */
+  github_issue_number: number | null
+  github_issue_url: string | null
   /** Server-observed caller origin; null on rows submitted before it was captured. */
   ip: string | null
   user_agent: string | null

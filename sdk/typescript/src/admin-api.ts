@@ -17,7 +17,9 @@ import type {
   DeleteSuccessResponse,
   FeedbackItem,
   FeedbackListResponse,
+  FeedbackIssueRepoTemplatePreview,
   FeedbackStatistics,
+  GithubAppConfig,
   GithubReleaseVersionPreview,
   GithubRepoProjectPreview,
   GithubWebhookSecretRevealed,
@@ -29,12 +31,15 @@ import type {
   LogStatistics,
   PageOptions,
   ProjectAliasListResponse,
+  ProjectGithubIntegration,
   ProjectItem,
   ProjectListResponse,
   ProjectStatistics,
   UpdateActionInput,
   UpdateAnnouncementInput,
   UpdateFeedbackInput,
+  UpdateGithubAppConfigInput,
+  UpdateProjectGithubIntegrationInput,
   UpdateProjectInput,
   UpdateVersionInput,
   UpsertVersionInput,
@@ -531,7 +536,7 @@ export class AdminApi {
   // ---- GitHub Webhook ----
 
   /**
-   * @returns 绑定项目的 webhook 配置；secret 不回显，只给末 4 位提示
+   * @returns 绑定项目的 webhook 配置；secret 不回显，只给末 6 位提示
    */
   getGithubWebhook(): Promise<GithubWebhookSettings> {
     return this.http.request("GET", "/admin/projects/{projectKey}/github-webhook", {
@@ -570,5 +575,76 @@ export class AdminApi {
       pathParams: { projectKey: this.http.requireProjectKey() },
       auth: true,
     })
+  }
+
+  // ---- GitHub App ----
+
+  /**
+   * 实例级 GitHub App 配置。仅管理员 JWT 可访问，API key 会得到 401。
+   *
+   * @returns 配置状态；私钥永不回读，只有指纹
+   */
+  getGithubAppConfig(): Promise<GithubAppConfig> {
+    return this.http.request("GET", "/admin/github-app", { auth: true })
+  }
+
+  /**
+   * @param input 要改的字段；private_key / webhook_secret 传空串表示清除
+   */
+  updateGithubAppConfig(input: UpdateGithubAppConfigInput): Promise<GithubAppConfig> {
+    return this.http.request("PUT", "/admin/github-app", {
+      body: compact({ ...input }),
+      auth: true,
+    })
+  }
+
+  /**
+   * @returns 清空后的配置；所有项目的 GitHub App 功能随即失效
+   */
+  clearGithubAppConfig(): Promise<GithubAppConfig> {
+    return this.http.request("DELETE", "/admin/github-app", { auth: true })
+  }
+
+  /**
+   * @returns 绑定项目的 GitHub 集成配置
+   */
+  getGithubIntegration(): Promise<ProjectGithubIntegration> {
+    return this.http.request("GET", "/admin/projects/{projectKey}/github-integration", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      auth: true,
+    })
+  }
+
+  /**
+   * @param input 要改的字段；打开功能开关要求实例级已启用对应功能
+   */
+  updateGithubIntegration(
+    input: UpdateProjectGithubIntegrationInput,
+  ): Promise<ProjectGithubIntegration> {
+    return this.http.request("PUT", "/admin/projects/{projectKey}/github-integration", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact({ ...input }),
+      auth: true,
+    })
+  }
+
+  /**
+   * 预览目标仓库里的反馈 Issue 模板（模板来源为 repo 时使用）。
+   *
+   * @param options refresh=true 先作废服务端缓存再重新拉取
+   * @returns 解析后的模板；拉取失败时 error 字段给出原因，不抛异常
+   */
+  getGithubIntegrationRepoTemplate(
+    options: { refresh?: boolean } = {},
+  ): Promise<FeedbackIssueRepoTemplatePreview> {
+    return this.http.request(
+      "GET",
+      "/admin/projects/{projectKey}/github-integration/repo-template",
+      {
+        pathParams: { projectKey: this.http.requireProjectKey() },
+        query: { refresh: options.refresh ? "true" : undefined },
+        auth: true,
+      },
+    )
   }
 }

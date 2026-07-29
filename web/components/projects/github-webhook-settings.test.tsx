@@ -1,98 +1,96 @@
 import * as React from "react"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import {
-  clearGithubWebhookSecret,
-  getGithubWebhookSettings,
-  regenerateGithubWebhookSecret,
-} from "@/lib/projects-api"
+  EMPTY_SECRET_STATE,
+  type WebhookSecretState,
+} from "@/components/github/webhook-secret-field"
+import type { GithubWebhookSettings as GithubWebhookSettingsView } from "@/lib/projects-api"
 
 import { GithubWebhookSettings } from "./github-webhook-settings"
-
-vi.mock("@/lib/projects-api", () => ({
-  getGithubWebhookSettings: vi.fn(),
-  regenerateGithubWebhookSecret: vi.fn(),
-  setGithubWebhookSecret: vi.fn(),
-  clearGithubWebhookSecret: vi.fn(),
-}))
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
-const mockedGet = vi.mocked(getGithubWebhookSettings)
-const mockedRegenerate = vi.mocked(regenerateGithubWebhookSecret)
-const mockedClear = vi.mocked(clearGithubWebhookSecret)
-
-const DISABLED = {
+const DISABLED: GithubWebhookSettingsView = {
   enabled: false,
   payload_path: "/api/v1/webhooks/github/verhub",
   content_type: "application/json" as const,
   secret_hint: null,
+  secret_length: null,
   secret_updated_at: null,
 }
 
+const ENABLED = {
+  ...DISABLED,
+  enabled: true,
+  secret_hint: "abcd12",
+  secret_length: 12,
+  secret_updated_at: 1760000000,
+}
+
+function renderPanel(
+  settings: GithubWebhookSettingsView | null,
+  secret: WebhookSecretState = EMPTY_SECRET_STATE,
+) {
+  const onSecretChange = vi.fn()
+  render(React.createElement(GithubWebhookSettings, { settings, secret, onSecretChange }))
+  return { onSecretChange }
+}
+
 describe("GithubWebhookSettings", () => {
-  beforeEach(() => {
-    mockedGet.mockReset()
-    mockedRegenerate.mockReset()
-    mockedClear.mockReset()
-  })
-
-  it("shows the absolute payload url the operator has to paste into GitHub", async () => {
-    mockedGet.mockResolvedValue(DISABLED)
-
-    render(React.createElement(GithubWebhookSettings, { token: "t", projectKey: "verhub" }))
+  it("shows the absolute payload url the operator has to paste into GitHub", () => {
+    renderPanel(DISABLED)
 
     expect(
-      await screen.findByText(`${window.location.origin}/api/v1/webhooks/github/verhub`),
+      screen.getByText(`${window.location.origin}/api/v1/webhooks/github/verhub`),
     ).toBeInTheDocument()
   })
 
-  it("warns that deliveries are rejected while no secret is configured", async () => {
-    mockedGet.mockResolvedValue(DISABLED)
+  it("warns that deliveries are rejected while no secret is configured", () => {
+    renderPanel(DISABLED)
 
-    render(React.createElement(GithubWebhookSettings, { token: "t", projectKey: "verhub" }))
-
-    expect(await screen.findByText("未配置 secret，所有推送都会被拒绝")).toBeInTheDocument()
+    expect(screen.getByText("未配置 secret，所有推送都会被拒绝")).toBeInTheDocument()
   })
 
-  it("reveals a regenerated secret once, since the API never returns it again", async () => {
-    mockedGet.mockResolvedValue(DISABLED)
-    mockedRegenerate.mockResolvedValue({
-      ...DISABLED,
-      enabled: true,
-      secret_hint: "cd12",
-      secret_updated_at: 1760000000,
-      secret: "whsec_abcd1234567890abcd12",
-    })
+  it("masks a configured secret to its real length instead of echoing it", () => {
+    renderPanel(ENABLED)
 
-    render(React.createElement(GithubWebhookSettings, { token: "t", projectKey: "verhub" }))
-    await userEvent.click(await screen.findByRole("button", { name: /重新生成 Secret/ }))
-
-    await waitFor(() => {
-      expect(screen.getByText("whsec_abcd1234567890abcd12")).toBeInTheDocument()
-    })
-    expect(screen.getByText(/请立即复制并填入 GitHub，关闭弹窗后无法再次查看/)).toBeInTheDocument()
+    // 12 位的 secret：6 个星号 + 末六位，长度对得上才看得出换没换过 secret。
+    expect(screen.getByPlaceholderText("******abcd12")).toBeInTheDocument()
   })
 
-  it("keeps the clear button unavailable when there is nothing to clear", async () => {
-    mockedGet.mockResolvedValue(DISABLED)
+  it("generates a secret locally so it can be copied before saving", async () => {
+    const { onSecretChange } = renderPanel(DISABLED)
 
-    render(React.createElement(GithubWebhookSettings, { token: "t", projectKey: "verhub" }))
+    await userEvent.click(screen.getByRole("button", { name: /重新生成/ }))
 
-    expect(await screen.findByRole("button", { name: /清除 Secret/ })).toBeDisabled()
-    expect(mockedClear).not.toHaveBeenCalled()
+    const [next] = onSecretChange.mock.calls[0] as [WebhookSecretState]
+    expect(next.cleared).toBe(false)
+    expect(next.draft).toMatch(/^whsec_[0-9a-f]{48}$/)
   })
 
-  it("renders nothing until a project is being edited", () => {
-    const { container } = render(
-      React.createElement(GithubWebhookSettings, { token: "t", projectKey: null }),
-    )
+  it("marks the stored secret for removal in one click", async () => {
+    const { onSecretChange } = renderPanel(ENABLED)
 
-    expect(container).toBeEmptyDOMElement()
-    expect(mockedGet).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole("button", { name: "清除 secret" }))
+
+    expect(onSecretChange).toHaveBeenCalledWith({ draft: "", cleared: true })
+  })
+
+  it("offers no clear control when there is nothing to clear", () => {
+    renderPanel(DISABLED)
+
+    expect(screen.queryByRole("button", { name: "清除 secret" })).not.toBeInTheDocument()
+  })
+
+  it("renders only the instructions until the settings have loaded", () => {
+    renderPanel(null)
+
+    expect(screen.queryByText("Payload URL")).not.toBeInTheDocument()
+    expect(screen.getByText("GitHub Release Webhook")).toBeInTheDocument()
   })
 })

@@ -7,12 +7,10 @@ import { toast } from "sonner"
 import { Button } from "@workspace/ui/components/button"
 
 import { getErrorMessage } from "@/lib/error-utils"
+import { formatTimestamp } from "@/lib/format"
 import { useConfirm } from "@/components/common/confirm-dialog"
+import { LoadingLine } from "@/components/common/skeleton"
 import { deleteProjectAlias, listProjectAliases, type ProjectAliasItem } from "@/lib/projects-api"
-
-function formatTimestamp(seconds: number): string {
-  return new Date(seconds * 1000).toLocaleString()
-}
 
 /**
  * 项目别名（改名保留的旧 Project Key）管理。
@@ -95,23 +93,17 @@ export function ProjectAliasesSettings({
 
   return (
     <section className="space-y-3 rounded-xl border border-slate-900/15 bg-slate-50/60 p-4 dark:border-white/15 dark:bg-white/5">
-      <header className="space-y-1">
+      <div className="space-y-1">
         <h3 className="flex items-center gap-2 text-sm font-semibold">
           <Link2 className="size-4" />
-          项目别名（旧 Key）
+          项目别名
         </h3>
         <p className="text-xs text-slate-600 dark:text-slate-400">
-          修改上方的 Project Key 保存后，旧 Key 会自动登记为别名并继续指向本项目——用旧 Key
-          访问版本、公告、上报等接口仍会命中当前项目，客户端无需改动。
+          修改上方的 Project Key 保存后，旧 Key 会自动登记为别名并继续指向本项目
         </p>
-      </header>
+      </div>
 
-      {loading ? (
-        <p className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-          <Loader2 className="size-3.5 animate-spin" />
-          正在读取别名...
-        </p>
-      ) : null}
+      {loading ? <LoadingLine size="sm">正在读取别名...</LoadingLine> : null}
 
       {error ? <p className="text-xs text-rose-500">{error}</p> : null}
 

@@ -74,6 +74,11 @@ export class FeedbacksController {
     }
   }
 
+  @Get("public/:projectKey/feedbacks/options")
+  async getPublicOptions(@Param("projectKey") projectKey: string) {
+    return this.feedbacksService.getPublicOptions(projectKey)
+  }
+
   @Post("public/:projectKey/feedbacks")
   @UseGuards(ClientIpThrottlerGuard)
   @TrackEndpoint(PublicEndpoint.FEEDBACK_SUBMIT)

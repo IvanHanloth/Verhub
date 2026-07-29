@@ -27,6 +27,7 @@ vi.mock("@/lib/projects-api", () => ({
     payload_path: "/api/v1/webhooks/github/project-a",
     content_type: "application/json",
     secret_hint: null,
+    secret_length: null,
     secret_updated_at: null,
   }),
   regenerateGithubWebhookSecret: vi.fn(),
@@ -35,6 +36,50 @@ vi.mock("@/lib/projects-api", () => ({
   // 编辑弹窗还嵌了别名面板，打开弹窗会拉一次别名列表。
   listProjectAliases: vi.fn().mockResolvedValue({ data: [] }),
   deleteProjectAlias: vi.fn(),
+}))
+
+vi.mock("@/lib/github-app-api", () => ({
+  // GitHub 集成弹窗打开即拉项目集成配置与实例级 App 配置。
+  getProjectGithubIntegration: vi.fn().mockResolvedValue({
+    project_key: "verhub",
+    repo_full_name: null,
+    feedback_issue_enabled: false,
+    feedback_issue_active: false,
+    feedback_issue_template_source: "inherit",
+    feedback_issue_template_repo_path: null,
+    feedback_issue_template_repo_ref: null,
+    feedback_issue_title_template: null,
+    feedback_issue_body_template: null,
+    feedback_issue_labels: [],
+    comment_commands_enabled: false,
+    comment_commands_active: false,
+    command_allowed_associations: ["OWNER", "MEMBER", "COLLABORATOR"],
+    command_allowed_users: [],
+    commands: [],
+    updated_at: null,
+  }),
+  updateProjectGithubIntegration: vi.fn(),
+  getGithubAppConfig: vi.fn().mockResolvedValue({
+    configured: false,
+    app_id: null,
+    has_private_key: false,
+    private_key_fingerprint: null,
+    private_key_updated_at: null,
+    has_webhook_secret: false,
+    webhook_secret_hint: null,
+    webhook_secret_length: null,
+    webhook_secret_updated_at: null,
+    webhook_payload_path: "/api/v1/webhooks/github-app",
+    enabled_features: [],
+    feedback_issue_custom_template: false,
+    feedback_issue_title_template: null,
+    feedback_issue_body_template: null,
+    builtin_feedback_issue_title_template: "[用户反馈] {{content_head}}",
+    builtin_feedback_issue_body_template: "## 反馈内容",
+    feedback_issue_template_variables: ["content", "contact"],
+    updated_at: null,
+  }),
+  getGithubIntegrationRepoTemplate: vi.fn(),
 }))
 
 vi.mock("sonner", () => ({
@@ -56,6 +101,7 @@ const WEBHOOK_SETTINGS = {
   payload_path: "/api/v1/webhooks/github/verhub",
   content_type: "application/json" as const,
   secret_hint: null,
+  secret_length: null,
   secret_updated_at: null,
 }
 
@@ -296,12 +342,12 @@ describe("ProjectsDashboard", () => {
   })
 
   /**
-   * 守住编辑弹窗与 webhook 面板的接线。
+   * 守住「GitHub 集成」弹窗与 webhook 面板的接线。
    *
    * 面板自身的单测独立渲染组件，dashboard 忘记挂载它也照样全绿——功能因此可能
    * 整条链路可用但后台没有入口。这条断言是唯一能发现漏接线的地方。
    */
-  it("renders the github webhook panel for the project being edited", async () => {
+  it("renders the github webhook panel inside the github integration dialog", async () => {
     const user = userEvent.setup()
     window.localStorage.setItem("verhub-admin-token", "valid-token")
     mockedListProjects.mockResolvedValue({
@@ -330,10 +376,15 @@ describe("ProjectsDashboard", () => {
     render(React.createElement(ProjectsDashboard))
 
     await screen.findByText("ID: project-1")
-    await user.click(screen.getByRole("button", { name: "编辑" }))
+    await user.click(screen.getByRole("button", { name: "GitHub 集成" }))
 
     const dialog = screen.getByRole("dialog")
-    expect(within(dialog).getByText("GitHub Release Webhook")).toBeInTheDocument()
+    // GitHub App 与 Release Webhook 各占一个选项卡，后者要切过去才渲染。
+    expect(await within(dialog).findByText("允许把反馈转发为 GitHub Issue")).toBeInTheDocument()
+    // 还没配过目标仓库时，用项目自己的仓库地址预填。
+    expect(within(dialog).getByDisplayValue("verhub/verhub")).toBeInTheDocument()
+    await user.click(within(dialog).getByRole("tab", { name: "Release Webhook" }))
+    expect(await within(dialog).findByText("GitHub Release Webhook")).toBeInTheDocument()
     await waitFor(() => {
       expect(mockedGetGithubWebhookSettings).toHaveBeenCalledWith(
         "valid-token",

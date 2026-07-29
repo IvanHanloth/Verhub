@@ -19,6 +19,7 @@ import { AnnouncementsCompatController } from "../../announcements/announcements
 import { AnnouncementsStatsController } from "../../announcements/announcements-stats.controller"
 import { FeedbacksController } from "../../feedbacks/feedbacks.controller"
 import { FeedbacksCompatController } from "../../feedbacks/feedbacks-compat.controller"
+import { ProjectGithubIntegrationController } from "../../github-app/project-github-integration.controller"
 import { LogsController } from "../../logs/logs.controller"
 import { ProjectsController } from "../../projects/projects.controller"
 import { RequestStatsController } from "../../stats/request-stats.controller"
@@ -40,6 +41,7 @@ const CONTROLLERS = [
   FeedbacksCompatController,
   GithubWebhookSecretController,
   LogsController,
+  ProjectGithubIntegrationController,
   ProjectsController,
   RequestStatsController,
   VersionsController,

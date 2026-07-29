@@ -52,7 +52,7 @@ const navItems: NavItem[] = [
   { href: "/admin/feedbacks", label: "反馈管理", icon: MessagesSquare },
   { href: "/admin/logs", label: "日志管理", icon: ClipboardList },
   { href: "/admin/tokens", label: "Token 管理", icon: KeyRound },
-  { href: "/admin/settings", label: "管理员设置", icon: Settings },
+  { href: "/admin/settings", label: "网站设置", icon: Settings },
   { href: "/admin/about", label: "关于 Verhub", icon: Info },
 ]
 
@@ -65,7 +65,9 @@ const adminPageTitles: Record<string, string> = {
   "/admin/feedbacks": "反馈管理",
   "/admin/logs": "日志管理",
   "/admin/tokens": "Token 管理",
-  "/admin/settings": "管理员设置",
+  "/admin/settings/github-app": "GitHub APP 设置",
+  "/admin/settings/terms": "条款设置",
+  "/admin/settings": "网站设置",
   "/admin/about": "关于 Verhub",
 }
 
@@ -175,7 +177,10 @@ export function DashboardShell({ children }: Props) {
                 <nav className="space-y-2">
                   {navItems.map((item) => {
                     const Icon = item.icon
-                    const active = pathname === item.href
+                    // 子路由（如 /admin/settings/github-app）也点亮父级菜单；/admin 保持精确匹配以免全亮。
+                    const active =
+                      pathname === item.href ||
+                      (item.href !== "/admin" && pathname?.startsWith(`${item.href}/`))
 
                     return (
                       <Link

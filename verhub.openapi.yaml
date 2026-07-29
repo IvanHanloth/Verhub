@@ -21,6 +21,8 @@ tags:
   - name: Actions
   - name: Statistics
   - name: Webhooks
+  - name: GitHubApp
+  - name: Terms
 
 paths:
   /health:
@@ -607,7 +609,7 @@ paths:
       summary: "查询 GitHub Release Webhook 配置"
       description: |
         返回该项目的 GitHub Release Webhook 配置状态与需要填入 GitHub 的 Payload 路径。
-        出于安全考虑只返回 secret 末 4 位提示，完整 secret 仅在设置或重新生成时返回一次。
+        出于安全考虑只返回 secret 末 6 位提示，完整 secret 仅在设置或重新生成时返回一次。
       x-verhub-doc: true
       security:
         - BearerAuth: []
@@ -752,6 +754,217 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /admin/github-app:
+    get:
+      tags: [GitHubApp]
+      summary: "查询实例级 GitHub App 配置"
+      description: |
+        返回 GitHub App 凭据的配置状态（私钥永不回读，仅返回 SHA-256 指纹）、
+        已启用的功能列表与实例级反馈转发模板。仅接受管理员 JWT，不开放给 API Key。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GithubAppConfigView"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      tags: [GitHubApp]
+      summary: "更新实例级 GitHub App 配置"
+      description: |
+        部分更新：只修改请求中出现的字段。`private_key` / `webhook_secret` 传空字符串表示清除。
+        私钥以 AES-256-GCM 加密落库，密钥派生自实例的 JWT_SECRET。
+
+        各功能所需的 GitHub App 权限：
+        - `feedback_issue`（反馈转发 Issue）：Repository permissions → Issues: Read and write
+        - `comment_commands`（评论命令触发工作流）：Repository permissions → Actions: Read and write，
+          并在 App 设置中订阅 Issue comment 事件、配置 Webhook URL 与 secret
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateGithubAppConfigDto"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GithubAppConfigView"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags: [GitHubApp]
+      summary: "清空实例级 GitHub App 配置"
+      description: "清除凭据、功能开关与模板。项目级相关开关随即失效（active=false）。"
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GithubAppConfigView"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/projects/{projectKey}/github-integration:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+    get:
+      tags: [GitHubApp]
+      summary: "查询项目级 GitHub 集成配置"
+      description: |
+        返回项目的 GitHub App 功能配置。`*_active` 字段是综合实例配置得出的实际生效状态：
+        项目开关打开但实例功能未启用/凭据不全时为 false。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectGithubIntegrationView"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [GitHubApp]
+      summary: "更新项目级 GitHub 集成配置"
+      description: |
+        部分更新：只修改请求中出现的字段。打开某项功能要求实例级已启用对应功能且已配置仓库，
+        否则返回 400。清空 `repo_full_name` 会连带关闭依赖仓库的开关。
+
+        `feedback_issue_enabled` 只表示「允许转发」：是否转发由提交者在
+        `POST /public/{projectKey}/feedbacks` 里用 `forward_to_github` 逐条选择。
+        只有选了转发的提交才要求携带 `contact` 并受单 IP 转发限流约束。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectGithubIntegrationDto"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectGithubIntegrationView"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/projects/{projectKey}/github-integration/repo-template:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+    get:
+      tags: [GitHubApp]
+      summary: "预览仓库中的反馈 Issue 模板"
+      description: |
+        按项目已保存的 `feedback_issue_template_repo_path` 拉取目标仓库里的模板文件并解析。
+        文件可带 `---` front matter 声明 `title` 与 `labels`，其余内容作为正文；
+        没有 front matter 时整个文件即正文，标题退回内置模板。
+
+        需要 GitHub App 的 Repository permissions → Contents: Read-only 权限。
+        拉取失败不会返回 4xx/5xx，而是把原因放在 `error` 字段里返回 200。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - in: query
+          name: refresh
+          required: false
+          schema:
+            type: string
+            enum: ["true", "1"]
+          description: 传入后先作废服务端缓存再重新拉取
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackIssueRepoTemplatePreview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /webhooks/github-app:
+    post:
+      tags: [GitHubApp]
+      summary: "接收 GitHub App 事件推送"
+      description: |
+        GitHub App 的实例级事件入口（配置在 App 设置的 Webhook URL）。
+        以实例级 GitHub App webhook secret 做 `X-Hub-Signature-256` HMAC-SHA256 校验。
+
+        当前仅消费 `issue_comment` 的 `created` 动作：评论首行形如
+        `/verhub-<命令名> <参数>` 时，按仓库路由到配置了该仓库且开启评论命令的项目，
+        校验评论者的 author_association / 用户白名单后触发对应 workflow_dispatch。
+      x-verhub-doc: true
+      security:
+        - GithubSignatureAuth: []
+      parameters:
+        - name: X-GitHub-Event
+          in: header
+          required: true
+          description: GitHub 事件名，仅 `issue_comment` 会被消费，`ping` 返回 pong
+          example: issue_comment
+          schema:
+            type: string
+        - name: X-GitHub-Delivery
+          in: header
+          required: false
+          description: GitHub 投递 ID，仅用于日志关联
+          schema:
+            type: string
+      requestBody:
+        required: true
+        description: GitHub issue_comment 事件原始负载
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GithubAppWebhookResult"
+        "401":
+          description: 签名缺失或校验失败
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: 实例未配置 GitHub App webhook secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /admin/projects/_status:
     get:
@@ -1557,6 +1770,122 @@ paths:
               schema:
                 $ref: "#/components/schemas/ModuleStatusResponse"
 
+  /admin/terms/documents:
+    get:
+      tags: [Terms]
+      summary: "列出条款文档设置"
+      description: |
+        返回全部条款文档的设置视图（含生效正文、自定义草稿与内置原文）。
+        条款接口仅接受管理员 JWT，不开放给 API Key：条款是站点对外的法律声明，
+        改动影响每一个访问者。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TermsDocumentConfigListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/terms/documents/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/TermsSlugByPath"
+    get:
+      tags: [Terms]
+      summary: "查询单份条款文档设置"
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TermsDocumentConfigView"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Terms]
+      summary: "更新条款文档"
+      description: |
+        部分更新：只修改请求中出现的字段。`custom` 关闭时 `content` 仍会保存为草稿，
+        重新打开即可继续编辑；`content` 传空字符串表示清除草稿。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTermsDocumentDto"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TermsDocumentConfigView"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Terms]
+      summary: "恢复内置条款正文"
+      description: "关闭自定义开关并丢弃草稿，前台随即回到内置正文。"
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TermsDocumentConfigView"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /public/terms:
+    get:
+      tags: [Terms]
+      summary: "列出条款文档"
+      description: "返回全部条款文档的标题与最后更新时间，不含正文，供前台在文档之间导航。"
+      x-verhub-doc: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TermsDocumentListResponse"
+
+  /public/terms/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/TermsSlugByPath"
+    get:
+      tags: [Terms]
+      summary: "获取条款文档正文"
+      description: |
+        返回当前生效的正文（Markdown）。实例未自定义时返回内置正文，
+        因此已登记的文档任何时候都有正文可读。
+      x-verhub-doc: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TermsDocumentView"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /public/{projectKey}:
     parameters:
       - $ref: "#/components/parameters/ProjectKeyByPath"
@@ -1770,7 +2099,22 @@ paths:
     post:
       tags: [Feedbacks]
       summary: "提交用户反馈"
-      description: "客户端提交评分与反馈内容。服务端会额外记录调用方 IP、User-Agent 与解析出的地区；未声明 platform 时按 User-Agent 推断。短时间内（默认 60 秒，可用 VERHUB_DEDUP_WINDOW_SECONDS 调整）同一调用方提交完全相同的内容会被判为重复提交，直接返回已存在的那条记录而不新建。"
+      description: |
+        客户端提交评分与反馈内容。服务端会额外记录调用方 IP、User-Agent 与解析出的地区；
+        未声明 platform 时按 User-Agent 推断。短时间内（默认 60 秒，可用
+        VERHUB_DEDUP_WINDOW_SECONDS 调整）同一调用方提交完全相同的内容会被判为重复提交，
+        直接返回已存在的那条记录而不新建。
+
+        `forward_to_github` 由提交者逐条选择，默认 false。传 true 时：
+        - 项目必须已开放转发（见 `GET /public/{projectKey}/feedbacks/options`），否则 400；
+        - `contact` 必填，缺失时 400（SDK 在本地就会拒绝，请求不会发出）；
+        - 受单 IP 转发限流约束（默认每小时 3 次，`VERHUB_GITHUB_FORWARD_RATE_LIMIT` 可调），
+          超额返回 429；
+        - Issue 建成功才记录这条反馈：GitHub 侧失败时返回 503 且服务端不留任何记录，
+          客户端可提示用户稍后重试或去掉转发再提交。
+
+        转发成功的记录会带上 `forwarded_to_github`、`github_issue_number` 与
+        `github_issue_url`。上述错误 SDK 均原样透传给客户端处理。
       x-verhub-doc: true
       requestBody:
         required: true
@@ -1784,6 +2128,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FeedbackItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          description: 转发请求超出单 IP 限流
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: GitHub Issue 创建失败，该反馈未被记录
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /public/{projectKey}/feedbacks/options:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+    get:
+      tags: [Feedbacks]
+      summary: "查询反馈提交选项"
+      description: |
+        客户端据此决定要不要在反馈表单里显示「转发到 GitHub Issue」的勾选框，
+        以及勾选后是否把联系方式标成必填。项目未开放转发时两个字段都是 false。
+      x-verhub-doc: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicFeedbackOptions"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -2492,6 +2869,14 @@ components:
       example: verhub
       schema:
         type: string
+    TermsSlugByPath:
+      name: slug
+      in: path
+      required: true
+      description: 条款文档标识，取值见 TermsDocumentSlug
+      example: privacy-policy
+      schema:
+        $ref: "#/components/schemas/TermsDocumentSlug"
     ClientPlatformHeader:
       name: x-verhub-platform
       in: header
@@ -3173,7 +3558,7 @@ components:
 
     GithubWebhookSettings:
       type: object
-      required: [enabled, payload_path, content_type, secret_hint, secret_updated_at]
+      required: [enabled, payload_path, content_type, secret_hint, secret_length, secret_updated_at]
       properties:
         enabled:
           type: boolean
@@ -3187,7 +3572,10 @@ components:
           description: GitHub Webhook 必须选择的 Content type
         secret_hint:
           type: [string, "null"]
-          description: secret 末 4 位，用于区分不同 secret，未配置时为 null
+          description: secret 末 6 位，用于区分不同 secret，未配置时为 null
+        secret_length:
+          type: [integer, "null"]
+          description: 已存 secret 的字符数，供管理端渲染与真实长度一致的星号掩码
         secret_updated_at:
           type: [integer, "null"]
           format: int64
@@ -3196,7 +3584,8 @@ components:
         enabled: true
         payload_path: /api/v1/webhooks/github/verhub
         content_type: application/json
-        secret_hint: a3f9
+        secret_hint: 7ba3f9
+        secret_length: 54
         secret_updated_at: 1760000000
 
     GithubWebhookSecretRevealed:
@@ -3327,6 +3716,550 @@ components:
         action: published
         version: 1.4.0
         created: true
+
+    GithubAppFeature:
+      type: string
+      description: 可启用的 GitHub App 功能标识
+      enum: [feedback_issue, comment_commands]
+
+    GithubAppConfigView:
+      type: object
+      required:
+        [
+          configured,
+          app_id,
+          has_private_key,
+          private_key_fingerprint,
+          private_key_updated_at,
+          has_webhook_secret,
+          webhook_secret_hint,
+          webhook_secret_length,
+          webhook_secret_updated_at,
+          webhook_payload_path,
+          enabled_features,
+          feedback_issue_custom_template,
+          feedback_issue_title_template,
+          feedback_issue_body_template,
+          builtin_feedback_issue_title_template,
+          builtin_feedback_issue_body_template,
+          feedback_issue_template_variables,
+          updated_at,
+        ]
+      properties:
+        configured:
+          type: boolean
+          description: App ID 与私钥均已配置。false 时任何功能都不会实际生效。
+        app_id:
+          type: [string, "null"]
+        has_private_key:
+          type: boolean
+        private_key_fingerprint:
+          type: [string, "null"]
+          description: 私钥的 SHA-256 指纹前 16 位，用于区分是否换过钥匙；私钥本身永不回读。
+        private_key_updated_at:
+          type: [integer, "null"]
+        has_webhook_secret:
+          type: boolean
+        webhook_secret_hint:
+          type: [string, "null"]
+          description: webhook secret 末 6 位
+        webhook_secret_length:
+          type: [integer, "null"]
+          description: 已存 secret 的字符数，供管理端渲染与真实长度一致的星号掩码
+        webhook_secret_updated_at:
+          type: [integer, "null"]
+        webhook_payload_path:
+          type: string
+          description: 配置到 GitHub App 设置里的 Webhook URL 路径（相对部署公网源）
+        enabled_features:
+          type: array
+          items:
+            $ref: "#/components/schemas/GithubAppFeature"
+        feedback_issue_custom_template:
+          type: boolean
+          description: 关闭时忽略下面两个模板字段，实例缺省即内置模板
+        feedback_issue_title_template:
+          type: [string, "null"]
+          description: 反馈转发 Issue 的实例级标题模板；项目级模板优先
+        feedback_issue_body_template:
+          type: [string, "null"]
+        builtin_feedback_issue_title_template:
+          type: string
+          description: 内置标题模板原文，供管理端作为「自定义模板」输入框的初值
+        builtin_feedback_issue_body_template:
+          type: string
+          description: 内置正文模板原文。内置正文不含评分。
+        feedback_issue_template_variables:
+          type: array
+          description: 模板可用变量名清单
+          items:
+            type: string
+        updated_at:
+          type: [integer, "null"]
+      example:
+        configured: true
+        app_id: "123456"
+        has_private_key: true
+        private_key_fingerprint: 8f4e2a1b9c0d7e6f
+        private_key_updated_at: 1760000000
+        has_webhook_secret: true
+        webhook_secret_hint: 4mx9k2
+        webhook_secret_length: 32
+        webhook_secret_updated_at: 1760000000
+        webhook_payload_path: /api/v1/webhooks/github-app
+        enabled_features: [feedback_issue]
+        feedback_issue_custom_template: false
+        feedback_issue_title_template: null
+        feedback_issue_body_template: null
+        builtin_feedback_issue_title_template: "[用户反馈] {{content_head}}"
+        builtin_feedback_issue_body_template: "## 反馈内容\n\n{{content}}\n"
+        feedback_issue_template_variables: [project_key, content, contact]
+        updated_at: 1760000000
+
+    UpdateGithubAppConfigDto:
+      type: object
+      description: 部分更新：只修改出现的字段。`private_key` / `webhook_secret` 传空字符串表示清除。
+      properties:
+        app_id:
+          type: string
+          maxLength: 32
+        private_key:
+          type: string
+          maxLength: 16384
+          description: GitHub App 私钥（PEM 原文），只写不读，加密落库
+        webhook_secret:
+          type: string
+          maxLength: 256
+          description: App 级 webhook secret，用于 /webhooks/github-app 验签
+        enabled_features:
+          type: array
+          items:
+            $ref: "#/components/schemas/GithubAppFeature"
+        feedback_issue_custom_template:
+          type: boolean
+          description: 关闭时下面两个模板字段被忽略，实例缺省回到内置模板
+        feedback_issue_title_template:
+          type: string
+          maxLength: 256
+        feedback_issue_body_template:
+          type: string
+          maxLength: 8192
+      example:
+        app_id: "123456"
+        private_key: "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
+        enabled_features: [feedback_issue, comment_commands]
+
+    TermsDocumentSlug:
+      type: string
+      enum: [privacy-policy, sdk-compliance]
+      description: |
+        条款文档标识。
+        - `privacy-policy`：隐私政策
+        - `sdk-compliance`：SDK 合规性文档
+
+    TermsDocumentSummary:
+      type: object
+      required: [slug, title, summary, source, updated_at]
+      properties:
+        slug:
+          $ref: "#/components/schemas/TermsDocumentSlug"
+        title:
+          type: string
+        summary:
+          type: string
+          description: 一句话说明，用于文档间导航
+        source:
+          type: string
+          enum: [builtin, custom]
+          description: builtin 表示实例未自定义，返回的是内置正文
+        updated_at:
+          type: integer
+          description: 正文最后修订时间（Unix 秒）；内置正文取内置版本的修订时间
+
+    TermsDocumentView:
+      allOf:
+        - $ref: "#/components/schemas/TermsDocumentSummary"
+        - type: object
+          required: [content]
+          properties:
+            content:
+              type: string
+              description: 生效的正文（Markdown）
+
+    TermsDocumentListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TermsDocumentSummary"
+
+    TermsDocumentConfigView:
+      type: object
+      required:
+        [
+          slug,
+          title,
+          summary,
+          custom,
+          content,
+          custom_content,
+          custom_updated_at,
+          builtin_content,
+          builtin_updated_at,
+          updated_at,
+          placeholders,
+        ]
+      properties:
+        slug:
+          $ref: "#/components/schemas/TermsDocumentSlug"
+        title:
+          type: string
+        summary:
+          type: string
+        custom:
+          type: boolean
+          description: 关闭时前台展示内置正文，草稿仍留在库里
+        content:
+          type: string
+          description: 当前对外生效的正文
+        custom_content:
+          type: [string, "null"]
+          description: 库里保存的自定义草稿，从未编辑过为 null
+        custom_updated_at:
+          type: [integer, "null"]
+        builtin_content:
+          type: string
+          description: 内置正文原文，用作「恢复内置正文」的初值
+        builtin_updated_at:
+          type: integer
+        updated_at:
+          type: [integer, "null"]
+        placeholders:
+          type: array
+          description: 内置正文里待填的占位符，按出现顺序。替换在管理端完成，库里只存替换后的成品
+          items:
+            $ref: "#/components/schemas/TermsPlaceholder"
+
+    TermsPlaceholder:
+      type: object
+      required: [key, label, hint, example, required]
+      properties:
+        key:
+          type: string
+          description: 正文中的写法为 {{key}}
+          example: operator_name
+        label:
+          type: string
+          description: 填空表单的字段名
+        hint:
+          type: string
+          description: 填写要求
+        example:
+          type: string
+          description: 预填值
+        required:
+          type: boolean
+          description: false 表示留空也允许发布
+
+    TermsDocumentConfigListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TermsDocumentConfigView"
+
+    UpdateTermsDocumentDto:
+      type: object
+      description: 部分更新：只修改出现的字段。`content` 传空字符串表示清除草稿。
+      properties:
+        custom:
+          type: boolean
+        content:
+          type: string
+          maxLength: 65536
+          description: 自定义正文（Markdown）
+      example:
+        custom: true
+        content: |
+          # 隐私政策
+
+          ...
+
+    FeedbackIssueTemplateSource:
+      type: string
+      enum: [inherit, custom, repo]
+      description: |
+        反馈转发 Issue 的模板来源。
+        - `inherit`：跟随实例级模板（实例未自定义时即内置模板）
+        - `custom`：使用本项目 `feedback_issue_*_template` 字段
+        - `repo`：读目标仓库里的模板文件，内容带缓存定期重取
+
+    FeedbackIssueRepoTemplatePreview:
+      type: object
+      required: [path, ref, fetched_at, title_template, body_template, labels, error]
+      properties:
+        path:
+          type: string
+        ref:
+          type: [string, "null"]
+        fetched_at:
+          type: [integer, "null"]
+        title_template:
+          type: [string, "null"]
+        body_template:
+          type: [string, "null"]
+        labels:
+          type: array
+          description: 模板文件 front matter 里声明的标签，优先于项目上单独配置的标签
+          items:
+            type: string
+        error:
+          type: [string, "null"]
+          description: 拉取失败的原因，成功时为 null
+      example:
+        path: .github/verhub-feedback-issue.md
+        ref: main
+        fetched_at: 1760000000
+        title_template: "[用户反馈] {{content_head}}"
+        body_template: "## 反馈内容\n\n{{content}}\n"
+        labels: [feedback]
+        error: null
+
+    PublicFeedbackOptions:
+      type: object
+      required: [project_key, github_forward_available, contact_required_for_forward]
+      properties:
+        project_key:
+          type: string
+        github_forward_available:
+          type: boolean
+          description: 本项目当前是否接受把反馈转发成 GitHub Issue
+        contact_required_for_forward:
+          type: boolean
+          description: 选择转发时联系方式是否必填；转发不可用时恒为 false
+      example:
+        project_key: verhub
+        github_forward_available: true
+        contact_required_for_forward: true
+
+    GithubCommandDefinition:
+      type: object
+      required: [name, workflow, ref]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]{0,31}$"
+          description: 命令名，不含 /verhub- 前缀
+        workflow:
+          type: string
+          maxLength: 128
+          description: workflow 文件名（如 release.yml）或数字 ID
+        ref:
+          type: string
+          maxLength: 128
+          description: workflow_dispatch 的目标分支/标签
+        input:
+          type: string
+          description: 参数写入 workflow inputs 的键名，缺省 args
+      example:
+        name: release
+        workflow: release.yml
+        ref: main
+        input: version
+
+    ProjectGithubIntegrationView:
+      type: object
+      required:
+        [
+          project_key,
+          repo_full_name,
+          feedback_issue_enabled,
+          feedback_issue_active,
+          feedback_issue_template_source,
+          feedback_issue_template_repo_path,
+          feedback_issue_template_repo_ref,
+          feedback_issue_title_template,
+          feedback_issue_body_template,
+          feedback_issue_labels,
+          comment_commands_enabled,
+          comment_commands_active,
+          command_allowed_associations,
+          command_allowed_users,
+          commands,
+          updated_at,
+        ]
+      properties:
+        project_key:
+          type: string
+        repo_full_name:
+          type: [string, "null"]
+        feedback_issue_enabled:
+          type: boolean
+          description: 只表示「允许转发」；是否转发由提交者逐条选择
+        feedback_issue_active:
+          type: boolean
+          description: 综合实例配置后的实际生效状态
+        feedback_issue_template_source:
+          $ref: "#/components/schemas/FeedbackIssueTemplateSource"
+        feedback_issue_template_repo_path:
+          type: [string, "null"]
+          description: source=repo 时模板文件在目标仓库中的路径
+        feedback_issue_template_repo_ref:
+          type: [string, "null"]
+          description: 读取模板文件使用的分支/标签，留空取仓库默认分支
+        feedback_issue_title_template:
+          type: [string, "null"]
+        feedback_issue_body_template:
+          type: [string, "null"]
+        feedback_issue_labels:
+          type: array
+          items:
+            type: string
+        comment_commands_enabled:
+          type: boolean
+        comment_commands_active:
+          type: boolean
+        command_allowed_associations:
+          type: array
+          items:
+            type: string
+        command_allowed_users:
+          type: array
+          items:
+            type: string
+        commands:
+          type: array
+          items:
+            $ref: "#/components/schemas/GithubCommandDefinition"
+        updated_at:
+          type: [integer, "null"]
+      example:
+        project_key: verhub
+        repo_full_name: acme/app
+        feedback_issue_enabled: true
+        feedback_issue_active: true
+        feedback_issue_template_source: inherit
+        feedback_issue_template_repo_path: null
+        feedback_issue_template_repo_ref: null
+        feedback_issue_title_template: null
+        feedback_issue_body_template: null
+        feedback_issue_labels: [feedback]
+        comment_commands_enabled: true
+        comment_commands_active: true
+        command_allowed_associations: [OWNER, MEMBER, COLLABORATOR]
+        command_allowed_users: []
+        commands:
+          - name: release
+            workflow: release.yml
+            ref: main
+            input: version
+        updated_at: 1760000000
+
+    UpdateProjectGithubIntegrationDto:
+      type: object
+      description: 部分更新：只修改出现的字段。`repo_full_name` 传空字符串表示清除并连带关闭依赖开关。
+      properties:
+        repo_full_name:
+          type: string
+          maxLength: 140
+          pattern: "^$|^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        feedback_issue_enabled:
+          type: boolean
+        feedback_issue_template_source:
+          $ref: "#/components/schemas/FeedbackIssueTemplateSource"
+        feedback_issue_template_repo_path:
+          type: string
+          maxLength: 256
+          pattern: "^$|^(?!/)(?!.*\\.\\.)[\\w./-]+$"
+          description: source=repo 时必填，仓库内的相对路径
+        feedback_issue_template_repo_ref:
+          type: string
+          maxLength: 128
+        feedback_issue_title_template:
+          type: string
+          maxLength: 256
+        feedback_issue_body_template:
+          type: string
+          maxLength: 8192
+        feedback_issue_labels:
+          type: array
+          maxItems: 8
+          items:
+            type: string
+            maxLength: 64
+        comment_commands_enabled:
+          type: boolean
+        command_allowed_associations:
+          type: array
+          items:
+            type: string
+            enum:
+              [
+                OWNER,
+                MEMBER,
+                COLLABORATOR,
+                CONTRIBUTOR,
+                FIRST_TIME_CONTRIBUTOR,
+                FIRST_TIMER,
+                MANNEQUIN,
+                NONE,
+              ]
+        command_allowed_users:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+            maxLength: 64
+        commands:
+          type: array
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/GithubCommandDefinition"
+      example:
+        repo_full_name: acme/app
+        feedback_issue_enabled: true
+        feedback_issue_labels: [feedback]
+
+    GithubAppWebhookResult:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [dispatched, ignored, pong]
+          description: dispatched 表示已触发 workflow，ignored 表示按规则跳过，pong 为 ping 应答
+        reason:
+          type: string
+          enum:
+            [
+              unsupported_event,
+              unsupported_action,
+              feature_disabled,
+              missing_repository,
+              no_command,
+              repo_not_configured,
+              author_not_allowed,
+              unknown_command,
+            ]
+          description: 仅在 status 为 ignored 时返回
+        event:
+          type: string
+        command:
+          type: string
+        project_key:
+          type: string
+        workflow:
+          type: string
+      example:
+        status: dispatched
+        event: issue_comment
+        command: release
+        project_key: verhub
+        workflow: release.yml
 
     PublicEndpoint:
       type: string
@@ -4406,6 +5339,14 @@ components:
           type: string
           maxLength: 128
           description: 联系方式，邮箱 / 手机号 / IM 账号皆可，不做格式校验。
+        forward_to_github:
+          type: boolean
+          default: false
+          description: |
+            由提交者选择是否把这条反馈转发成 GitHub Issue。项目开放转发只是「允许」，
+            并不代表每条反馈都转发。传 true 时 `contact` 必填、受单 IP 转发限流约束，
+            且只有 Issue 建成功这条反馈才会被记录。
+            仅公开提交接口生效，管理端补录忽略该字段。
         is_hidden:
           type: boolean
           default: false
@@ -4424,6 +5365,7 @@ components:
         rating: 5
         content: 更新检查很好用。
         contact: user@example.com
+        forward_to_github: false
         platform: windows
         platform_version: "11"
         custom_data:
@@ -4476,6 +5418,9 @@ components:
           platform,
           platform_version,
           custom_data,
+          forwarded_to_github,
+          github_issue_number,
+          github_issue_url,
           ip,
           user_agent,
           country_code,
@@ -4512,6 +5457,17 @@ components:
             - type: object
               additionalProperties: true
             - type: "null"
+        forwarded_to_github:
+          type: boolean
+          description: |
+            该反馈是否已转成 GitHub Issue。转发失败的提交不会被记录，
+            所以能查到的记录里为 true 的都是真的建成了 Issue。
+        github_issue_number:
+          type: [integer, "null"]
+          description: 生成的 Issue 编号；未转发或 GitHub 未返回编号时为 null。
+        github_issue_url:
+          type: [string, "null"]
+          description: 生成的 Issue 链接；未转发时为 null。
         ip:
           type: [string, "null"]
           description: 服务端观测到的调用方地址；提交时采集，历史数据为 null。

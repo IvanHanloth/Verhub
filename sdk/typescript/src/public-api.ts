@@ -1,3 +1,4 @@
+import { VerhubError } from "./errors"
 import { compact, type HttpClient } from "./http"
 import type {
   ActionRecordItem,
@@ -13,6 +14,7 @@ import type {
   PageOptions,
   Platform,
   ProjectItem,
+  PublicFeedbackOptions,
   UploadLogInput,
   VersionItem,
   VersionListResponse,
@@ -107,9 +109,30 @@ export class PublicApi {
   }
 
   /**
+   * 反馈提交选项。客户端据此决定要不要显示「转发到 GitHub Issue」的勾选框。
+   *
+   * @returns 本项目是否开放转发，以及转发时联系方式是否必填
+   */
+  getFeedbackOptions(): Promise<PublicFeedbackOptions> {
+    return this.http.request("GET", "/public/{projectKey}/feedbacks/options", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+    })
+  }
+
+  /**
+   * 提交用户反馈。
+   *
+   * `forward_to_github` 为 true 时联系方式必填，这条本地就会拒绝（抛
+   * {@link VerhubError}），不必往服务端跑一趟；项目是否开放转发只有服务端知道，
+   * 未开放时提交会拿到 400，Issue 建失败则整条反馈不会被记录（503）。
+   *
    * @param input 反馈内容与可选的评分、联系方式、平台、自定义数据
+   * @throws {VerhubError} 选了转发却没填 contact
    */
   createFeedback(input: CreateFeedbackInput): Promise<FeedbackItem> {
+    if (input.forward_to_github === true && !input.contact?.trim()) {
+      throw new VerhubError("转发到 GitHub Issue 需要联系方式：请先填写 contact")
+    }
     return this.http.request("POST", "/public/{projectKey}/feedbacks", {
       pathParams: { projectKey: this.http.requireProjectKey() },
       body: compact({ ...input }),

@@ -1,12 +1,13 @@
 import { Module } from "@nestjs/common"
 
 import { AuthModule } from "../auth/auth.module"
+import { GithubAppModule } from "../github-app/github-app.module"
 import { FeedbacksController } from "./feedbacks.controller"
 import { FeedbacksCompatController } from "./feedbacks-compat.controller"
 import { FeedbacksService } from "./feedbacks.service"
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, GithubAppModule],
   controllers: [FeedbacksController, FeedbacksCompatController],
   providers: [FeedbacksService],
   exports: [FeedbacksService],

@@ -169,6 +169,33 @@ export function HomePageView() {
           </div>
         </div>
       </section>
+
+      {/* 条款文档必须能从公开页面直接到达，不能只挂在后台。 */}
+      <footer className="border-t border-slate-900/10 px-6 py-6 text-sm text-slate-600 sm:px-10 dark:border-white/10 dark:text-slate-300">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
+          <span>Verhub</span>
+          <div className="flex flex-wrap gap-4">
+            <Link
+              href="/doc"
+              className="hover:text-[#cb5f22] hover:underline dark:hover:text-[#ffa66f]"
+            >
+              API 文档
+            </Link>
+            <Link
+              href="/terms/privacy-policy"
+              className="hover:text-[#cb5f22] hover:underline dark:hover:text-[#ffa66f]"
+            >
+              隐私政策
+            </Link>
+            <Link
+              href="/terms/sdk-compliance"
+              className="hover:text-[#cb5f22] hover:underline dark:hover:text-[#ffa66f]"
+            >
+              SDK 合规性文档
+            </Link>
+          </div>
+        </div>
+      </footer>
     </main>
   )
 }

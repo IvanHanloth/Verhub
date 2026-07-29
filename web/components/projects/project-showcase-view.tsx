@@ -624,6 +624,18 @@ export function ProjectShowcaseView({
               </a>
             ) : null}
             <Link
+              href="/terms/privacy-policy"
+              className="hover:text-[#cb5f22] hover:underline dark:hover:text-[#ffa66f]"
+            >
+              隐私政策
+            </Link>
+            <Link
+              href="/terms/sdk-compliance"
+              className="hover:text-[#cb5f22] hover:underline dark:hover:text-[#ffa66f]"
+            >
+              SDK 合规性文档
+            </Link>
+            <Link
               href="/"
               className="hover:text-[#cb5f22] hover:underline dark:hover:text-[#ffa66f]"
             >

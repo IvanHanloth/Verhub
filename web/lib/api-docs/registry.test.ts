@@ -92,10 +92,10 @@ describe("api endpoint docs registry", () => {
     const docs = listApiEndpointDocs()
 
     expect(docs.filter((item) => item.visibility === "public").map((item) => item.module)).toEqual(
-      Array(11).fill("Public"),
+      Array(14).fill("Public"),
     )
     expect(docs.filter((item) => item.visibility === "webhook").map((item) => item.module)).toEqual(
-      ["Webhooks"],
+      ["Webhooks", "GitHubApp"],
     )
     expect(docs.find((item) => item.slug === "post-admin-projects")?.module).toBe("Projects")
     expect(docs.find((item) => item.slug === "get-admin-projects-by-projectkey-logs")?.module).toBe(

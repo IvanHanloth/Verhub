@@ -4,6 +4,8 @@ import { Prisma, Platform } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
 import { ProjectResolverService } from "../database/project-resolver.service"
+import { FeedbackIssueService, type ForwardedIssue } from "../github-app/feedback-issue.service"
+import type { PublicFeedbackOptions } from "../github-app/types"
 import { buildDedupHash, resolveDedupWindowSeconds, stableStringify } from "../common/dedup"
 import { nowSeconds } from "../common/utils"
 import { fromPlatform, toPlatform, type PlatformValue } from "../common/platform"
@@ -22,6 +24,9 @@ type FeedbackItem = {
   platform: PlatformValue | null
   platform_version: string | null
   custom_data: Prisma.JsonValue | null
+  forwarded_to_github: boolean
+  github_issue_number: number | null
+  github_issue_url: string | null
   ip: string | null
   user_agent: string | null
   country_code: string | null
@@ -41,6 +46,9 @@ type FeedbackRecord = {
   platform: Platform | null
   platformVersion: string | null
   customData: Prisma.JsonValue | null
+  forwardedToGithub: boolean
+  githubIssueNumber: number | null
+  githubIssueUrl: string | null
   ip: string | null
   userAgent: string | null
   countryCode: string | null
@@ -60,6 +68,7 @@ export class FeedbacksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly projectResolver: ProjectResolverService,
+    private readonly feedbackIssueService: FeedbackIssueService,
   ) {}
 
   /** 全量统计，隐藏的反馈同样计入：隐藏只是不展示，不是撤回评分。 */
@@ -123,6 +132,15 @@ export class FeedbacksService {
     return this.toFeedbackItem(feedback)
   }
 
+  /**
+   * 公开端的提交选项。目前只播报「本项目是否接受转发到 GitHub」，
+   * 客户端据此决定要不要给用户显示那个勾选框以及联系方式的必填标记。
+   */
+  async getPublicOptions(projectKey: string): Promise<PublicFeedbackOptions> {
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
+    return this.feedbackIssueService.getPublicOptions(normalizedProjectKey)
+  }
+
   async createByProjectKey(
     projectKey: string,
     dto: CreateFeedbackDto,
@@ -130,12 +148,23 @@ export class FeedbacksService {
   ): Promise<FeedbackItem> {
     const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
+    // 只有勾了转发的提交才受联系方式必填与单 IP 限流约束。SDK 只在本地预检联系方式，
+    // 项目是否开放转发只有服务端知道，客户端拿到的是这里的 400 / 429 与原因文案。
+    const forwardToGithub = dto.forward_to_github === true
+    await this.feedbackIssueService.assertForwardAllowed(normalizedProjectKey, {
+      forward: forwardToGithub,
+      contact: dto.contact,
+      ip: origin.ip,
+    })
+
     const dedupHash = buildDedupHash([
       normalizedProjectKey,
       dto.user_id,
       dto.rating,
       dto.content,
       dto.contact,
+      // 同一段文字「不转发」与「转发」是两次不同的意图，不能被去重折叠掉。
+      forwardToGithub ? "forward" : "",
       origin.ip,
       stableStringify(dto.custom_data),
     ])
@@ -178,7 +207,43 @@ export class FeedbacksService {
       },
     })
 
-    return this.toFeedbackItem(created)
+    const item = this.toFeedbackItem(created)
+    if (!forwardToGithub) {
+      return item
+    }
+
+    // 勾了转发的提交，Issue 建成功才算收下：建不成就把刚落的行撤掉，让客户端拿到
+    // 失败而不是一条「已收到、其实没报上去」的记录。
+    //
+    // 先落库再建 Issue 是因为模板要用反馈 id；不用事务包住，是不想让一个最长 10s
+    // 的外部请求攥着数据库连接不放。
+    let issue: ForwardedIssue
+    try {
+      issue = await this.feedbackIssueService.forward(normalizedProjectKey, {
+        id: item.id,
+        content: item.content,
+        rating: item.rating,
+        contact: item.contact,
+        user_id: item.user_id,
+        platform: item.platform,
+        platform_version: item.platform_version,
+        created_at: item.created_at,
+      })
+    } catch (error) {
+      // 补偿删除本身失败也不改写给客户端的错误：转发失败才是他要处理的那件事。
+      await this.prisma.feedback.delete({ where: { id: created.id } }).catch(() => undefined)
+      throw error
+    }
+
+    const forwarded = await this.prisma.feedback.update({
+      where: { id: created.id },
+      data: {
+        forwardedToGithub: true,
+        githubIssueNumber: issue.number,
+        githubIssueUrl: issue.url,
+      },
+    })
+    return this.toFeedbackItem(forwarded)
   }
 
   /**
@@ -298,6 +363,9 @@ export class FeedbacksService {
       platform: fromPlatform(feedback.platform),
       platform_version: feedback.platformVersion,
       custom_data: feedback.customData,
+      forwarded_to_github: feedback.forwardedToGithub,
+      github_issue_number: feedback.githubIssueNumber,
+      github_issue_url: feedback.githubIssueUrl,
       ip: feedback.ip,
       user_agent: feedback.userAgent,
       country_code: feedback.countryCode,

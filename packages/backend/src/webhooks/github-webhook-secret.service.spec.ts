@@ -39,7 +39,7 @@ describe("GithubWebhookSecretService", () => {
     const created = await service.regenerate("VerHub")
     expect(created.secret).toMatch(/^whsec_[0-9a-f]{48}$/)
     expect(created.enabled).toBe(true)
-    expect(created.secret_hint).toBe(created.secret.slice(-4))
+    expect(created.secret_hint).toBe(created.secret.slice(-6))
     expect(created.payload_path).toBe("/api/v1/webhooks/github/verhub")
 
     prisma.project.findUnique.mockResolvedValue({
@@ -50,7 +50,9 @@ describe("GithubWebhookSecretService", () => {
 
     const settings = await service.getSettings("verhub")
     expect(settings).not.toHaveProperty("secret")
-    expect(settings.secret_hint).toBe(created.secret.slice(-4))
+    expect(settings.secret_hint).toBe(created.secret.slice(-6))
+    // 长度回读但内容不回读：管理端据此把掩码铺到真实宽度。
+    expect(settings.secret_length).toBe(created.secret.length)
   })
 
   it("stores an operator-supplied secret with surrounding whitespace removed", async () => {
@@ -76,6 +78,7 @@ describe("GithubWebhookSecretService", () => {
       payload_path: "/api/v1/webhooks/github/verhub",
       content_type: "application/json",
       secret_hint: null,
+      secret_length: null,
       secret_updated_at: null,
     })
   })

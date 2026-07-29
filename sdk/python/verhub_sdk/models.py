@@ -103,6 +103,11 @@ class FeedbackItem(TypedDict):
     platform: Optional[Platform]
     platform_version: Optional[str]
     custom_data: Optional[Dict[str, Any]]
+    #: 是否已转成 GitHub Issue。转发失败的提交不会落库，所以拿到的记录都是成功的那些。
+    forwarded_to_github: bool
+    #: 生成的 Issue 编号与链接；未转发时都是 None。
+    github_issue_number: Optional[int]
+    github_issue_url: Optional[str]
     ip: Optional[str]
     user_agent: Optional[str]
     country_code: Optional[str]
@@ -233,6 +238,15 @@ class AnnouncementStatistics(TypedDict):
     pinned_count: int
 
 
+class PublicFeedbackOptions(TypedDict):
+    """反馈提交选项，决定客户端是否显示「转发到 GitHub Issue」的勾选框。"""
+
+    project_key: str
+    github_forward_available: bool
+    #: 选择转发时联系方式是否必填；转发不可用时恒为 False。
+    contact_required_for_forward: bool
+
+
 class FeedbackStatistics(TypedDict):
     count: int
     rate_count: int
@@ -256,12 +270,95 @@ class GithubWebhookSettings(TypedDict):
     payload_path: str
     content_type: str
     secret_hint: Optional[str]
+    #: 已存 secret 的字符数，供渲染与真实长度一致的掩码。
+    secret_length: Optional[int]
     secret_updated_at: Optional[int]
 
 
 class GithubWebhookSecretRevealed(GithubWebhookSettings):
     #: 完整 secret，只在设置或重新生成时返回一次。
     secret: str
+
+
+#: 可启用的 GitHub App 功能："feedback_issue" / "comment_commands"。
+GithubAppFeature = str
+
+
+class GithubAppConfig(TypedDict):
+    """实例级 GitHub App 配置视图。私钥永不回读，仅返回指纹。"""
+
+    configured: bool
+    app_id: Optional[str]
+    has_private_key: bool
+    private_key_fingerprint: Optional[str]
+    private_key_updated_at: Optional[int]
+    has_webhook_secret: bool
+    webhook_secret_hint: Optional[str]
+    #: 已存 secret 的字符数，供渲染与真实长度一致的掩码。
+    webhook_secret_length: Optional[int]
+    webhook_secret_updated_at: Optional[int]
+    webhook_payload_path: str
+    enabled_features: List[GithubAppFeature]
+    #: 关闭时忽略下面两个模板字段，实例缺省即内置模板。
+    feedback_issue_custom_template: bool
+    feedback_issue_title_template: Optional[str]
+    feedback_issue_body_template: Optional[str]
+    #: 内置模板原文，可直接作为自定义模板编辑器的初值。内置正文不含评分。
+    builtin_feedback_issue_title_template: str
+    builtin_feedback_issue_body_template: str
+    #: 模板可用变量名清单。
+    feedback_issue_template_variables: List[str]
+    updated_at: Optional[int]
+
+
+#: 反馈转发 Issue 的模板来源："inherit"（跟随实例）/ "custom"（项目自定义）/
+#: "repo"（读目标仓库里的模板文件，内容带缓存定期重取）。
+FeedbackIssueTemplateSource = str
+
+
+class FeedbackIssueRepoTemplatePreview(TypedDict):
+    """仓库模板文件的拉取结果。拉不到时 error 给出原因，其余字段为空。"""
+
+    path: str
+    ref: Optional[str]
+    fetched_at: Optional[int]
+    title_template: Optional[str]
+    body_template: Optional[str]
+    #: 模板 front matter 里声明的标签，优先于项目上单独配置的标签。
+    labels: List[str]
+    error: Optional[str]
+
+
+class GithubCommandDefinition(TypedDict, total=False):
+    """评论命令定义：/verhub-<name> <args> → workflow_dispatch。"""
+
+    name: str
+    workflow: str
+    ref: str
+    #: 参数写入 workflow inputs 的键名，缺省 "args"。
+    input: str
+
+
+class ProjectGithubIntegration(TypedDict):
+    """项目级 GitHub 集成配置视图。*_active 是综合实例配置后的实际生效状态。"""
+
+    project_key: str
+    repo_full_name: Optional[str]
+    #: 只表示「允许转发」；是否转发由提交者逐条选择。
+    feedback_issue_enabled: bool
+    feedback_issue_active: bool
+    feedback_issue_template_source: FeedbackIssueTemplateSource
+    feedback_issue_template_repo_path: Optional[str]
+    feedback_issue_template_repo_ref: Optional[str]
+    feedback_issue_title_template: Optional[str]
+    feedback_issue_body_template: Optional[str]
+    feedback_issue_labels: List[str]
+    comment_commands_enabled: bool
+    comment_commands_active: bool
+    command_allowed_associations: List[str]
+    command_allowed_users: List[str]
+    commands: List[GithubCommandDefinition]
+    updated_at: Optional[int]
 
 
 class GithubRepoProjectPreview(TypedDict):

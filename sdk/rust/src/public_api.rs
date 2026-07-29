@@ -1,6 +1,6 @@
 use reqwest::Method;
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::http::{segment, Inner};
 use crate::models::*;
 
@@ -147,8 +147,34 @@ impl PublicApi<'_> {
             .await
     }
 
+    /// 反馈提交选项。客户端据此决定要不要显示「转发到 GitHub Issue」的勾选框。
+    pub async fn get_feedback_options(&self) -> Result<PublicFeedbackOptions> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request::<_, ()>(
+                Method::GET,
+                &format!("/public/{}/feedbacks/options", segment(&key)),
+                &[],
+                None,
+                false,
+            )
+            .await
+    }
+
     /// 提交用户反馈。
+    ///
+    /// `forward_to_github` 为 true 时联系方式必填，这条本地就会拒绝
+    /// （[`Error::MissingContact`]），不必往服务端跑一趟；项目是否开放转发只有服务端
+    /// 知道，未开放时提交会拿到 400，Issue 建失败则整条反馈不会被记录（503）。
     pub async fn create_feedback(&self, input: &CreateFeedbackInput) -> Result<FeedbackItem> {
+        if input.forward_to_github == Some(true)
+            && !input
+                .contact
+                .as_deref()
+                .is_some_and(|contact| !contact.trim().is_empty())
+        {
+            return Err(Error::MissingContact);
+        }
         let key = self.inner.require_project_key()?;
         self.inner
             .request(

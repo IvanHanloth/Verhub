@@ -699,9 +699,28 @@ class PublicApi {
   }
 
   /**
-   * @param {{content: string, user_id?: string, rating?: number, contact?: string, is_hidden?: boolean, platform?: string, platform_version?: string, custom_data?: object}} input 反馈字段
+   * 反馈提交选项。客户端据此决定要不要显示「转发到 GitHub Issue」的勾选框。
+   */
+  getFeedbackOptions() {
+    return this.http.request("GET", "/public/{projectKey}/feedbacks/options", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+    })
+  }
+
+  /**
+   * 提交用户反馈。
+   *
+   * `forward_to_github` 为 true 时联系方式必填，这条本地就会拒绝（抛 VerhubError），
+   * 不必往服务端跑一趟；项目是否开放转发只有服务端知道，未开放时提交会拿到 400，
+   * Issue 建失败则整条反馈不会被记录（503）。
+   *
+   * @param {{content: string, user_id?: string, rating?: number, contact?: string, forward_to_github?: boolean, is_hidden?: boolean, platform?: string, platform_version?: string, custom_data?: object}} input 反馈字段
+   * @throws {VerhubError} 选了转发却没填 contact
    */
   createFeedback(input) {
+    if (input.forward_to_github === true && !String(input.contact ?? "").trim()) {
+      throw new VerhubError("转发到 GitHub Issue 需要联系方式：请先填写 contact")
+    }
     return this.http.request("POST", "/public/{projectKey}/feedbacks", {
       pathParams: { projectKey: this.http.requireProjectKey() },
       body: compact(Object.assign({}, input)),
@@ -1194,7 +1213,7 @@ class AdminApi {
   // ---- GitHub Webhook ----
 
   /**
-   * @returns 绑定项目的 webhook 配置；secret 不回显，只给末 4 位提示
+   * @returns 绑定项目的 webhook 配置；secret 不回显，只给末 6 位提示
    */
   getGithubWebhook() {
     return this.http.request("GET", "/admin/projects/{projectKey}/github-webhook", {
@@ -1233,6 +1252,72 @@ class AdminApi {
       pathParams: { projectKey: this.http.requireProjectKey() },
       auth: true,
     })
+  }
+
+  // ---- GitHub App ----
+
+  /**
+   * 实例级 GitHub App 配置。仅管理员 JWT 可访问，API key 会得到 401。
+   * 私钥永不回读，只返回指纹。
+   */
+  getGithubAppConfig() {
+    return this.http.request("GET", "/admin/github-app", { auth: true })
+  }
+
+  /**
+   * 部分更新实例级 GitHub App 配置。private_key / webhook_secret 传空串表示清除。
+   *
+   * @param {{app_id?: string, private_key?: string, webhook_secret?: string, enabled_features?: string[], feedback_issue_custom_template?: boolean, feedback_issue_title_template?: string, feedback_issue_body_template?: string}} input 要改的字段
+   */
+  updateGithubAppConfig(input) {
+    return this.http.request("PUT", "/admin/github-app", {
+      body: compact(Object.assign({}, input)),
+      auth: true,
+    })
+  }
+
+  /** 清空实例级 GitHub App 配置。所有项目的 GitHub App 功能随即失效。 */
+  clearGithubAppConfig() {
+    return this.http.request("DELETE", "/admin/github-app", { auth: true })
+  }
+
+  /** 查绑定项目的 GitHub 集成配置。 */
+  getGithubIntegration() {
+    return this.http.request("GET", "/admin/projects/{projectKey}/github-integration", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      auth: true,
+    })
+  }
+
+  /**
+   * 部分更新绑定项目的 GitHub 集成配置。打开功能开关要求实例级已启用对应功能。
+   *
+   * @param {{repo_full_name?: string, feedback_issue_enabled?: boolean, feedback_issue_template_source?: "inherit"|"custom"|"repo", feedback_issue_template_repo_path?: string, feedback_issue_template_repo_ref?: string, feedback_issue_title_template?: string, feedback_issue_body_template?: string, feedback_issue_labels?: string[], comment_commands_enabled?: boolean, command_allowed_associations?: string[], command_allowed_users?: string[], commands?: Array<{name: string, workflow: string, ref: string, input?: string}>}} input 要改的字段
+   */
+  updateGithubIntegration(input) {
+    return this.http.request("PUT", "/admin/projects/{projectKey}/github-integration", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact(Object.assign({}, input)),
+      auth: true,
+    })
+  }
+
+  /**
+   * 预览目标仓库里的反馈 Issue 模板（模板来源为 repo 时使用）。
+   * 拉取失败不抛异常，原因放在返回值的 error 字段里。
+   *
+   * @param {{refresh?: boolean}} [options] refresh 为 true 时先作废服务端缓存再重新拉取
+   */
+  getGithubIntegrationRepoTemplate(options = {}) {
+    return this.http.request(
+      "GET",
+      "/admin/projects/{projectKey}/github-integration/repo-template",
+      {
+        pathParams: { projectKey: this.http.requireProjectKey() },
+        query: { refresh: options.refresh ? "true" : undefined },
+        auth: true,
+      },
+    )
   }
 }
 

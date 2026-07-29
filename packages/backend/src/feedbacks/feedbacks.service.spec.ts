@@ -21,6 +21,21 @@ function createPrismaMock() {
   }
 }
 
+/** 转发服务的空实现：默认放行校验、转发成功并给出一个 Issue 号。 */
+function createForwarderMock() {
+  return {
+    assertForwardAllowed: jest.fn().mockResolvedValue(undefined),
+    forward: jest
+      .fn()
+      .mockResolvedValue({ number: 7, url: "https://github.com/acme/app/issues/7" }),
+    getPublicOptions: jest.fn().mockResolvedValue({
+      project_key: "verhub",
+      github_forward_available: false,
+      contact_required_for_forward: false,
+    }),
+  }
+}
+
 /** No-origin baseline: what the service sees when nothing could be observed. */
 const emptyOrigin = {
   ip: null,
@@ -47,7 +62,11 @@ describe("FeedbacksService", () => {
       createdAt: 1767225600,
     })
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     const result = await service.createByProjectKey(
       "verhub",
       {
@@ -74,7 +93,11 @@ describe("FeedbacksService", () => {
       createdAt: 1767225600,
     }))
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     const result = await service.createByProjectKey(
       "verhub",
       { content: "崩溃了", contact: "user@example.com", is_hidden: true },
@@ -94,7 +117,11 @@ describe("FeedbacksService", () => {
       createdAt: 1767225600,
     }))
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     const result = await service.createByProjectKey("verhub", { content: "还行" }, emptyOrigin)
 
     expect(result.is_hidden).toBe(false)
@@ -103,6 +130,122 @@ describe("FeedbacksService", () => {
         data: expect.objectContaining({ contact: undefined, isHidden: false }),
       }),
     )
+  })
+
+  it("rejects a submission whose forward request fails validation", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "verhub" })
+    const forwarder = createForwarderMock()
+    forwarder.assertForwardAllowed.mockRejectedValue(new Error("contact is required"))
+
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma), forwarder as never)
+    await expect(
+      service.createByProjectKey(
+        "verhub",
+        { content: "打不开", forward_to_github: true },
+        emptyOrigin,
+      ),
+    ).rejects.toThrow("contact is required")
+    expect(prisma.feedback.create).not.toHaveBeenCalled()
+  })
+
+  it("forwards only when the submitter asked for it", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "verhub" })
+    prisma.feedback.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+      ...data,
+      id: "feedback-fwd",
+      createdAt: 1767225600,
+    }))
+    prisma.feedback.update.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+      ...data,
+      id: "feedback-fwd",
+      content: "打不开",
+      createdAt: 1767225600,
+    }))
+    const forwarder = createForwarderMock()
+
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma), forwarder as never)
+    await service.createByProjectKey(
+      "verhub",
+      { content: "打不开", contact: "user@example.com" },
+      emptyOrigin,
+    )
+    expect(forwarder.forward).not.toHaveBeenCalled()
+
+    await service.createByProjectKey(
+      "verhub",
+      { content: "打不开", contact: "user@example.com", forward_to_github: true },
+      emptyOrigin,
+    )
+    expect(forwarder.forward).toHaveBeenCalledWith(
+      "verhub",
+      expect.objectContaining({ id: "feedback-fwd", contact: "user@example.com" }),
+    )
+  })
+
+  it("records the created issue on the forwarded feedback", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "verhub" })
+    prisma.feedback.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+      ...data,
+      id: "feedback-fwd",
+      createdAt: 1767225600,
+    }))
+    prisma.feedback.update.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+      ...data,
+      id: "feedback-fwd",
+      content: "打不开",
+      createdAt: 1767225600,
+    }))
+
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
+    const result = await service.createByProjectKey(
+      "verhub",
+      { content: "打不开", contact: "user@example.com", forward_to_github: true },
+      emptyOrigin,
+    )
+
+    expect(prisma.feedback.update).toHaveBeenCalledWith({
+      where: { id: "feedback-fwd" },
+      data: {
+        forwardedToGithub: true,
+        githubIssueNumber: 7,
+        githubIssueUrl: "https://github.com/acme/app/issues/7",
+      },
+    })
+    expect(result.forwarded_to_github).toBe(true)
+    expect(result.github_issue_number).toBe(7)
+    expect(result.github_issue_url).toBe("https://github.com/acme/app/issues/7")
+  })
+
+  it("keeps no record when the issue could not be created", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "verhub" })
+    prisma.feedback.create.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+      ...data,
+      id: "feedback-fwd",
+      createdAt: 1767225600,
+    }))
+    prisma.feedback.delete.mockResolvedValue({})
+    const forwarder = createForwarderMock()
+    forwarder.forward.mockRejectedValue(new Error("github down"))
+
+    const service = new FeedbacksService(prisma as never, makeResolver(prisma), forwarder as never)
+    await expect(
+      service.createByProjectKey(
+        "verhub",
+        { content: "打不开", contact: "user@example.com", forward_to_github: true },
+        emptyOrigin,
+      ),
+    ).rejects.toThrow("github down")
+
+    expect(prisma.feedback.delete).toHaveBeenCalledWith({ where: { id: "feedback-fwd" } })
+    expect(prisma.feedback.update).not.toHaveBeenCalled()
   })
 
   it("skips dedup and origin capture when an admin backfills a feedback", async () => {
@@ -121,7 +264,11 @@ describe("FeedbacksService", () => {
       createdAt: 1767225600,
     }))
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     const result = await service.createByAdmin("verhub", {
       content: "线下收集的意见",
       rating: 4,
@@ -138,7 +285,11 @@ describe("FeedbacksService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
 
     await expect(
       service.createByProjectKey(
@@ -160,7 +311,11 @@ describe("FeedbacksService", () => {
       createdAt: 1767225600,
     }))
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     const result = await service.createByProjectKey(
       "verhub",
       { content: "nice" },
@@ -176,7 +331,11 @@ describe("FeedbacksService", () => {
     prisma.feedback.count.mockResolvedValue(10)
     prisma.feedback.findMany.mockResolvedValue([{ rating: 4 }, { rating: 5 }, { rating: 3 }])
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     const stats = await service.getStatistics()
 
     expect(stats.count).toBe(10)
@@ -189,7 +348,11 @@ describe("FeedbacksService", () => {
     prisma.feedback.count.mockResolvedValue(5)
     prisma.feedback.findMany.mockResolvedValue([])
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     const stats = await service.getStatistics()
 
     expect(stats.rate_avg).toBeNull()
@@ -214,7 +377,11 @@ describe("FeedbacksService", () => {
       ],
     ])
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     const result = await service.findAll("proj", { limit: 10, offset: 0, include_hidden: false })
 
     expect(result.total).toBe(1)
@@ -226,7 +393,11 @@ describe("FeedbacksService", () => {
     prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
     prisma.$transaction.mockResolvedValue([0, []])
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     await service.findAll("proj", { limit: 10, offset: 0, include_hidden: false })
     expect(prisma.feedback.count).toHaveBeenCalledWith({
       where: { projectKey: "proj", isHidden: false },
@@ -240,7 +411,11 @@ describe("FeedbacksService", () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     await expect(
       service.findAll("missing", { limit: 10, offset: 0, include_hidden: false }),
     ).rejects.toBeInstanceOf(NotFoundException)
@@ -259,7 +434,11 @@ describe("FeedbacksService", () => {
       createdAt: 2000,
     })
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     const result = await service.findOne("proj", "f1")
 
     expect(result.id).toBe("f1")
@@ -270,7 +449,11 @@ describe("FeedbacksService", () => {
     const prisma = createPrismaMock()
     prisma.feedback.findFirst.mockResolvedValue(null)
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     await expect(service.findOne("proj", "missing")).rejects.toBeInstanceOf(NotFoundException)
   })
 
@@ -287,7 +470,11 @@ describe("FeedbacksService", () => {
       createdAt: 2000,
     })
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     const result = await service.update("proj", "f1", {
       content: "updated",
       rating: 4,
@@ -302,7 +489,11 @@ describe("FeedbacksService", () => {
     const prisma = createPrismaMock()
     prisma.feedback.findFirst.mockResolvedValue(null)
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     await expect(service.update("proj", "missing", { content: "x" })).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -313,7 +504,11 @@ describe("FeedbacksService", () => {
     prisma.feedback.findFirst.mockResolvedValue({ id: "f1" })
     prisma.feedback.delete.mockResolvedValue({})
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     await service.remove("proj", "f1")
 
     expect(prisma.feedback.delete).toHaveBeenCalledWith({ where: { id: "f1" } })
@@ -323,7 +518,11 @@ describe("FeedbacksService", () => {
     const prisma = createPrismaMock()
     prisma.feedback.findFirst.mockResolvedValue(null)
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     await expect(service.remove("proj", "missing")).rejects.toBeInstanceOf(NotFoundException)
   })
 
@@ -342,7 +541,11 @@ describe("FeedbacksService", () => {
       createdAt: 3000,
     })
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     const result = await service.updateById("f1", { content: "changed" })
 
     expect(result.content).toBe("changed")
@@ -352,7 +555,11 @@ describe("FeedbacksService", () => {
     const prisma = createPrismaMock()
     prisma.feedback.findUnique.mockResolvedValue(null)
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     await expect(service.updateById("missing", { content: "x" })).rejects.toBeInstanceOf(
       NotFoundException,
     )
@@ -364,7 +571,11 @@ describe("FeedbacksService", () => {
     prisma.feedback.findFirst.mockResolvedValue({ id: "f1" })
     prisma.feedback.delete.mockResolvedValue({})
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     await service.removeById("f1")
 
     expect(prisma.feedback.delete).toHaveBeenCalledWith({ where: { id: "f1" } })
@@ -374,13 +585,21 @@ describe("FeedbacksService", () => {
     const prisma = createPrismaMock()
     prisma.feedback.findUnique.mockResolvedValue(null)
 
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     await expect(service.removeById("missing")).rejects.toBeInstanceOf(NotFoundException)
   })
 
   it("getStatus returns module info", () => {
     const prisma = createPrismaMock()
-    const service = new FeedbacksService(prisma as never, makeResolver(prisma))
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
     expect(service.getStatus()).toEqual({ module: "feedbacks", implemented: true })
   })
 })

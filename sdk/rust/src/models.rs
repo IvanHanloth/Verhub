@@ -185,6 +185,11 @@ pub struct FeedbackItem {
     pub platform: Option<Platform>,
     pub platform_version: Option<String>,
     pub custom_data: Option<JsonObject>,
+    /// 是否已转成 GitHub Issue。转发失败的提交不会落库，所以拿到的记录都是成功的那些。
+    pub forwarded_to_github: bool,
+    /// 生成的 Issue 编号与链接；未转发时都是 None。
+    pub github_issue_number: Option<i64>,
+    pub github_issue_url: Option<String>,
     pub ip: Option<String>,
     pub user_agent: Option<String>,
     pub country_code: Option<String>,
@@ -341,8 +346,10 @@ pub struct GithubWebhookSettings {
     pub enabled: bool,
     pub payload_path: String,
     pub content_type: String,
-    /// secret 末 4 位，用于区分不同 secret。
+    /// secret 末 6 位，用于区分不同 secret。
     pub secret_hint: Option<String>,
+    /// 已存 secret 的字符数，供渲染与真实长度一致的掩码。
+    pub secret_length: Option<i64>,
     pub secret_updated_at: Option<i64>,
 }
 
@@ -352,9 +359,142 @@ pub struct GithubWebhookSecretRevealed {
     pub payload_path: String,
     pub content_type: String,
     pub secret_hint: Option<String>,
+    pub secret_length: Option<i64>,
     pub secret_updated_at: Option<i64>,
     /// 完整 secret，只在设置或重新生成时返回一次。
     pub secret: String,
+}
+
+/// 实例级 GitHub App 配置视图。私钥永不回读，仅返回指纹。
+#[derive(Debug, Clone, Deserialize)]
+pub struct GithubAppConfig {
+    /// App ID 与私钥齐全才为 true，功能才可能生效。
+    pub configured: bool,
+    pub app_id: Option<String>,
+    pub has_private_key: bool,
+    pub private_key_fingerprint: Option<String>,
+    pub private_key_updated_at: Option<i64>,
+    pub has_webhook_secret: bool,
+    pub webhook_secret_hint: Option<String>,
+    /// 已存 secret 的字符数，供渲染与真实长度一致的掩码。
+    pub webhook_secret_length: Option<i64>,
+    pub webhook_secret_updated_at: Option<i64>,
+    /// 配置到 GitHub App 设置里的 Webhook URL 路径。
+    pub webhook_payload_path: String,
+    /// 已启用的功能："feedback_issue" / "comment_commands"。
+    pub enabled_features: Vec<String>,
+    /// 关闭时忽略下面两个模板字段，实例缺省即内置模板。
+    pub feedback_issue_custom_template: bool,
+    pub feedback_issue_title_template: Option<String>,
+    pub feedback_issue_body_template: Option<String>,
+    /// 内置模板原文，可直接作为自定义模板编辑器的初值。内置正文不含评分。
+    pub builtin_feedback_issue_title_template: String,
+    pub builtin_feedback_issue_body_template: String,
+    /// 模板可用变量名清单。
+    pub feedback_issue_template_variables: Vec<String>,
+    pub updated_at: Option<i64>,
+}
+
+/// 部分更新实例级 GitHub App 配置。`private_key` / `webhook_secret` 传空串表示清除。
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct UpdateGithubAppConfigInput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_id: Option<String>,
+    /// App 私钥 PEM 原文，只写不读。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub private_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub webhook_secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled_features: Option<Vec<String>>,
+    /// 关闭时下面两个模板字段被忽略，实例缺省回到内置模板。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback_issue_custom_template: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback_issue_title_template: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback_issue_body_template: Option<String>,
+}
+
+/// 仓库模板文件的拉取结果。拉不到时 `error` 给出原因，其余字段为空。
+#[derive(Debug, Clone, Deserialize)]
+pub struct FeedbackIssueRepoTemplatePreview {
+    pub path: String,
+    pub r#ref: Option<String>,
+    pub fetched_at: Option<i64>,
+    pub title_template: Option<String>,
+    pub body_template: Option<String>,
+    /// 模板 front matter 里声明的标签，优先于项目上单独配置的标签。
+    pub labels: Vec<String>,
+    pub error: Option<String>,
+}
+
+/// 评论命令定义：/verhub-<name> <args> → workflow_dispatch。
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GithubCommandDefinition {
+    /// 命令名，不含 /verhub- 前缀。
+    pub name: String,
+    /// workflow 文件名（如 release.yml）或数字 ID。
+    pub workflow: String,
+    /// dispatch 的目标 ref。
+    pub r#ref: String,
+    /// 参数写入 workflow inputs 的键名，缺省 "args"。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<String>,
+}
+
+/// 项目级 GitHub 集成配置视图。`*_active` 是综合实例配置后的实际生效状态。
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProjectGithubIntegration {
+    pub project_key: String,
+    pub repo_full_name: Option<String>,
+    /// 只表示「允许转发」；是否转发由提交者逐条选择。
+    pub feedback_issue_enabled: bool,
+    pub feedback_issue_active: bool,
+    /// 模板来源："inherit" / "custom" / "repo"。
+    pub feedback_issue_template_source: String,
+    pub feedback_issue_template_repo_path: Option<String>,
+    pub feedback_issue_template_repo_ref: Option<String>,
+    pub feedback_issue_title_template: Option<String>,
+    pub feedback_issue_body_template: Option<String>,
+    pub feedback_issue_labels: Vec<String>,
+    pub comment_commands_enabled: bool,
+    pub comment_commands_active: bool,
+    pub command_allowed_associations: Vec<String>,
+    pub command_allowed_users: Vec<String>,
+    pub commands: Vec<GithubCommandDefinition>,
+    pub updated_at: Option<i64>,
+}
+
+/// 部分更新项目级 GitHub 集成配置。`repo_full_name` 传空串表示清除并连带关闭依赖开关。
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct UpdateProjectGithubIntegrationInput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo_full_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback_issue_enabled: Option<bool>,
+    /// 模板来源："inherit" / "custom" / "repo"。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback_issue_template_source: Option<String>,
+    /// 来源为 "repo" 时必填，仓库内的相对路径。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback_issue_template_repo_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback_issue_template_repo_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback_issue_title_template: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback_issue_body_template: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback_issue_labels: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment_commands_enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command_allowed_associations: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command_allowed_users: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commands: Option<Vec<GithubCommandDefinition>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -468,6 +608,11 @@ pub struct CreateFeedbackInput {
     /// 联系方式，邮箱 / 手机号 / IM 账号皆可。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub contact: Option<String>,
+    /// 由提交者选择是否把这条反馈转发成 GitHub Issue，默认 false。
+    /// 传 true 时联系方式必填（SDK 本地就会拒绝）且受单 IP 转发限流约束；
+    /// Issue 建失败时这条反馈不会被记录。仅公开提交接口生效。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub forward_to_github: Option<bool>,
     /// 隐藏后后台列表默认不返回，评分仍计入统计。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_hidden: Option<bool>,
@@ -478,6 +623,15 @@ pub struct CreateFeedbackInput {
     pub platform_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_data: Option<JsonObject>,
+}
+
+/// 反馈提交选项，决定客户端是否显示「转发到 GitHub Issue」的勾选框。
+#[derive(Debug, Clone, Deserialize)]
+pub struct PublicFeedbackOptions {
+    pub project_key: String,
+    pub github_forward_available: bool,
+    /// 选择转发时联系方式是否必填；转发不可用时恒为 false。
+    pub contact_required_for_forward: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

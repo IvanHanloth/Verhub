@@ -39,8 +39,14 @@ export type GithubWebhookSettings = {
   /** Path to configure in GitHub, relative to the deployment's public origin. */
   payload_path: string
   content_type: "application/json"
-  /** Last 4 characters of the secret, or null when none is configured. */
+  /** Last 6 characters of the secret, or null when none is configured. */
   secret_hint: string | null
+  /**
+   * Character count of the stored secret. The admin UI masks all but the hint,
+   * and needs the length to render a mask the same width as the real value —
+   * a fixed-width mask would misrepresent how long the configured secret is.
+   */
+  secret_length: number | null
   secret_updated_at: number | null
 }
 

@@ -93,10 +93,17 @@ jobs:
             sdk/rust/src/lib.rs
           )
 
-          additions='[]'
+          # base64 后总量已超过单个命令行参数 128KB 的上限，additions 必须走
+          # 文件而非 argv 传给 jq
+          additions_file="$RUNNER_TEMP/additions.json"
+          b64_file="$RUNNER_TEMP/content.b64"
+          printf '[]' > "$additions_file"
           for f in "${files[@]}"; do
-            additions=$(jq --arg path "$f" --arg contents "$(base64 -w0 "$f")" \
-              '. + [{path: $path, contents: $contents}]' <<<"$additions")
+            base64 -w0 "$f" > "$b64_file"
+            jq --arg path "$f" --rawfile contents "$b64_file" \
+              '. + [{path: $path, contents: ($contents | rtrimstr("\n"))}]' \
+              "$additions_file" > "$additions_file.tmp"
+            mv "$additions_file.tmp" "$additions_file"
           done
 
           jq -n \
@@ -105,15 +112,15 @@ jobs:
             --arg branch "$GITHUB_REF_NAME" \
             --arg head "$GITHUB_SHA" \
             --arg headline "chore(release): $TAG" \
-            --argjson additions "$additions" \
+            --slurpfile additions "$additions_file" \
             '{query: $query, variables: {input: {
                 branch: {repositoryNameWithOwner: $repo, branchName: $branch},
                 expectedHeadOid: $head,
                 message: {headline: $headline},
-                fileChanges: {additions: $additions}}}}' > /tmp/commit-body.json
+                fileChanges: {additions: $additions[0]}}}}' > "$RUNNER_TEMP/commit-body.json"
 
           resp=$(curl -sS -H "Authorization: Bearer $STS_TOKEN" \
-            -d @/tmp/commit-body.json https://api.github.com/graphql)
+            -d @"$RUNNER_TEMP/commit-body.json" https://api.github.com/graphql)
           commit_oid=$(jq -r '.data.createCommitOnBranch.commit.oid // empty' <<<"$resp")
           if [ -z "$commit_oid" ]; then
             echo "::error::创建提交失败：$(jq -r '.errors[0].message // .message // "未知错误"' <<<"$resp")"

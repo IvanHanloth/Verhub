@@ -216,7 +216,7 @@ SDK 不读取、不发送下列任何一项：
 | --- | --- | --- | --- |
 | TypeScript / JavaScript | 无 | 使用运行时内建的 fetch | — |
 | 浏览器（纯 JS） | 无 | 使用浏览器内建的 fetch | — |
-| Python | requests | HTTP 请求 | 否 |
+| Python | httpx | HTTP 请求 | 否 |
 | Rust | reqwest、os_info、serde、serde_json、tokio、log、percent-encoding、thiserror | HTTP 请求、系统版本读取、序列化 | 否 |
 
 **上述依赖均为通用基础库，不包含任何数据采集、广告或者统计类 SDK。** 其中 os_info 用于读取操作系统版本，在个别系统上会调用系统自带的版本查询命令，读取范围仍限于操作系统版本本身。

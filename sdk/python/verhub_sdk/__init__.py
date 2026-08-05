@@ -13,6 +13,7 @@ from ._http import (
     detect_platform_version,
 )
 from ._unset import UNSET, UnsetType
+from ._worker import BackgroundWorker
 from .admin_api import AdminApi
 from .async_client import AsyncVerhubClient
 from .client import VerhubClient, VerhubSDK
@@ -39,6 +40,7 @@ __all__ = [
     "VerhubSDK",
     "PublicApi",
     "AdminApi",
+    "BackgroundWorker",
     "VerhubError",
     "VerhubApiError",
     "VerhubAuthError",

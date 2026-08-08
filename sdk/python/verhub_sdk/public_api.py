@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from ._http import HttpClient, compact
+from ._http import BaseHttpClient, compact
 from ._unset import UNSET
 from .errors import VerhubError
 from .models import (
@@ -26,9 +26,14 @@ class PublicApi:
 
     这些是客户端 App 会直接调用的那一组：查版本、查公告、报日志和行为。全部作用于
     客户端绑定的项目（构造时传入的 ``project_key``），因此方法不再逐次收项目参数。
+
+    同步与异步两个客户端共用这一份实现：方法把请求转交给底层客户端，绑在
+    ``VerhubClient`` 上时直接返回结果，绑在 ``AsyncVerhubClient`` 上时返回协程，
+    要 ``await``。因此下面的返回值标注按同步视角写。发请求之前的本地校验
+    （缺 ``project_key`` 等）两种形态下都在调用当下就抛。
     """
 
-    def __init__(self, http: HttpClient) -> None:
+    def __init__(self, http: BaseHttpClient) -> None:
         """
         :param http: 底层 HTTP 客户端
         """

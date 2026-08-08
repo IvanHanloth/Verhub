@@ -1,68 +1,49 @@
 """
 异步客户端。
 
-实现方式是「线程壳套同步」：内部持有一个同步 :class:`VerhubClient`，每个接口
-调用都用 :func:`asyncio.to_thread` 丢到线程池里跑，从而不阻塞事件循环。这样
-同步版的每个方法（``public`` / ``admin`` 全部 55 个）都自动获得一个可 ``await``
-的孪生版，无需逐个手写。
+底层是原生 ``httpx.AsyncClient``，真正的非阻塞 I/O——不再是早期版本那种「线程壳
+套同步」，因此高并发场景也能用，在途请求不占线程。
 
-适用面：客户端 App 这类低并发场景（如「别卡住 GUI 主线程」）。它不是真正的
-非阻塞 I/O——每个在途调用占一个线程池线程，因此**不适合高并发服务端**；那种
-场景请另选原生 async HTTP 库。
+接口面与同步版共用同一份实现：``PublicApi`` / ``AdminApi`` 的方法体只写一遍，
+把请求转交给底层客户端，绑到异步客户端上时返回的就是协程。
 
 >>> async def main():
 ...     async with AsyncVerhubClient("https://verhub.example.com/api/v1", "verhub") as client:
 ...         latest = await client.public.get_latest_version()
+
+没有 asyncio 事件循环的 GUI（PySide6 等）不要用这个类，用同步
+:class:`~verhub_sdk.client.VerhubClient` 的 ``background``。
 """
 
 from __future__ import annotations
 
-import asyncio
-import functools
 from typing import Any, Optional
 
-import requests
+import httpx
 
-from ._http import DEFAULT_RETRIES, VERHUB_SDK_VERSION, Timeout
+from ._http import DEFAULT_RETRIES, VERHUB_SDK_VERSION, AsyncHttpClient, Timeout
 from ._unset import UNSET
-from .client import VerhubClient
+from .admin_api import AdminApi
 from .models import HealthResponse
-
-
-class _AsyncNamespace:
-    """把同步命名空间（``public`` / ``admin``）里的方法包成协程。
-
-    属性若不是可调用对象就原样透出；是方法则返回一个把它丢进
-    :func:`asyncio.to_thread` 执行的协程函数，签名与文档串靠 ``functools.wraps``
-    保留，方便 IDE 内省。
-    """
-
-    def __init__(self, target: Any) -> None:
-        """
-        :param target: 被代理的同步命名空间实例
-        """
-        self._target = target
-
-    def __getattr__(self, name: str) -> Any:
-        attr = getattr(self._target, name)
-        if not callable(attr):
-            return attr
-
-        @functools.wraps(attr)
-        async def _runner(*args: Any, **kwargs: Any) -> Any:
-            return await asyncio.to_thread(attr, *args, **kwargs)
-
-        return _runner
+from .public_api import PublicApi
 
 
 class AsyncVerhubClient:
     """
-    Verhub SDK 的异步入口，接口面与 :class:`VerhubClient` 完全一致，只是
-    ``public`` / ``admin`` 上的方法都要 ``await``。
+    Verhub SDK 的异步入口，接口面与 :class:`~verhub_sdk.client.VerhubClient` 完全
+    一致，只是 ``public`` / ``admin`` 上的方法都要 ``await``。
 
-    底层是线程壳（见模块文档）：同步客户端非线程安全的可变状态（token / project_key
-    等）只在你显式调用 setter 时改动，接口调用本身不改，因此并发 ``await`` 共用
-    一份连接池是安全的。但请避免在有在途请求时并发调用 setter。
+    .. note::
+       本地前置校验（未绑定 ``project_key``、转发反馈却没填联系方式等）在**调用
+       当下**就抛，不等到 ``await``——协程还没创建出来，异常先到。用
+       ``try`` 包住整个 ``await client.public.xxx(...)`` 表达式即可，两种时机都能兜住。
+
+    .. note::
+       ``public`` / ``admin`` 的静态类型是 ``Any``：方法体与同步版共用一份，返回值
+       标注按同步签名写（``VersionItem`` 这类 ``TypedDict``），异步下实际返回协程。
+       标成 ``Any`` 是为了让 ``await client.public.xxx()`` 不被类型检查器判成「await
+       了一个 dict」，代价是异步侧没有返回结构的补全——需要时用
+       ``cast(VersionItem, await ...)``。
     """
 
     version = VERHUB_SDK_VERSION
@@ -77,70 +58,71 @@ class AsyncVerhubClient:
         platform_version: Any = UNSET,
         timeout: Timeout = 15.0,
         retries: int = DEFAULT_RETRIES,
-        session: Optional[requests.Session] = None,
+        http_client: Optional[httpx.AsyncClient] = None,
         user_agent: Optional[str] = None,
         app_identifier: Optional[str] = None,
     ) -> None:
-        """参数含义与 :class:`VerhubClient` 一致。"""
-        self._sync = VerhubClient(
-            base_url,
-            project_key,
-            token,
+        """参数含义与 :class:`~verhub_sdk.client.VerhubClient` 一致，只是
+        ``http_client`` 收的是 ``httpx.AsyncClient``。"""
+        self._http = AsyncHttpClient(
+            base_url=base_url,
+            project_key=project_key,
+            token=token,
             platform=platform,
             platform_version=platform_version,
             timeout=timeout,
             retries=retries,
-            session=session,
+            http_client=http_client,
             user_agent=user_agent,
             app_identifier=app_identifier,
         )
-        #: 公开接口，方法均为协程。
-        self.public = _AsyncNamespace(self._sync.public)
-        #: 管理接口，方法均为协程。
-        self.admin = _AsyncNamespace(self._sync.admin)
+        #: 公开接口，方法均返回协程。
+        self.public: Any = PublicApi(self._http)
+        #: 管理接口，方法均返回协程。
+        self.admin: Any = AdminApi(self._http)
 
     @property
     def project_key(self) -> Optional[str]:
         """当前绑定的项目标识。"""
-        return self._sync.project_key
+        return self._http.project_key
 
     def set_project_key(self, project_key: str) -> None:
         """
         :param project_key: 新的绑定项目标识
         """
-        self._sync.set_project_key(project_key)
+        self._http.set_project_key(project_key)
 
     def set_token(self, token: str) -> None:
         """
         :param token: 管理员 JWT 或 API Key
         """
-        self._sync.set_token(token)
+        self._http.set_token(token)
 
     def clear_token(self) -> None:
         """清除当前凭据，之后调用 admin 接口会直接抛错。"""
-        self._sync.clear_token()
+        self._http.clear_token()
 
     def set_platform(self, platform: Optional[str]) -> None:
         """
         :param platform: 平台声明；传 ``None`` 则不再声明平台
         """
-        self._sync.set_platform(platform)
+        self._http.set_platform(platform)
 
     def set_platform_version(self, platform_version: Optional[str]) -> None:
         """
         :param platform_version: 系统版本明细；传 ``None`` 则不再声明
         """
-        self._sync.set_platform_version(platform_version)
+        self._http.set_platform_version(platform_version)
 
     async def health(self) -> HealthResponse:
         """
         :return: 服务健康状态
         """
-        return await asyncio.to_thread(self._sync.health)
+        return await self._http.request("GET", "/health")
 
     async def aclose(self) -> None:
-        """关闭底层连接池。"""
-        await asyncio.to_thread(self._sync.close)
+        """关闭连接池；自定义 ``http_client`` 由调用方自己关。"""
+        await self._http.aclose()
 
     async def __aenter__(self) -> "AsyncVerhubClient":
         return self

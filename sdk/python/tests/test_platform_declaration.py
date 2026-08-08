@@ -13,7 +13,7 @@ import unittest
 
 from verhub_sdk._http import (
     MAX_PLATFORM_VERSION_LENGTH,
-    HttpClient,
+    BaseHttpClient,
     detect_platform,
     detect_platform_version,
     sanitize_platform_version,
@@ -30,7 +30,7 @@ class SanitizeTest(unittest.TestCase):
     def test_strips_mojibake_but_keeps_the_version_number(self) -> None:
         cleaned = sanitize_platform_version(MOJIBAKE)
         self.assertEqual(cleaned, "Microsoft Windows [ 10.0.26200.8")
-        # 进不了 latin-1 的值会让 requests 在编码请求头时抛异常。
+        # 进不了 latin-1 的值会让 httpx 在编码请求头时抛异常。
         cleaned.encode("latin-1")
 
     def test_folds_whitespace_and_trims(self) -> None:
@@ -53,7 +53,7 @@ class SanitizeTest(unittest.TestCase):
 
 class DeclarationTest(unittest.TestCase):
     def test_explicit_platform_keeps_auto_detected_version(self) -> None:
-        client = HttpClient(BASE_URL, platform="windows")
+        client = BaseHttpClient(BASE_URL, platform="windows")
         self.assertEqual(client.platform, "windows")
         self.assertEqual(
             client.platform_version,
@@ -62,27 +62,27 @@ class DeclarationTest(unittest.TestCase):
         )
 
     def test_auto_detects_both_when_nothing_given(self) -> None:
-        client = HttpClient(BASE_URL)
+        client = BaseHttpClient(BASE_URL)
         self.assertEqual(client.platform, detect_platform())
         self.assertEqual(client.platform_version, detect_platform_version() or None)
 
     def test_explicit_version_wins_and_is_sanitized(self) -> None:
-        client = HttpClient(BASE_URL, platform_version="  Windows� 11  ")
+        client = BaseHttpClient(BASE_URL, platform_version="  Windows� 11  ")
         self.assertEqual(client.platform_version, "Windows 11")
 
     def test_platform_none_reports_nothing(self) -> None:
         """传 None 是明确的退出声明，版本一并不报。"""
-        client = HttpClient(BASE_URL, platform=None)
+        client = BaseHttpClient(BASE_URL, platform=None)
         self.assertIsNone(client.platform)
         self.assertIsNone(client.platform_version)
 
     def test_platform_none_still_honours_an_explicit_version(self) -> None:
-        client = HttpClient(BASE_URL, platform=None, platform_version="ubuntu 24.04")
+        client = BaseHttpClient(BASE_URL, platform=None, platform_version="ubuntu 24.04")
         self.assertIsNone(client.platform)
         self.assertEqual(client.platform_version, "ubuntu 24.04")
 
     def test_setters_sanitize_too(self) -> None:
-        client = HttpClient(BASE_URL)
+        client = BaseHttpClient(BASE_URL)
         client.set_platform_version(MOJIBAKE)
         self.assertEqual(client.platform_version, "Microsoft Windows [ 10.0.26200.8")
         client.set_platform_version("版本")

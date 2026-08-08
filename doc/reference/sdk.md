@@ -351,16 +351,20 @@ match client.admin().list_projects().await {
 
 ## 重试、超时与异步
 
-- **重试**：连接失败与幂等 GET 默认自动重试 2 次并指数退避，POST 不重放。
-  各语言用 `retries`（Python/TS/JS 为构造参数，Rust 为 `.retries(n)`）调整，`0` 关闭。
-- **超时**：Python 的 `timeout` 支持 `(connect, read)` 元组、Rust 另有
-  `.connect_timeout(...)`，可让连接阶段快速失败、读取宽松些；TS/JS 基于 `fetch`
-  只有整体 `timeoutMs`。
+- **重试**：连接失败与幂等 GET 默认自动重试 2 次并指数退避，POST 不重放（连接压根
+  没建起来时除外——请求没送到服务端，重放一定安全）。各语言用 `retries`
+  （Python/TS/JS 为构造参数，Rust 为 `.retries(n)`）调整，`0` 关闭。
+- **超时**：Python 的 `timeout` 支持 `(connect, read)` 元组（也可直接传
+  `httpx.Timeout`）、Rust 另有 `.connect_timeout(...)`，可让连接阶段快速失败、读取
+  宽松些；TS/JS 基于 `fetch` 只有整体 `timeoutMs`。
 - **User-Agent**：`app_identifier`（TS/JS 为 `appIdentifier`，Rust 为
   `.app_identifier(...)`）会追加到默认 UA 之后，保留 SDK 版本又便于统计；浏览器
   禁止脚本改写 UA，此项仅在服务端运行时生效。
-- **异步**：Rust 与 TS/JS 原生异步；Python 额外提供 `AsyncVerhubClient`（`await`
-  接口面与同步版一致，内部以线程池承载，适合 GUI 等低并发场景）。
+- **异步**：Rust 与 TS/JS 原生异步；Python 额外提供 `AsyncVerhubClient`，接口面与
+  同步版一致（方法要 `await`），底层是原生 `httpx.AsyncClient`，真正的非阻塞 I/O。
+- **GUI（PySide6 等）**：Qt/tkinter 跑的是自己的事件循环，用不上 `await`。Python 同步
+  客户端的 `client.background` 把调用丢到后台线程池，回调排队等主线程调用
+  `drain()` 时才执行——接到框架自带的定时器上即可，SDK 不引入任何 GUI 依赖。
 
 ## 平台声明与请求统计
 

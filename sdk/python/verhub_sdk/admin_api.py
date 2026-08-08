@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from ._http import HttpClient, compact
+from ._http import BaseHttpClient, compact
 from ._unset import UNSET
 from .models import (
     ActionItem,
@@ -49,9 +49,13 @@ class AdminApi:
 
     项目作用域的方法用客户端绑定的 ``project_key``，不再逐次收项目参数；跨项目的
     方法（``list_projects``、各类统计、按 id 操作行为等）不涉及绑定项目。
+
+    同步与异步两个客户端共用这一份实现：方法把请求转交给底层客户端，绑在
+    ``VerhubClient`` 上时直接返回结果，绑在 ``AsyncVerhubClient`` 上时返回协程，
+    要 ``await``。因此下面的返回值标注按同步视角写。
     """
 
-    def __init__(self, http: HttpClient) -> None:
+    def __init__(self, http: BaseHttpClient) -> None:
         """
         :param http: 底层 HTTP 客户端
         """

@@ -1,4 +1,4 @@
-import { requestJson } from "@/lib/api-client"
+import { buildListQuery, requestJson } from "@/lib/api-client"
 
 export type ProjectItem = {
   id: string
@@ -91,15 +91,16 @@ export async function loginAdmin(username: string, password: string): Promise<Lo
 
 export async function listProjects(
   token: string,
-  params: { limit: number; offset: number },
+  params: { limit: number; offset: number; search?: string },
   signal?: AbortSignal,
 ): Promise<ListProjectsResponse> {
-  const query = new URLSearchParams({
-    limit: String(params.limit),
-    offset: String(params.offset),
+  const query = buildListQuery({
+    limit: params.limit,
+    offset: params.offset,
+    search: params.search,
   })
 
-  return requestJson<ListProjectsResponse>(`/admin/projects?${query.toString()}`, {
+  return requestJson<ListProjectsResponse>(`/admin/projects?${query}`, {
     token,
     signal,
   })

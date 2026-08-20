@@ -1,4 +1,4 @@
-import { requestJson } from "@/lib/api-client"
+import { buildListQuery, requestJson } from "@/lib/api-client"
 import type { Platform } from "@/lib/platform"
 
 export type FeedbackItem = {
@@ -44,27 +44,34 @@ export type FeedbackMutationInput = {
   custom_data?: Record<string, unknown>
 }
 
+export type ListFeedbacksParams = {
+  limit: number
+  offset: number
+  includeHidden?: boolean
+  search?: string
+  platform?: Platform
+  rating?: number
+}
+
 export async function listFeedbacks(
   token: string,
   projectKey: string,
-  params: { limit: number; offset: number; includeHidden?: boolean },
+  params: ListFeedbacksParams,
   signal?: AbortSignal,
 ): Promise<ListFeedbacksResponse> {
-  const query = new URLSearchParams({
-    limit: String(params.limit),
-    offset: String(params.offset),
+  const query = buildListQuery({
+    limit: params.limit,
+    offset: params.offset,
+    include_hidden: params.includeHidden ? "true" : undefined,
+    search: params.search,
+    platform: params.platform,
+    rating: params.rating,
   })
-  if (params.includeHidden) {
-    query.set("include_hidden", "true")
-  }
 
-  return requestJson<ListFeedbacksResponse>(
-    `/admin/projects/${projectKey}/feedbacks?${query.toString()}`,
-    {
-      token,
-      signal,
-    },
-  )
+  return requestJson<ListFeedbacksResponse>(`/admin/projects/${projectKey}/feedbacks?${query}`, {
+    token,
+    signal,
+  })
 }
 
 /** 后台手动补录反馈；来源字段（ip/UA/地理）由后端留空。 */

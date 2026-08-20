@@ -36,7 +36,7 @@ Verhub 采用 Monorepo + 模块化单体架构：
 - `geo`：调用方来源解析。`GeoLocationService` 做 IP → 国家/地区解析与缓存，`ClientOriginService` 把请求拼装成各上报表要写入的来源字段。模块声明为 `@Global`，因为四个采集点都要用，且服务持有进程级缓存，不能被重复实例化
 - `database`：PrismaService 与数据库连接能力
 - `health`：服务健康检查
-- `common`：跨模块共享工具函数（`nowSeconds`、`normalizeProjectKey`、`isUniqueViolation`）、请求上下文提取（`client-context`）与上报去重指纹（`dedup`）
+- `common`：跨模块共享工具函数（`nowSeconds`、`normalizeProjectKey`、`isUniqueViolation`）、请求上下文提取（`client-context`）、上报去重指纹（`dedup`）与列表查询参数（`query-filters`：关键字归一化、`searchContains`、三态布尔）
 
 边界约束：
 
@@ -74,6 +74,7 @@ Token 范围模型（ApiKey）：
 - `isPreview`：标记预发布版本（如 beta/rc）。
 - `version`：语义化版本号（展示用，可保留历史命名习惯）。
 - `comparableVersion`：可比较版本号（规则计算用），格式支持 `1.2.3`、`1.2.3-alpha`、`1.2.3-rc.2`。
+- `comparableVersionSort`：`comparableVersion` 的定长排序键，由 `toComparableVersionSortKey` 生成并随写入落库。存在的理由是 `comparableVersion` 按 TEXT 排序会把 `3.1.0-rc.2` 排到 `3.1.0` 之上，与语义相反；有了它，版本列表分页与「最新版」判定都能直接走数据库索引。纯内部列，不出现在任何响应里。
 - `isMilestone`：里程碑标记；用于标记关键升级节点版本。
 - `isDeprecated`：版本废弃标记；命中后更新检查接口会返回必更。
 - `publishedAt`：版本发布时间（Unix 秒级时间戳）。
@@ -141,6 +142,15 @@ Webhook 鉴权（Project）：
 上报去重：
 
 - `Log` / `Feedback` / `ActionRecord` 各有 `dedupHash` 列，指纹取「项目 + 载荷 + 调用方」。窗口内命中则直接返回已存在的那条记录，不新建行。
+
+隐藏语义（`Log.isHidden` / `Feedback.isHidden` / `Announcement.isHidden`）：
+
+- 日志与反馈：隐藏只影响后台列表的默认返回，需显式 `include_hidden=true` 才带出来。记录仍在，统计接口（日志等级分布、反馈评分均值）照常全量计算——隐藏是不展示，不是撤回数据。
+- 日志的可修改面刻意只有 `is_hidden`（`PATCH /admin/projects/{projectKey}/logs/{logId}`）：正文、级别与来源是排障凭证，改了就不再是当时发生的事。
+- 公告：隐藏是发布流程的一部分（先建后放），所以后台默认就列出隐藏的公告，`is_hidden` 在那里是筛选维度而非「要不要带出来」的开关；公开端永远只返回未隐藏的公告。
+
+列表搜索：`search` 参数在各列表接口上语义一致——不区分大小写的子串匹配，命中字段由各 service 指定（见 OpenAPI 中每个端点的说明）。JSON 列（`custom_data` / `device_info` / `http`）一律不参与匹配：既慢又无从解释命中在哪。
+
 - 窗口由 `VERHUB_DEDUP_WINDOW_SECONDS` 控制，默认 60 秒，设为 0 或非法值即关闭。
 - 语义刻意粗糙，不是精确一次投递：超过窗口的重试会被保留，因为真正在反复发生的事件本身就值得看见。行为记录的指纹不含 `http`——它带整套请求头，任何轮换字段（trace id、cookie）都会让每次重试看起来都不一样，整个检查就失效了。
 
@@ -155,6 +165,8 @@ Webhook 鉴权（Project）：
 - 通用请求封装在 `web/lib/api-client.ts`
 - 共享错误处理在 `web/lib/error-utils.ts`（`getErrorMessage`）
 - 共享分页逻辑在 `web/hooks/use-pagination.ts`（`usePagination` hook）
+- 后台列表统一用 `web/components/common/data-table.tsx`（`DataTable`）：一字段一列、列显隐（按 `storageKey` 持久化到 localStorage）、搜索框与筛选控件插槽、加载/空/错误态、可展开行。组件本身不做任何过滤——列表是服务端分页的，只在当前页里过滤会让人把「不在这一页」误读成「没搜到」，所以搜索与筛选一律由页面带进请求
+- 列表查询参数的拼装在 `web/lib/api-client.ts`（`buildListQuery`）：空串与 undefined 一律不落进 URL，否则后端会收到 `platform=` 这类空值参数并按非法取值拒绝
 - 跨页面项目选择同步在 `web/hooks/use-shared-project-selection.ts`
 - 路由切换过渡在 `web/components/route-transition.tsx`（`RouteTransition`）：由后台布局、文档布局与各独立页面分别包裹内容区，不放在根布局，避免整页淡入影响常驻侧栏
 - 统一弹窗模式基于 `@workspace/ui/components/dialog`：`DialogContent` 负责最大高度与自适应布局，`DialogBody` 负责内容滚动，`DialogFooter` 固定底部操作区
@@ -166,7 +178,7 @@ Webhook 鉴权（Project）：
 
 当前核心页面：
 
-- 项目管理、版本管理、公告管理、反馈管理、日志审计
+- 项目管理、版本管理、公告管理、行为管理、反馈管理、日志审计、Token 管理，均基于同一套 `DataTable`
 
 状态设计：
 

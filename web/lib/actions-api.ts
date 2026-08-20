@@ -1,4 +1,4 @@
-import { requestJson } from "@/lib/api-client"
+import { buildListQuery, requestJson } from "@/lib/api-client"
 import type { Platform } from "@/lib/platform"
 import { getSessionToken } from "@/lib/auth-session"
 
@@ -62,21 +62,19 @@ function getTokenOrThrow() {
 
 export async function listActions(
   projectKey: string,
-  params: { limit: number; offset: number },
+  params: { limit: number; offset: number; search?: string },
   signal?: AbortSignal,
 ): Promise<ListActionsResponse> {
-  const query = new URLSearchParams({
-    limit: String(params.limit),
-    offset: String(params.offset),
+  const query = buildListQuery({
+    limit: params.limit,
+    offset: params.offset,
+    search: params.search,
   })
 
-  return requestJson<ListActionsResponse>(
-    `/admin/projects/${projectKey}/actions?${query.toString()}`,
-    {
-      token: getTokenOrThrow(),
-      signal,
-    },
-  )
+  return requestJson<ListActionsResponse>(`/admin/projects/${projectKey}/actions?${query}`, {
+    token: getTokenOrThrow(),
+    signal,
+  })
 }
 
 export async function createAction(input: ActionMutationInput): Promise<ActionItem> {
@@ -110,12 +108,9 @@ export async function listActionRecords(
   params: { limit: number; offset: number },
   signal?: AbortSignal,
 ): Promise<ListActionRecordsResponse> {
-  const query = new URLSearchParams({
-    limit: String(params.limit),
-    offset: String(params.offset),
-  })
+  const query = buildListQuery({ limit: params.limit, offset: params.offset })
 
-  return requestJson<ListActionRecordsResponse>(`/admin/actions/${actionId}?${query.toString()}`, {
+  return requestJson<ListActionRecordsResponse>(`/admin/actions/${actionId}?${query}`, {
     token: getTokenOrThrow(),
     signal,
   })

@@ -17,7 +17,13 @@ import {
 
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
-import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
+import {
+  DataTable,
+  DataTableSelectFilter,
+  EmptyValue,
+  TruncatedCell,
+  type DataTableColumn,
+} from "@/components/common/data-table"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import { MarkdownEditor } from "@/components/markdown/markdown-editor"
 import {
@@ -32,7 +38,8 @@ import { isAuthError } from "@/lib/api-client"
 import { PLATFORM_OPTIONS, type Platform } from "@/lib/platform"
 import { getErrorMessage } from "@/lib/error-utils"
 import { useConfirm } from "@/components/common/confirm-dialog"
-import { TableSkeleton } from "@/components/common/skeleton"
+import { useUnsavedChangesGuard } from "@/components/common/unsaved-changes-guard"
+import { formatTimestamp } from "@/lib/format"
 import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
@@ -41,6 +48,31 @@ import { useAdminProjects } from "@/hooks/use-admin-projects"
 const PAGE_SIZE = 10
 
 const platformOptions = PLATFORM_OPTIONS
+
+type FilterState = {
+  search: string
+  platform: "" | Platform
+  /** 空串表示不限；"true" / "false" 分别对应只看是 / 只看否。 */
+  isPinned: string
+  isHidden: string
+}
+
+const emptyFilters: FilterState = {
+  search: "",
+  platform: "",
+  isPinned: "",
+  isHidden: "",
+}
+
+const yesNoOptions = [
+  { label: "是", value: "true" },
+  { label: "否", value: "false" },
+]
+
+/** 三态开关：空串不带进请求，其余按字符串转布尔。 */
+function toOptionalBoolean(value: string): boolean | undefined {
+  return value === "" ? undefined : value === "true"
+}
 
 type AnnouncementFormState = {
   title: string
@@ -233,6 +265,7 @@ export function AnnouncementsDashboard() {
   } = usePagination({ pageSize: PAGE_SIZE })
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [filters, setFilters] = React.useState<FilterState>(emptyFilters)
 
   const [form, setForm] = React.useState<AnnouncementFormState>(emptyForm)
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false)
@@ -242,6 +275,11 @@ export function AnnouncementsDashboard() {
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [editForm, setEditForm] = React.useState<AnnouncementFormState>(emptyForm)
   const [savingEdit, setSavingEdit] = React.useState(false)
+  const handleEditOpenChange = useUnsavedChangesGuard({
+    open: editDialogOpen,
+    onOpenChange: setEditDialogOpen,
+    value: editForm,
+  })
 
   const hasToken = token.trim().length > 0
 
@@ -260,7 +298,14 @@ export function AnnouncementsDashboard() {
         const response = await listAnnouncements(
           token,
           selectedProjectKey,
-          { limit: PAGE_SIZE, offset: nextOffset },
+          {
+            limit: PAGE_SIZE,
+            offset: nextOffset,
+            search: filters.search.trim() || undefined,
+            platform: filters.platform || undefined,
+            is_pinned: toOptionalBoolean(filters.isPinned),
+            is_hidden: toOptionalBoolean(filters.isHidden),
+          },
           signal,
         )
         setAnnouncements(response.data)
@@ -284,7 +329,7 @@ export function AnnouncementsDashboard() {
         }
       }
     },
-    [selectedProjectKey, token, setTotal],
+    [selectedProjectKey, token, setTotal, filters],
   )
 
   React.useEffect(() => {
@@ -303,6 +348,20 @@ export function AnnouncementsDashboard() {
     setEditDialogOpen(false)
     setEditingId(null)
   }, [selectedProjectKey, resetOffset])
+
+  /** 改任何一个筛选条件都回到第一页：留在第 5 页看新条件的结果没有意义。 */
+  const updateFilter = React.useCallback(
+    <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
+      setFilters((current) => ({ ...current, [key]: value }))
+      resetOffset()
+    },
+    [resetOffset],
+  )
+
+  function resetFilters() {
+    setFilters(emptyFilters)
+    resetOffset()
+  }
 
   function openCreateDialog() {
     setForm(emptyForm)
@@ -435,6 +494,140 @@ export function AnnouncementsDashboard() {
     }
   }
 
+  // 不做 memo：操作按钮闭包了当前页数据，缓存下来会让编辑/删除作用在上一轮的行上。
+  const columns: Array<DataTableColumn<AnnouncementItem>> = [
+    {
+      id: "title",
+      header: "标题",
+      label: "标题",
+      alwaysVisible: true,
+      className: "font-medium",
+      cell: (item) => (
+        <TruncatedCell className="max-w-[20rem]" title={item.title}>
+          {item.title}
+        </TruncatedCell>
+      ),
+    },
+    {
+      id: "content",
+      header: "正文",
+      label: "正文",
+      className: "min-w-64 text-xs text-slate-600 dark:text-slate-300",
+      cell: (item) => (
+        <TruncatedCell className="max-w-[26rem]" title={item.content}>
+          {item.content}
+        </TruncatedCell>
+      ),
+    },
+    {
+      id: "is_pinned",
+      header: "置顶",
+      label: "置顶",
+      className: "text-xs",
+      cell: (item) =>
+        item.is_pinned ? (
+          <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-300">
+            <Pin className="size-3" />是
+          </span>
+        ) : (
+          <EmptyValue>否</EmptyValue>
+        ),
+    },
+    {
+      id: "is_hidden",
+      header: "隐藏",
+      label: "隐藏",
+      className: "text-xs",
+      cell: (item) =>
+        item.is_hidden ? (
+          <span className="text-amber-600 dark:text-amber-300">是</span>
+        ) : (
+          <EmptyValue>否</EmptyValue>
+        ),
+    },
+    {
+      id: "platforms",
+      header: "平台",
+      label: "平台",
+      className: "text-xs text-slate-600 dark:text-slate-300",
+      cell: (item) =>
+        item.platforms.length > 0 ? item.platforms.join(", ") : <EmptyValue>全部</EmptyValue>,
+    },
+    {
+      id: "author",
+      header: "作者",
+      label: "作者",
+      className: "text-xs text-slate-600 dark:text-slate-300",
+      cell: (item) => item.author ?? <EmptyValue />,
+    },
+    {
+      id: "published_at",
+      header: "发布时间",
+      label: "发布时间",
+      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      cell: (item) => formatTimestamp(item.published_at, "—"),
+    },
+    {
+      id: "updated_at",
+      header: "更新时间",
+      label: "更新时间",
+      defaultHidden: true,
+      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      cell: (item) => formatTimestamp(item.updated_at, "—"),
+    },
+    {
+      id: "id",
+      header: "ID",
+      label: "公告 ID",
+      defaultHidden: true,
+      className: "font-mono text-xs text-slate-500 dark:text-slate-400",
+      cell: (item) => item.id,
+    },
+    {
+      id: "actions",
+      header: "操作",
+      label: "操作",
+      alwaysVisible: true,
+      headerClassName: "text-right",
+      className: "text-right",
+      cell: (item) => (
+        // 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。
+        <div className="flex justify-end gap-1.5">
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            title="复制配置"
+            aria-label="复制配置"
+            onClick={() => copyFromAnnouncement(item)}
+          >
+            <Copy className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            title="编辑"
+            aria-label="编辑"
+            onClick={() => beginEdit(item)}
+          >
+            <PencilLine className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="destructive"
+            title="删除"
+            aria-label="删除"
+            onClick={() => void handleDelete(item.id)}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ]
+
   return (
     <section className="space-y-6">
       <AdminPageHeader
@@ -462,97 +655,59 @@ export function AnnouncementsDashboard() {
         </AdminCard>
       ) : null}
 
-      <AdminCard as="section">
-        <AdminListHeader title="公告列表" total={total} page={page} totalPages={totalPages} />
+      <AdminCard as="section" className="space-y-4">
+        <h2 className="text-lg font-semibold">公告列表</h2>
 
-        {hasToken && selectedProjectKey && loading ? <TableSkeleton /> : null}
-
-        {hasToken && selectedProjectKey && !loading && error ? (
-          <div className="rounded-2xl border border-rose-300/30 bg-rose-300/10 p-6 text-sm text-rose-200">
-            {error}
-          </div>
-        ) : null}
-
-        {hasToken && selectedProjectKey && !loading && !error && announcements.length > 0 ? (
-          <div className="space-y-3">
-            <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/5">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b border-white/10 text-left text-slate-300">
-                    <th className="px-3 py-2 font-medium">标题</th>
-                    <th className="px-3 py-2 font-medium">状态</th>
-                    <th className="px-3 py-2 font-medium">发布时间</th>
-                    <th className="px-3 py-2 font-medium">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {announcements.map((item) => (
-                    <tr key={item.id} className="border-b border-white/5 align-top">
-                      <td className="px-3 py-2">
-                        <p className="font-medium text-slate-100">{item.title}</p>
-                        <p className="mt-1 text-xs text-slate-300">{item.content}</p>
-                        <p className="mt-1 text-xs text-slate-400">
-                          作者：{item.author ?? "未填写"}
-                        </p>
-                      </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">
-                        <p className="inline-flex items-center gap-1">
-                          {item.is_pinned ? <Pin className="size-3" /> : null}
-                          置顶：{item.is_pinned ? "是" : "否"}
-                        </p>
-                        <p>隐藏：{item.is_hidden ? "是" : "否"}</p>
-                        <p>
-                          平台：{item.platforms.length > 0 ? item.platforms.join(", ") : "全部"}
-                        </p>
-                      </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">
-                        <p>{new Date(item.published_at * 1000).toLocaleString("zh-CN")}</p>
-                        <p>更新于 {new Date(item.updated_at * 1000).toLocaleString("zh-CN")}</p>
-                      </td>
-                      <td className="px-3 py-2">
-                        {/* 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。 */}
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            title="复制配置"
-                            aria-label="复制配置"
-                            onClick={() => copyFromAnnouncement(item)}
-                          >
-                            <Copy className="size-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            title="编辑"
-                            aria-label="编辑"
-                            onClick={() => beginEdit(item)}
-                          >
-                            <PencilLine className="size-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="destructive"
-                            title="删除"
-                            aria-label="删除"
-                            onClick={() => void handleDelete(item.id)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <AdminPagination hasPrev={hasPrev} hasNext={hasNext} onPrev={onPrev} onNext={onNext} />
-          </div>
-        ) : null}
+        <DataTable
+          storageKey="announcements"
+          columns={columns}
+          rows={announcements}
+          getRowId={(item) => item.id}
+          loading={hasToken && Boolean(selectedProjectKey) && loading}
+          error={error}
+          emptyMessage={
+            !hasToken
+              ? "请先在登录页完成登录后查看公告数据。"
+              : !selectedProjectKey
+                ? "暂无项目，请先去项目管理页创建项目。"
+                : "当前筛选条件下暂无公告。"
+          }
+          rowClassName={(item) => (item.is_hidden ? "opacity-60" : undefined)}
+          search={{
+            value: filters.search,
+            onChange: (value) => updateFilter("search", value),
+            placeholder: "搜索标题 / 正文 / 作者",
+          }}
+          filters={
+            <>
+              <DataTableSelectFilter
+                label="平台"
+                value={filters.platform}
+                onChange={(value) => updateFilter("platform", value as FilterState["platform"])}
+                options={platformOptions}
+              />
+              <DataTableSelectFilter
+                label="置顶"
+                value={filters.isPinned}
+                onChange={(value) => updateFilter("isPinned", value)}
+                options={yesNoOptions}
+              />
+              <DataTableSelectFilter
+                label="隐藏"
+                value={filters.isHidden}
+                onChange={(value) => updateFilter("isHidden", value)}
+                options={yesNoOptions}
+              />
+            </>
+          }
+          onResetFilters={resetFilters}
+          renderExpanded={(item) => (
+            <p className="text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-300">
+              {item.content}
+            </p>
+          )}
+          pagination={{ total, page, totalPages, hasPrev, hasNext, onPrev, onNext }}
+        />
       </AdminCard>
 
       <AdminFormDialog
@@ -565,11 +720,12 @@ export function AnnouncementsDashboard() {
         submitting={submitLoading}
         submitDisabled={!selectedProjectKey}
         onSubmit={() => void handleCreate()}
+        formValue={form}
       >
         <AnnouncementFormFields form={form} setForm={setForm} theme="light" />
       </AdminFormDialog>
 
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+      <Dialog open={editDialogOpen} onOpenChange={handleEditOpenChange}>
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>编辑公告</DialogTitle>
@@ -583,7 +739,7 @@ export function AnnouncementsDashboard() {
           </DialogBody>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => handleEditOpenChange(false)}>
               取消
             </Button>
             <Button

@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, NotFoundException } from "@nest
 import { makeResolver } from "../../test/project-resolver.testkit"
 
 import { VersionsService } from "./versions.service"
+import { toComparableVersionSortKey } from "./version-comparator"
 
 function createPrismaMock() {
   const mock = {
@@ -108,6 +109,7 @@ describe("VersionsService", () => {
         projectKey: "project-1",
         version: "1.0.0",
         comparableVersion: "1.0.0",
+        comparableVersionSort: toComparableVersionSortKey("1.0.0"),
         title: "First Release",
         content: "stable release",
         downloadUrl: "https://example.com/app",
@@ -205,6 +207,7 @@ describe("VersionsService", () => {
         projectKey: "project-1",
         version: "1.0.1",
         comparableVersion: "1.0.1",
+        comparableVersionSort: toComparableVersionSortKey("1.0.1"),
         title: undefined,
         content: undefined,
         downloadUrl: undefined,
@@ -336,6 +339,33 @@ describe("VersionsService", () => {
 
     expect(result.total).toBe(1)
     expect(result.data[0]?.version).toBe("1.0.0")
+  })
+
+  it("findAll narrows by keyword, platform and status flags", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.$transaction.mockResolvedValue([0, []])
+
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
+    await service.findAll("proj", {
+      limit: 10,
+      offset: 0,
+      search: "1.2",
+      platform: "android",
+      is_preview: false,
+    })
+
+    const where = prisma.version.count.mock.calls[0]?.[0]?.where as {
+      isPreview?: boolean
+      AND?: Array<{ OR?: Array<Record<string, unknown>> }>
+    }
+    expect(where.isPreview).toBe(false)
+    // 平台与关键字各是一组 OR，必须分别落在 AND 数组里，不能互相覆盖。
+    expect(where.AND).toHaveLength(2)
+    expect(where.AND?.[0]?.OR).toContainEqual({ platforms: { has: "ANDROID" } })
+    expect(where.AND?.[1]?.OR).toContainEqual({
+      version: { contains: "1.2", mode: "insensitive" },
+    })
   })
 
   // ── findOneById ──

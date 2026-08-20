@@ -29,18 +29,24 @@ import {
 import { isAuthError } from "@/lib/api-client"
 import { getErrorMessage } from "@/lib/error-utils"
 import { useConfirm } from "@/components/common/confirm-dialog"
-import { TableSkeleton } from "@/components/common/skeleton"
+import { useUnsavedChangesGuard } from "@/components/common/unsaved-changes-guard"
+import {
+  DataTable,
+  EmptyValue,
+  TruncatedCell,
+  type DataTableColumn,
+} from "@/components/common/data-table"
 import { notifyAdminProjectsChanged, useAdminProjects } from "@/hooks/use-admin-projects"
 import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
-import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { MarkdownEditor } from "@/components/markdown/markdown-editor"
 import { GithubIntegrationDialog } from "@/components/projects/github-integration-dialog"
 import { ProjectAliasesSettings } from "@/components/projects/project-aliases-settings"
 import { validateComparableVersion } from "@/lib/comparable-version"
+import { formatTimestamp } from "@/lib/format"
 import {
   createProject,
   deleteProject,
@@ -88,6 +94,25 @@ const emptyForm: FormState = {
   optional_update_min_comparable_version: "",
   optional_update_max_comparable_version: "",
   stats_retention_days: String(DEFAULT_STATS_RETENTION_DAYS),
+}
+
+/** 链接列：显示地址本身并截断，完整地址进 title —— 域名和仓库名都在开头，够认。 */
+function ExternalLinkCell({ url }: { url: string | null }) {
+  if (!url) {
+    return <EmptyValue />
+  }
+
+  return (
+    <a
+      className="block max-w-[16rem] truncate text-xs text-cyan-700 hover:underline dark:text-cyan-300"
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      title={url}
+    >
+      {url}
+    </a>
+  )
 }
 
 function toTimestampSeconds(value: string): number | undefined {
@@ -363,6 +388,7 @@ export function ProjectsDashboard() {
   } = usePagination({ pageSize: PAGE_SIZE })
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [search, setSearch] = React.useState("")
 
   const [token, setToken] = React.useState("")
   const [authError, setAuthError] = React.useState<string | null>(null)
@@ -379,6 +405,12 @@ export function ProjectsDashboard() {
   const [githubProjectRepoUrl, setGithubProjectRepoUrl] = React.useState<string | null>(null)
   const [editForm, setEditForm] = React.useState<FormState>(emptyForm)
   const [savingEdit, setSavingEdit] = React.useState(false)
+  // 别名区块（ProjectAliasesSettings）有自己的即时保存，不算表单草稿，不纳入比较。
+  const handleEditOpenChange = useUnsavedChangesGuard({
+    open: editDialogOpen,
+    onOpenChange: setEditDialogOpen,
+    value: editForm,
+  })
 
   const hasToken = token.trim().length > 0
   const minComparableError = form.optional_update_min_comparable_version.trim()
@@ -406,7 +438,11 @@ export function ProjectsDashboard() {
       setError(null)
 
       try {
-        const response = await listProjects(token, { limit: PAGE_SIZE, offset: nextOffset }, signal)
+        const response = await listProjects(
+          token,
+          { limit: PAGE_SIZE, offset: nextOffset, search: search.trim() || undefined },
+          signal,
+        )
         setProjects(response.data)
         setTotal(response.total)
       } catch (loadError) {
@@ -428,7 +464,7 @@ export function ProjectsDashboard() {
         }
       }
     },
-    [token, setTotal],
+    [token, setTotal, search],
   )
 
   React.useEffect(() => {
@@ -648,6 +684,183 @@ export function ProjectsDashboard() {
     }
   }
 
+  // 不做 memo：操作按钮闭包了当前页数据，缓存下来会让编辑/删除作用在上一轮的行上。
+  const columns: Array<DataTableColumn<ProjectItem>> = [
+    {
+      id: "name",
+      header: "名称",
+      label: "名称",
+      alwaysVisible: true,
+      className: "font-medium",
+      cell: (project) => (
+        <TruncatedCell className="max-w-[16rem]" title={project.name}>
+          {project.name}
+        </TruncatedCell>
+      ),
+    },
+    {
+      id: "project_key",
+      header: "Project Key",
+      label: "Project Key",
+      alwaysVisible: true,
+      className: "font-mono text-xs whitespace-nowrap",
+      cell: (project) => project.project_key,
+    },
+    {
+      id: "aliases",
+      header: "历史 Key",
+      label: "历史 Key（别名）",
+      defaultHidden: true,
+      className: "font-mono text-xs text-slate-600 dark:text-slate-300",
+      // aliases 是后加的字段，旧接口响应里可能没有。
+      cell: (project) => (project.aliases?.length ? project.aliases.join(", ") : <EmptyValue />),
+    },
+    {
+      id: "description",
+      header: "描述",
+      label: "描述",
+      defaultHidden: true,
+      className: "text-xs text-slate-600 dark:text-slate-300",
+      cell: (project) =>
+        project.description ? (
+          <TruncatedCell className="max-w-[20rem]" title={project.description}>
+            {project.description}
+          </TruncatedCell>
+        ) : (
+          <EmptyValue />
+        ),
+    },
+    {
+      id: "author",
+      header: "作者",
+      label: "作者",
+      defaultHidden: true,
+      className: "text-xs text-slate-600 dark:text-slate-300",
+      cell: (project) => project.author ?? <EmptyValue />,
+    },
+    {
+      id: "repo_url",
+      header: "仓库",
+      label: "仓库地址",
+      cell: (project) => <ExternalLinkCell url={project.repo_url} />,
+    },
+    {
+      id: "website_url",
+      header: "官网",
+      label: "官网",
+      cell: (project) => <ExternalLinkCell url={project.website_url} />,
+    },
+    {
+      id: "docs_url",
+      header: "文档",
+      label: "文档",
+      defaultHidden: true,
+      cell: (project) => <ExternalLinkCell url={project.docs_url} />,
+    },
+    {
+      id: "optional_update_range",
+      header: "可选更新范围",
+      label: "可选更新范围",
+      className: "font-mono text-xs whitespace-nowrap text-slate-600 dark:text-slate-300",
+      cell: (project) =>
+        `${project.optional_update_min_comparable_version ?? "-∞"} ~ ${
+          project.optional_update_max_comparable_version ?? "+∞"
+        }`,
+    },
+    {
+      id: "stats_retention_days",
+      header: "统计保留",
+      label: "统计保留天数",
+      defaultHidden: true,
+      className: "text-xs tabular-nums",
+      cell: (project) => `${project.stats_retention_days} 天`,
+    },
+    {
+      id: "published_at",
+      header: "发布时间",
+      label: "发布时间",
+      defaultHidden: true,
+      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      cell: (project) => formatTimestamp(project.published_at, "—"),
+    },
+    {
+      id: "created_at",
+      header: "创建时间",
+      label: "创建时间",
+      defaultHidden: true,
+      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      cell: (project) => formatTimestamp(project.created_at, "—"),
+    },
+    {
+      id: "actions",
+      header: "操作",
+      label: "操作",
+      alwaysVisible: true,
+      headerClassName: "text-right",
+      className: "text-right",
+      cell: (project) => (
+        // 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。
+        <div className="flex justify-end gap-1.5">
+          <Button asChild type="button" size="icon-sm" variant="outline">
+            <Link
+              href={`/projects/${project.project_key}`}
+              target="_blank"
+              rel="noreferrer"
+              title="项目展示页"
+              aria-label="项目展示页"
+            >
+              <ExternalLink className="size-4" />
+            </Link>
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            title="复制配置"
+            aria-label="复制配置"
+            onClick={() => copyFromProject(project)}
+          >
+            <Copy className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            title="GitHub 集成"
+            aria-label="GitHub 集成"
+            onClick={() => {
+              setGithubProjectKey(project.project_key)
+              setGithubProjectRepoUrl(project.repo_url)
+              setGithubDialogOpen(true)
+            }}
+          >
+            <Github className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            title="编辑"
+            aria-label="编辑"
+            onClick={() => beginEdit(project)}
+          >
+            <PencilLine className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="destructive"
+            title="删除"
+            aria-label="删除"
+            onClick={() => void handleDelete(project.project_key)}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ]
+
   return (
     <section className="space-y-6">
       <AdminPageHeader
@@ -684,175 +897,35 @@ export function ProjectsDashboard() {
 
       {authError ? <p className="text-sm text-rose-300">{authError}</p> : null}
 
-      <AdminCard as="section">
-        <AdminListHeader title="项目列表" total={total} page={page} totalPages={totalPages} />
+      <AdminCard as="section" className="space-y-4">
+        <h2 className="text-lg font-semibold">项目列表</h2>
 
-        {!hasToken ? (
-          <div className="rounded-2xl border border-dashed border-cyan-200/30 bg-cyan-100/5 p-6 text-sm text-cyan-100">
-            请先在登录页完成登录后查看项目数据。
-          </div>
-        ) : null}
-
-        {hasToken && loading ? <TableSkeleton /> : null}
-
-        {hasToken && !loading && error ? (
-          <div className="rounded-2xl border border-rose-300/30 bg-rose-300/10 p-6 text-sm text-rose-200">
-            {error}
-          </div>
-        ) : null}
-
-        {hasToken && !loading && !error && projects.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-slate-300">
-            暂无项目，点击右上角“新增项目”创建第一条项目记录。
-          </div>
-        ) : null}
-
-        {hasToken && !loading && !error && projects.length > 0 ? (
-          <div className="space-y-3">
-            <div className="overflow-x-auto rounded-2xl border border-slate-900/15 bg-white/70 dark:border-white/10 dark:bg-white/5">
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-100/80 text-left text-slate-700 dark:bg-white/10 dark:text-slate-200">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">项目</th>
-                    <th className="px-3 py-2 font-medium">仓库/官网</th>
-                    <th className="px-3 py-2 font-medium">可选更新范围</th>
-                    <th className="px-3 py-2 font-medium">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {projects.map((project) => (
-                    <tr
-                      key={project.id}
-                      className={`border-t border-slate-900/10 dark:border-white/10 ${
-                        project.project_key === selectedProjectKey ? "bg-sky-500/10" : ""
-                      }`}
-                    >
-                      <td className="px-3 py-2 align-top">
-                        <p className="font-medium text-slate-900 dark:text-slate-100">
-                          {project.name}
-                        </p>
-                        <p className="font-mono text-xs text-slate-600 dark:text-slate-300">
-                          ID: {project.id}
-                        </p>
-                        <p className="font-mono text-xs text-slate-600 dark:text-slate-300">
-                          {project.project_key}
-                        </p>
-                      </td>
-                      <td className="px-3 py-2 align-top text-xs">
-                        {project.repo_url ? (
-                          <a
-                            className="block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
-                            href={project.repo_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {project.repo_url}
-                          </a>
-                        ) : null}
-                        {project.website_url ? (
-                          <a
-                            className="mt-1 block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
-                            href={project.website_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            官网：{project.website_url}
-                          </a>
-                        ) : null}
-                        {project.docs_url ? (
-                          <a
-                            className="mt-1 block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
-                            href={project.docs_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            文档：{project.docs_url}
-                          </a>
-                        ) : null}
-                      </td>
-                      <td className="px-3 py-2 align-top text-xs text-slate-700 dark:text-slate-300">
-                        {project.optional_update_min_comparable_version ?? "-∞"}
-                        {" ~ "}
-                        {project.optional_update_max_comparable_version ?? "+∞"}
-                      </td>
-                      <td className="px-3 py-2 align-top">
-                        {/* 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。 */}
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            asChild
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="border-white/20 bg-white/5"
-                          >
-                            <Link
-                              href={`/projects/${project.project_key}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              title="项目展示页"
-                              aria-label="项目展示页"
-                            >
-                              <ExternalLink className="size-4" />
-                            </Link>
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="border-white/20 bg-white/5"
-                            title="复制配置"
-                            aria-label="复制配置"
-                            onClick={() => copyFromProject(project)}
-                          >
-                            <Copy className="size-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="border-white/20 bg-white/5"
-                            title="GitHub 集成"
-                            aria-label="GitHub 集成"
-                            onClick={() => {
-                              setGithubProjectKey(project.project_key)
-                              setGithubProjectRepoUrl(project.repo_url)
-                              setGithubDialogOpen(true)
-                            }}
-                          >
-                            <Github className="size-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="border-white/20 bg-white/5"
-                            title="编辑"
-                            aria-label="编辑"
-                            onClick={() => beginEdit(project)}
-                          >
-                            <PencilLine className="size-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="destructive"
-                            title="删除"
-                            aria-label="删除"
-                            onClick={() => void handleDelete(project.project_key)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <AdminPagination hasPrev={hasPrev} hasNext={hasNext} onPrev={onPrev} onNext={onNext} />
-          </div>
-        ) : null}
+        <DataTable
+          storageKey="projects"
+          columns={columns}
+          rows={projects}
+          getRowId={(project) => project.project_key}
+          loading={hasToken && loading}
+          error={error}
+          emptyMessage={
+            !hasToken
+              ? "请先在登录页完成登录后查看项目数据。"
+              : "当前筛选条件下暂无项目，可点击右上角「新增项目」创建。"
+          }
+          // 当前选中的项目高亮：这一页同时兼任项目切换器。
+          rowClassName={(project) =>
+            project.project_key === selectedProjectKey ? "bg-sky-500/10" : undefined
+          }
+          search={{
+            value: search,
+            onChange: (value) => {
+              setSearch(value)
+              resetOffset()
+            },
+            placeholder: "搜索 key / 名称 / 仓库",
+          }}
+          pagination={{ total, page, totalPages, hasPrev, hasNext, onPrev, onNext }}
+        />
       </AdminCard>
 
       <AdminFormDialog
@@ -864,6 +937,7 @@ export function ProjectsDashboard() {
         submitIcon={<Plus className="size-4" />}
         submitting={submitLoading}
         onSubmit={() => void handleSubmit()}
+        formValue={form}
         footerExtra={
           <Button type="button" variant="outline" onClick={resetForm}>
             清空表单
@@ -894,7 +968,7 @@ export function ProjectsDashboard() {
         </div>
       </AdminFormDialog>
 
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+      <Dialog open={editDialogOpen} onOpenChange={handleEditOpenChange}>
         <DialogContent className="sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle>编辑项目</DialogTitle>
@@ -921,7 +995,7 @@ export function ProjectsDashboard() {
           </DialogBody>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => handleEditOpenChange(false)}>
               取消
             </Button>
             <Button

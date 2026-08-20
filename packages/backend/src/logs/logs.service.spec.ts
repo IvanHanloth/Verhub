@@ -14,6 +14,7 @@ function createPrismaMock() {
       findMany: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
+      update: jest.fn(),
     },
     $transaction: jest.fn(),
   }
@@ -164,6 +165,7 @@ describe("LogsService", () => {
       service.findAll("project-1", {
         limit: 20,
         offset: 0,
+        include_hidden: false,
         start_time: 200,
         end_time: 100,
       }),
@@ -228,7 +230,7 @@ describe("LogsService", () => {
     ])
 
     const service = new LogsService(prisma as never, makeResolver(prisma))
-    const result = await service.findAll("proj", { limit: 10, offset: 0 })
+    const result = await service.findAll("proj", { limit: 10, offset: 0, include_hidden: false })
 
     expect(result.total).toBe(1)
     expect(result.data[0]?.level).toBe(1)
@@ -239,9 +241,9 @@ describe("LogsService", () => {
     prisma.project.findUnique.mockResolvedValue(null)
 
     const service = new LogsService(prisma as never, makeResolver(prisma))
-    await expect(service.findAll("missing", { limit: 10, offset: 0 })).rejects.toBeInstanceOf(
-      NotFoundException,
-    )
+    await expect(
+      service.findAll("missing", { limit: 10, offset: 0, include_hidden: false }),
+    ).rejects.toBeInstanceOf(NotFoundException)
   })
 
   it("findAll with level filter", async () => {
@@ -250,13 +252,101 @@ describe("LogsService", () => {
     prisma.$transaction.mockResolvedValue([0, []])
 
     const service = new LogsService(prisma as never, makeResolver(prisma))
-    await service.findAll("proj", { limit: 10, offset: 0, level: 3 })
+    await service.findAll("proj", { limit: 10, offset: 0, include_hidden: false, level: 3 })
 
     expect(prisma.log.count).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ level: "ERROR" }),
       }),
     )
+  })
+
+  it("findAll hides hidden logs unless include_hidden is set", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.$transaction.mockResolvedValue([0, []])
+
+    const service = new LogsService(prisma as never, makeResolver(prisma))
+
+    await service.findAll("proj", { limit: 10, offset: 0, include_hidden: false })
+    expect(prisma.log.count).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ isHidden: false }) }),
+    )
+
+    prisma.log.count.mockClear()
+    await service.findAll("proj", { limit: 10, offset: 0, include_hidden: true })
+    expect(prisma.log.count).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.not.objectContaining({ isHidden: false }) }),
+    )
+  })
+
+  it("findAll matches the keyword against content and origin columns", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.$transaction.mockResolvedValue([0, []])
+
+    const service = new LogsService(prisma as never, makeResolver(prisma))
+    await service.findAll("proj", {
+      limit: 10,
+      offset: 0,
+      include_hidden: false,
+      search: "203.0.113",
+      platform: "windows",
+    })
+
+    const where = prisma.log.count.mock.calls[0]?.[0]?.where as {
+      platform?: string
+      OR?: Array<Record<string, unknown>>
+    }
+    expect(where.platform).toBe("WINDOWS")
+    expect(where.OR).toContainEqual({
+      content: { contains: "203.0.113", mode: "insensitive" },
+    })
+    expect(where.OR).toContainEqual({ ip: { contains: "203.0.113", mode: "insensitive" } })
+  })
+
+  it("update toggles only the hidden flag", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.log.findFirst.mockResolvedValue({
+      id: "log-1",
+      level: "INFO",
+      content: "test",
+      deviceInfo: null,
+      customData: null,
+      isHidden: false,
+      createdAt: 1000,
+    })
+    prisma.log.update.mockImplementation(({ data }: { data: Record<string, unknown> }) => ({
+      id: "log-1",
+      level: "INFO",
+      content: "test",
+      deviceInfo: null,
+      customData: null,
+      createdAt: 1000,
+      ...data,
+    }))
+
+    const service = new LogsService(prisma as never, makeResolver(prisma))
+    const result = await service.update("proj", "log-1", { is_hidden: true })
+
+    expect(prisma.log.update).toHaveBeenCalledWith({
+      where: { id: "log-1" },
+      data: { isHidden: true },
+    })
+    expect(result.is_hidden).toBe(true)
+  })
+
+  it("update throws when the log belongs to another project", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.log.findFirst.mockResolvedValue(null)
+
+    const service = new LogsService(prisma as never, makeResolver(prisma))
+    await expect(service.update("proj", "log-x", { is_hidden: true })).rejects.toBeInstanceOf(
+      NotFoundException,
+    )
+    expect(prisma.log.update).not.toHaveBeenCalled()
   })
 
   it("createByProjectKey throws for invalid log level", async () => {

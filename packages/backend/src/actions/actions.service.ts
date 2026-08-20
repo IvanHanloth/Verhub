@@ -6,6 +6,7 @@ import { ProjectResolverService } from "../database/project-resolver.service"
 import { buildDedupHash, resolveDedupWindowSeconds, stableStringify } from "../common/dedup"
 import { nowSeconds } from "../common/utils"
 import { fromPlatform, type PlatformValue } from "../common/platform"
+import { searchContains } from "../common/query-filters"
 import type { ClientOrigin } from "../geo/client-origin.service"
 import { CreateActionDto } from "./dto/create-action.dto"
 import { CreateActionRecordDto } from "./dto/create-action-record.dto"
@@ -73,10 +74,22 @@ export class ActionsService {
   async findAllByProject(projectKey: string, query: QueryActionsDto): Promise<ActionListResponse> {
     const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
+    const where: Prisma.ActionWhereInput = {
+      projectKey: normalizedProjectKey,
+      ...(query.search
+        ? {
+            OR: [
+              { name: searchContains(query.search) },
+              { description: searchContains(query.search) },
+            ],
+          }
+        : {}),
+    }
+
     const [total, data] = await this.prisma.$transaction([
-      this.prisma.action.count({ where: { projectKey: normalizedProjectKey } }),
+      this.prisma.action.count({ where }),
       this.prisma.action.findMany({
-        where: { projectKey: normalizedProjectKey },
+        where,
         take: query.limit,
         skip: query.offset,
         orderBy: { createdAt: "desc" },

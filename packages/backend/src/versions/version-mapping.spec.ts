@@ -9,6 +9,7 @@ import {
   toGithubReleaseDownloadLinks,
   toVersionItem,
 } from "./version-mapping"
+import { toComparableVersionSortKey } from "./version-comparator"
 import type { VersionRecord } from "./types"
 
 // ── toVersionItem ──
@@ -19,6 +20,7 @@ describe("toVersionItem", () => {
     projectKey: "proj",
     version: "1.0.0",
     comparableVersion: "1.0.0",
+    comparableVersionSort: toComparableVersionSortKey("1.0.0"),
     title: "Release 1.0",
     content: "Notes",
     downloadUrl: "https://example.com/dl",

@@ -16,7 +16,7 @@ import {
 import { PrismaService } from "../database/prisma.service"
 import { PreviewGithubReleaseDto } from "./dto/preview-github-release.dto"
 import { normalizeVersionTag, toGithubReleaseDownloadLinks } from "./version-mapping"
-import { parseComparableVersion } from "./version-comparator"
+import { parseComparableVersion, toComparableVersionSortKey } from "./version-comparator"
 import type { GithubReleasePreview, VersionImportResult } from "./types"
 import { normalizeProjectKey, nowSeconds } from "./types"
 
@@ -169,6 +169,7 @@ export class GithubReleaseService {
           projectKey: normalizedKey,
           version: normalizedVersion,
           comparableVersion: normalizedVersion,
+          comparableVersionSort: toComparableVersionSortKey(normalizedVersion),
           title: release.name?.trim() || null,
           content: release.body?.trim() || null,
           downloadUrl,

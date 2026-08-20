@@ -5,9 +5,16 @@ import { Copy, PencilLine, Plus, RotateCcw, Save, Trash2 } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 
-import { AdminCard, AdminItemCard } from "@/components/admin/admin-card"
+import { AdminCard } from "@/components/admin/admin-card"
 import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
+import {
+  DataTable,
+  DataTableSelectFilter,
+  EmptyValue,
+  TruncatedCell,
+  type DataTableColumn,
+} from "@/components/common/data-table"
 import {
   createApiKey,
   listApiKeys,
@@ -60,6 +67,14 @@ function formatExpiry(value: number | null | undefined): string {
   }
 
   return formatEpochSeconds(value)
+}
+
+/**
+ * 撤销是软删除：后端置 isActive=false 并记 revokedAt，行仍留在列表里作为审计
+ * 痕迹。所以这个状态必须显式画出来，否则点完撤销页面毫无变化，看上去像没生效。
+ */
+function isRevoked(item: ApiKeyItem): boolean {
+  return item.revoked_at !== null || !item.is_active
 }
 
 function toggleValue(list: string[], value: string): string[] {
@@ -201,6 +216,9 @@ export default function TokenManagementPage() {
   const [newToken, setNewToken] = React.useState<string | null>(null)
   const [rotationToken, setRotationToken] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const [search, setSearch] = React.useState("")
+  /** 空串表示不限；"active" / "revoked" 分别只看有效 / 已撤销。 */
+  const [status, setStatus] = React.useState("")
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -371,6 +389,175 @@ export default function TokenManagementPage() {
     }
   }
 
+  /**
+   * Token 列表接口不分页、一次全量返回，所以搜索与筛选就地做。
+   *
+   * 这与日志、反馈那些服务端分页的列表不同——那边在本地过滤只会漏掉当前页之外
+   * 的记录，这边不存在「页外」。
+   */
+  const keyword = search.trim().toLowerCase()
+  const visibleItems = items.filter((item) => {
+    if (status === "active" && isRevoked(item)) {
+      return false
+    }
+    if (status === "revoked" && !isRevoked(item)) {
+      return false
+    }
+    if (!keyword) {
+      return true
+    }
+
+    return (
+      item.name.toLowerCase().includes(keyword) ||
+      item.scopes.some((scope) => scope.toLowerCase().includes(keyword))
+    )
+  })
+
+  // 不做 memo：操作按钮闭包了当前列表，缓存下来会让撤销/轮转作用在上一轮的行上。
+  const columns: Array<DataTableColumn<ApiKeyItem>> = [
+    {
+      id: "name",
+      header: "名称",
+      label: "名称",
+      alwaysVisible: true,
+      className: "font-medium",
+      cell: (item) => <span className={isRevoked(item) ? "line-through" : ""}>{item.name}</span>,
+    },
+    {
+      id: "status",
+      header: "状态",
+      label: "状态",
+      cell: (item) =>
+        isRevoked(item) ? (
+          <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[11px] text-rose-600 dark:text-rose-300">
+            已撤销
+          </span>
+        ) : (
+          <span className="text-xs text-slate-500 dark:text-slate-400">有效</span>
+        ),
+    },
+    {
+      id: "scopes",
+      header: "权限范围",
+      label: "权限范围",
+      className: "font-mono text-xs text-slate-600 dark:text-slate-300",
+      cell: (item) =>
+        item.scopes.length > 0 ? (
+          <TruncatedCell className="max-w-[22rem]" title={item.scopes.join(", ")}>
+            {item.scopes.join(", ")}
+          </TruncatedCell>
+        ) : (
+          <EmptyValue>空</EmptyValue>
+        ),
+    },
+    {
+      id: "projects",
+      header: "项目范围",
+      label: "项目范围",
+      className: "text-xs text-slate-600 dark:text-slate-300",
+      cell: (item) =>
+        item.all_projects ? (
+          "全部项目"
+        ) : item.project_ids.length > 0 ? (
+          <TruncatedCell className="max-w-[16rem]" title={item.project_ids.join(", ")}>
+            {item.project_ids.join(", ")}
+          </TruncatedCell>
+        ) : (
+          <EmptyValue>无</EmptyValue>
+        ),
+    },
+    {
+      id: "expires_at",
+      header: "过期时间",
+      label: "过期时间",
+      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      cell: (item) => formatExpiry(item.expires_at),
+    },
+    {
+      id: "last_used_at",
+      header: "最近使用",
+      label: "最近使用",
+      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      cell: (item) =>
+        item.last_used_at === null ? (
+          <EmptyValue>从未使用</EmptyValue>
+        ) : (
+          formatEpochSeconds(item.last_used_at)
+        ),
+    },
+    {
+      id: "revoked_at",
+      header: "撤销时间",
+      label: "撤销时间",
+      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      cell: (item) =>
+        item.revoked_at === null ? <EmptyValue /> : formatEpochSeconds(item.revoked_at),
+    },
+    {
+      id: "created_at",
+      header: "创建时间",
+      label: "创建时间",
+      defaultHidden: true,
+      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      cell: (item) => formatEpochSeconds(item.created_at),
+    },
+    {
+      id: "id",
+      header: "ID",
+      label: "Token ID",
+      defaultHidden: true,
+      className: "font-mono text-xs text-slate-500 dark:text-slate-400",
+      cell: (item) => item.id,
+    },
+    {
+      id: "actions",
+      header: "操作",
+      label: "操作",
+      alwaysVisible: true,
+      headerClassName: "text-right",
+      className: "text-right",
+      // 已撤销的 token 不能再编辑或轮转：改权限、换密钥对一把死掉的钥匙都没有
+      // 意义，留着按钮只会让人以为还能救回来。
+      cell: (item) =>
+        isRevoked(item) ? (
+          <EmptyValue />
+        ) : (
+          <div className="flex justify-end gap-1.5">
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="outline"
+              title="编辑"
+              aria-label="编辑"
+              onClick={() => beginEdit(item)}
+            >
+              <PencilLine className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="outline"
+              title="轮转"
+              aria-label="轮转"
+              onClick={() => void handleRotate(item.id)}
+            >
+              <RotateCcw className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="destructive"
+              title="撤销"
+              aria-label="撤销"
+              onClick={() => void handleRevoke(item.id)}
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        ),
+    },
+  ]
+
   return (
     <section className="space-y-5">
       <AdminPageHeader
@@ -404,82 +591,43 @@ export default function TokenManagementPage() {
 
       {error ? <p className="text-sm text-rose-600 dark:text-rose-300">{error}</p> : null}
 
-      <AdminCard>
-        <h3 className="mb-3 font-medium">Token 列表</h3>
+      <AdminCard className="space-y-4">
+        <h3 className="font-medium">Token 列表</h3>
 
-        <div className="space-y-3">
-          {items.map((item) => {
-            // 撤销是软删除：后端置 isActive=false 并记 revokedAt，行仍然留在列表里
-            // 作为审计痕迹。所以这个状态必须显式画出来，否则点完撤销页面毫无变化，
-            // 看上去就像按钮没生效。
-            const revoked = item.revoked_at !== null || !item.is_active
-
-            return (
-              <AdminItemCard
-                key={item.id}
-                as="div"
-                className={`text-sm dark:border-white/10 dark:bg-white/5 ${
-                  revoked ? "opacity-60" : ""
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="flex flex-wrap items-center gap-2 font-medium">
-                      <span className={revoked ? "line-through" : ""}>{item.name}</span>
-                      {revoked ? (
-                        <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[11px] font-normal text-rose-600 dark:text-rose-300">
-                          已撤销
-                        </span>
-                      ) : null}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-                      scope: {item.scopes.join(", ") || "(空)"}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
-                      项目范围: {item.all_projects ? "全部项目" : item.project_ids.join(", ")}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      {revoked && item.revoked_at !== null
-                        ? `撤销于 ${formatEpochSeconds(item.revoked_at)}`
-                        : `过期: ${formatExpiry(item.expires_at)}`}
-                    </p>
-                  </div>
-                  {/* 已撤销的 token 不能再编辑或轮转：改权限、换密钥对一把死掉的钥匙
-                      都没有意义，留着按钮只会让人以为还能救回来。 */}
-                  {revoked ? null : (
-                    <div className="flex items-center gap-2">
-                      <Button type="button" variant="outline" onClick={() => beginEdit(item)}>
-                        <PencilLine className="size-4" />
-                        编辑
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => void handleRotate(item.id)}
-                      >
-                        <RotateCcw className="size-4" />
-                        轮转
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => void handleRevoke(item.id)}
-                      >
-                        <Trash2 className="size-4" />
-                        撤销
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </AdminItemCard>
-            )
-          })}
-          {!items.length ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              暂无 Token，点击右上角“新增 Token”创建第一个。
-            </p>
-          ) : null}
-        </div>
+        <DataTable
+          storageKey="tokens"
+          columns={columns}
+          rows={visibleItems}
+          getRowId={(item) => item.id}
+          loading={loading}
+          emptyMessage={
+            items.length === 0
+              ? "暂无 Token，点击右上角「新增 Token」创建第一个。"
+              : "没有符合当前筛选条件的 Token。"
+          }
+          // 撤销是软删除，行还在列表里作为审计痕迹，用淡显区分。
+          rowClassName={(item) => (isRevoked(item) ? "opacity-60" : undefined)}
+          search={{
+            value: search,
+            onChange: setSearch,
+            placeholder: "搜索名称 / 权限",
+          }}
+          filters={
+            <DataTableSelectFilter
+              label="状态"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { label: "有效", value: "active" },
+                { label: "已撤销", value: "revoked" },
+              ]}
+            />
+          }
+          onResetFilters={() => {
+            setSearch("")
+            setStatus("")
+          }}
+        />
       </AdminCard>
 
       <AdminFormDialog
@@ -491,6 +639,7 @@ export default function TokenManagementPage() {
         submitIcon={<Plus className="size-4" />}
         submitting={creating}
         onSubmit={() => void handleCreate()}
+        formValue={createForm}
         className="sm:max-w-2xl"
       >
         <TokenFormFields
@@ -511,6 +660,7 @@ export default function TokenManagementPage() {
         submitting={savingEdit}
         submitDisabled={!editingTokenId}
         onSubmit={() => void handleSaveEdit()}
+        formValue={editForm}
         className="sm:max-w-2xl"
       >
         <TokenFormFields

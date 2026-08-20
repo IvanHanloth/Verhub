@@ -17,6 +17,27 @@ export function resolveApiUrl(path: string): string {
   return new URL(path, base).toString()
 }
 
+/**
+ * 把列表接口的查询参数拼成查询串。
+ *
+ * undefined / null / 空串一律不落进 URL：后台的筛选控件用空串表示「不限」，
+ * 若原样发出去，后端收到的是 `platform=` 这种空值参数，校验器会当成非法取值。
+ */
+export function buildListQuery(
+  params: Record<string, string | number | boolean | undefined | null>,
+): string {
+  const query = new URLSearchParams()
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") {
+      continue
+    }
+    query.set(key, String(value))
+  }
+
+  return query.toString()
+}
+
 export class ApiError extends Error {
   readonly status: number
   readonly details: unknown

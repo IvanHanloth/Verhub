@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { AlertTriangle, ChevronRight, Clock3, Plus } from "lucide-react"
+import { AlertTriangle, Eye, EyeOff, Plus } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
@@ -12,23 +12,28 @@ import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
-import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
-import { ClientOriginBadges } from "@/components/common/client-origin-badges"
+import {
+  DataTable,
+  DataTableSelectFilter,
+  DataTableToggle,
+  EmptyValue,
+  TruncatedCell,
+  type DataTableColumn,
+} from "@/components/common/data-table"
 import { JsonField } from "@/components/common/json-viewer"
-import { ListRowsSkeleton } from "@/components/common/skeleton"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import { useAdminProjects } from "@/hooks/use-admin-projects"
-import { createLog, listLogs, type LogItem, type LogLevel } from "@/lib/logs-api"
-import { PLATFORM_OPTIONS, type Platform } from "@/lib/platform"
+import {
+  createLog,
+  listLogs,
+  updateLogVisibility,
+  type LogItem,
+  type LogLevel,
+} from "@/lib/logs-api"
+import { PLATFORM_OPTIONS, formatPlatformVersion, type Platform } from "@/lib/platform"
 
 const PAGE_SIZE = 10
-
-/**
- * Lines of the message shown while collapsed. Enough for a one-line error plus
- * its first wrap, which is where the useful part of a stack trace usually is.
- */
-const COLLAPSED_LINE_CLAMP = 2
 
 const levelOptions: Array<{ label: string; value: LogLevel }> = [
   { label: "Debug", value: 0 },
@@ -39,14 +44,20 @@ const levelOptions: Array<{ label: string; value: LogLevel }> = [
 
 type FilterState = {
   level: "" | `${LogLevel}`
+  platform: "" | Platform
+  search: string
   startTime: string
   endTime: string
+  includeHidden: boolean
 }
 
 const emptyFilters: FilterState = {
   level: "",
+  platform: "",
+  search: "",
   startTime: "",
   endTime: "",
+  includeHidden: false,
 }
 
 type LogFormState = {
@@ -56,6 +67,7 @@ type LogFormState = {
   platform_version: string
   device_info: string
   custom_data: string
+  is_hidden: boolean
 }
 
 const emptyLogForm: LogFormState = {
@@ -65,6 +77,7 @@ const emptyLogForm: LogFormState = {
   platform_version: "",
   device_info: "",
   custom_data: "",
+  is_hidden: false,
 }
 
 /** 空串视为未填；非法 JSON 直接抛出，由提交流程转成提示。 */
@@ -83,16 +96,16 @@ function parseJsonObject(value: string, field: string): Record<string, unknown> 
 }
 
 /**
- * Shared classes for the filter inputs.
+ * 弹窗内表单字段的样式。
  *
- * Spelled for both themes: the previous white/x-only values were legible on the
- * dark shell and washed out on the light one, where the whole filter bar read as
- * disabled.
+ * 两套主题都写全：早先只给了 white/x 的取值，在浅色外壳上会淡到像禁用态。
  */
 const FIELD_CLASS =
   "w-full rounded-xl border border-slate-900/15 bg-white/70 px-3 py-2 text-sm ring-teal-400 transition outline-none focus:ring-2 dark:border-white/20 dark:bg-white/8"
 
-const FIELD_LABEL_CLASS = "text-xs tracking-wide text-slate-500 uppercase dark:text-slate-300"
+/** 工具栏里的时间输入，高度与其余筛选控件对齐。 */
+const FILTER_INPUT_CLASS =
+  "h-8 rounded-lg border border-slate-900/15 bg-white/70 px-2 text-sm outline-none dark:border-white/20 dark:bg-white/8"
 
 function toEpochSeconds(value: string): number | undefined {
   const trimmed = value.trim()
@@ -122,9 +135,8 @@ function levelLabel(level: LogLevel): string {
 /**
  * Level badge colors.
  *
- * Both themes are spelled out: the previous single set was tuned for the dark
- * admin shell and rendered near-white text on a pale tint in light mode, which
- * made the level — the first thing you scan for — effectively invisible.
+ * 两套主题都写全：上一版只按深色外壳调过，浅色下会变成淡底近白字，
+ * 而级别恰恰是这张表最先要扫到的东西。
  */
 function levelBadgeClass(level: LogLevel): string {
   const mapping: Record<LogLevel, string> = {
@@ -154,79 +166,30 @@ function formatDateTime(value: number): string {
   }).format(date)
 }
 
-/**
- * One log row: header always visible, everything else behind a disclosure.
- *
- * Collapsed by default because triage is a scanning task — you read levels and
- * timestamps down the page, then open the one entry that matters. The previous
- * layout rendered both JSON blobs inline for every row, which made ten entries
- * several screens tall.
- */
-function LogEntry({ log }: { log: LogItem }) {
-  const [expanded, setExpanded] = React.useState(false)
+/** 地区列：由粗到细拼一串，缺哪级就跳过哪级。 */
+function formatLocation(log: LogItem): string | null {
+  const parts = [log.city, log.region_name, log.country_name ?? log.country_code]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
 
-  const hasDetails =
-    Boolean(log.ip) ||
-    Boolean(log.user_agent) ||
-    Boolean(log.country_code) ||
-    Boolean(log.platform) ||
-    log.device_info !== null ||
-    log.custom_data !== null
+  const unique = parts.filter((part, index) => parts.indexOf(part) === index)
+  return unique.length > 0 ? unique.join(" · ") : null
+}
 
-  return (
-    // 用 div 而非 article：全局 `.admin-unified article` 会套上 rounded-3xl+border
-    // 把每行变成独立卡片，而这里的本意是外层容器内的 divide-y 行列表。
-    <div className="px-4 py-3">
-      <button
-        type="button"
-        onClick={() => setExpanded((current) => !current)}
-        aria-expanded={expanded}
-        className="flex w-full items-start gap-2 text-left"
-      >
-        <ChevronRight
-          className={`mt-1 size-4 shrink-0 text-slate-400 transition-transform ${
-            expanded ? "rotate-90" : ""
-          }`}
-          aria-hidden
-        />
+/** JSON 列的单元格：只报有没有、有几项，具体内容进展开行。 */
+function JsonSummaryCell({ value }: { value: unknown }) {
+  if (value === null || value === undefined) {
+    return <EmptyValue />
+  }
 
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${levelBadgeClass(log.level)}`}
-            >
-              {levelLabel(log.level)}
-            </span>
-            <span className="text-xs text-slate-500 tabular-nums dark:text-slate-400">
-              {formatDateTime(log.created_at)}
-            </span>
-          </div>
+  const size =
+    typeof value === "object" && value !== null
+      ? Array.isArray(value)
+        ? value.length
+        : Object.keys(value).length
+      : 0
 
-          <p
-            className={`text-sm leading-relaxed break-words whitespace-pre-wrap ${
-              expanded ? "" : "line-clamp-2"
-            }`}
-            style={expanded ? undefined : { WebkitLineClamp: COLLAPSED_LINE_CLAMP }}
-          >
-            {log.content}
-          </p>
-        </div>
-      </button>
-
-      {expanded ? (
-        <div className="mt-3 space-y-3 pl-6">
-          <ClientOriginBadges origin={log} />
-          <div className="grid gap-2 sm:grid-cols-2">
-            <JsonField label="device_info" value={log.device_info} />
-            <JsonField label="custom_data" value={log.custom_data} />
-          </div>
-          {!hasDetails ? (
-            <p className="text-xs text-slate-400 dark:text-slate-500">该日志没有附加信息。</p>
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  )
+  return <span className="text-xs text-slate-500 tabular-nums dark:text-slate-400">{size} 项</span>
 }
 
 export function LogsDashboard() {
@@ -246,13 +209,13 @@ export function LogsDashboard() {
     hasNext,
     onPrev,
     onNext,
+    adjustAfterDelete,
     resetOffset,
   } = usePagination({ pageSize: PAGE_SIZE })
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
-  const [draftFilters, setDraftFilters] = React.useState<FilterState>(emptyFilters)
-  const [appliedFilters, setAppliedFilters] = React.useState<FilterState>(emptyFilters)
+  const [filters, setFilters] = React.useState<FilterState>(emptyFilters)
 
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false)
   const [createForm, setCreateForm] = React.useState<LogFormState>(emptyLogForm)
@@ -268,8 +231,8 @@ export function LogsDashboard() {
         return
       }
 
-      const startTime = toEpochSeconds(appliedFilters.startTime)
-      const endTime = toEpochSeconds(appliedFilters.endTime)
+      const startTime = toEpochSeconds(filters.startTime)
+      const endTime = toEpochSeconds(filters.endTime)
 
       if (startTime !== undefined && endTime !== undefined && startTime > endTime) {
         setError("开始时间不能晚于结束时间。")
@@ -288,9 +251,12 @@ export function LogsDashboard() {
           {
             limit: PAGE_SIZE,
             offset: nextOffset,
-            level: appliedFilters.level ? (Number(appliedFilters.level) as LogLevel) : undefined,
+            level: filters.level ? (Number(filters.level) as LogLevel) : undefined,
+            platform: filters.platform || undefined,
+            search: filters.search.trim() || undefined,
             start_time: startTime,
             end_time: endTime,
+            include_hidden: filters.includeHidden || undefined,
           },
           signal,
         )
@@ -316,7 +282,7 @@ export function LogsDashboard() {
         }
       }
     },
-    [appliedFilters, selectedProjectKey, token, setTotal],
+    [filters, selectedProjectKey, token, setTotal],
   )
 
   React.useEffect(() => {
@@ -332,15 +298,17 @@ export function LogsDashboard() {
     resetOffset()
   }, [selectedProjectKey, resetOffset])
 
-  function applyFilters(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setAppliedFilters(draftFilters)
-    resetOffset()
-  }
+  /** 改任何一个筛选条件都回到第一页：留在第 5 页看新条件的结果没有意义。 */
+  const updateFilter = React.useCallback(
+    <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
+      setFilters((current) => ({ ...current, [key]: value }))
+      resetOffset()
+    },
+    [resetOffset],
+  )
 
   function resetFilters() {
-    setDraftFilters(emptyFilters)
-    setAppliedFilters(emptyFilters)
+    setFilters(emptyFilters)
     resetOffset()
   }
 
@@ -375,6 +343,7 @@ export function LogsDashboard() {
         platform_version: createForm.platform_version.trim() || undefined,
         device_info: parseJsonObject(createForm.device_info, "device_info"),
         custom_data: parseJsonObject(createForm.custom_data, "custom_data"),
+        is_hidden: createForm.is_hidden,
       })
       toast.success("日志已新建。")
       setCreateDialogOpen(false)
@@ -392,11 +361,168 @@ export function LogsDashboard() {
     }
   }
 
+  /** 行内隐藏/取消隐藏。未开启「显示隐藏日志」时，隐藏后该行会从当前页消失。 */
+  async function handleToggleHidden(item: LogItem) {
+    if (!token || !selectedProjectKey) {
+      toast.error("请先登录并选择项目。")
+      return
+    }
+
+    try {
+      await updateLogVisibility(token, selectedProjectKey, item.id, !item.is_hidden)
+      toast.success(item.is_hidden ? "日志已取消隐藏。" : "日志已隐藏。")
+
+      // 隐藏会让该行从当前视图里消失，和删除一样可能把最后一页掏空。
+      const leavesList = !filters.includeHidden && !item.is_hidden
+      if (leavesList) {
+        adjustAfterDelete(logs.length - 1)
+      }
+      const nextOffset =
+        leavesList && logs.length === 1 && offset > 0 ? Math.max(0, offset - PAGE_SIZE) : offset
+      await loadLogs(nextOffset)
+    } catch (toggleError) {
+      if (isAuthError(toggleError)) {
+        setToken("")
+        setAuthError("登录状态已过期，请重新登录。")
+      }
+      toast.error(getErrorMessage(toggleError))
+    }
+  }
+
+  // 不做 memo：列定义里的操作按钮闭包了当前页数据与筛选状态，缓存下来只会让
+  // 「隐藏」拿到上一轮的行。十列的对象字面量重建不值得为此冒风险。
+  const columns: Array<DataTableColumn<LogItem>> = [
+    {
+      id: "level",
+      header: "级别",
+      label: "级别",
+      alwaysVisible: true,
+      cell: (log) => (
+        <span
+          className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${levelBadgeClass(log.level)}`}
+        >
+          {levelLabel(log.level)}
+        </span>
+      ),
+    },
+    {
+      id: "created_at",
+      header: "时间",
+      label: "时间",
+      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      cell: (log) => formatDateTime(log.created_at),
+    },
+    {
+      id: "content",
+      header: "内容",
+      label: "内容",
+      alwaysVisible: true,
+      className: "min-w-64",
+      cell: (log) => (
+        <TruncatedCell className="max-w-[32rem]" title={log.content}>
+          {log.content}
+        </TruncatedCell>
+      ),
+    },
+    {
+      id: "status",
+      header: "状态",
+      label: "状态（是否隐藏）",
+      cell: (log) =>
+        log.is_hidden ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:border-amber-300/40 dark:bg-amber-300/10 dark:text-amber-200">
+            <EyeOff className="size-3" />
+            已隐藏
+          </span>
+        ) : (
+          <span className="text-xs text-slate-500 dark:text-slate-400">正常</span>
+        ),
+    },
+    {
+      id: "platform",
+      header: "平台",
+      label: "平台",
+      className: "whitespace-nowrap text-xs text-slate-600 dark:text-slate-300",
+      cell: (log) => formatPlatformVersion(log.platform, log.platform_version) ?? <EmptyValue />,
+    },
+    {
+      id: "ip",
+      header: "IP",
+      label: "来源 IP",
+      className: "font-mono text-xs text-slate-600 dark:text-slate-300",
+      cell: (log) => log.ip ?? <EmptyValue />,
+    },
+    {
+      id: "location",
+      header: "地区",
+      label: "来源地区",
+      className: "text-xs text-slate-600 dark:text-slate-300",
+      cell: (log) => formatLocation(log) ?? <EmptyValue />,
+    },
+    {
+      id: "user_agent",
+      header: "User-Agent",
+      label: "User-Agent",
+      defaultHidden: true,
+      className: "font-mono text-xs text-slate-600 dark:text-slate-300",
+      cell: (log) =>
+        log.user_agent ? (
+          <TruncatedCell className="max-w-[18rem]" title={log.user_agent}>
+            {log.user_agent}
+          </TruncatedCell>
+        ) : (
+          <EmptyValue />
+        ),
+    },
+    {
+      id: "device_info",
+      header: "device_info",
+      label: "device_info",
+      defaultHidden: true,
+      cell: (log) => <JsonSummaryCell value={log.device_info} />,
+    },
+    {
+      id: "custom_data",
+      header: "custom_data",
+      label: "custom_data",
+      defaultHidden: true,
+      cell: (log) => <JsonSummaryCell value={log.custom_data} />,
+    },
+    {
+      id: "id",
+      header: "ID",
+      label: "日志 ID",
+      defaultHidden: true,
+      className: "font-mono text-xs text-slate-500 dark:text-slate-400",
+      cell: (log) => log.id,
+    },
+    {
+      id: "actions",
+      header: "操作",
+      label: "操作",
+      alwaysVisible: true,
+      headerClassName: "text-right",
+      className: "text-right",
+      cell: (log) => (
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="outline"
+          title={log.is_hidden ? "取消隐藏" : "隐藏"}
+          aria-label={log.is_hidden ? "取消隐藏" : "隐藏"}
+          onClick={() => void handleToggleHidden(log)}
+        >
+          {log.is_hidden ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+        </Button>
+      ),
+    },
+  ]
+
   return (
     <section className="space-y-6">
       <AdminPageHeader
         title="日志审计中心"
-        description="按项目、级别和时间范围筛选日志，定位运行问题。"
+        description="按项目、级别、平台和时间范围筛选日志，定位运行问题。"
         badge="Verhub Logs"
         actions={
           <>
@@ -420,124 +546,84 @@ export function LogsDashboard() {
         </AdminCard>
       ) : null}
 
-      <AdminCard className="space-y-5">
-        <form
-          className="grid gap-3 rounded-2xl border border-slate-900/10 bg-slate-900/[0.02] p-4 sm:grid-cols-2 xl:grid-cols-4 dark:border-white/15 dark:bg-white/5"
-          onSubmit={applyFilters}
-        >
-          <div className="space-y-2">
-            <label className={FIELD_LABEL_CLASS} htmlFor="logs-level">
-              日志级别
-            </label>
-            <select
-              id="logs-level"
-              className={FIELD_CLASS}
-              value={draftFilters.level}
-              onChange={(event) =>
-                setDraftFilters((current) => ({
-                  ...current,
-                  level: event.target.value as FilterState["level"],
-                }))
-              }
-            >
-              <option value="">全部</option>
-              {levelOptions.map((option) => (
-                <option key={option.value} value={String(option.value)}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
+      <AdminCard as="section" className="space-y-4">
+        <h2 className="text-lg font-semibold">日志列表</h2>
 
-          <div className="space-y-2">
-            <label className={FIELD_LABEL_CLASS} htmlFor="logs-start-time">
-              开始时间
-            </label>
-            <input
-              id="logs-start-time"
-              type="datetime-local"
-              className={FIELD_CLASS}
-              value={draftFilters.startTime}
-              onChange={(event) =>
-                setDraftFilters((current) => ({ ...current, startTime: event.target.value }))
-              }
+        <DataTable
+          storageKey="logs"
+          columns={columns}
+          rows={logs}
+          getRowId={(log) => log.id}
+          loading={hasToken && Boolean(selectedProjectKey) && loading}
+          error={error}
+          emptyMessage={
+            !hasToken
+              ? "请先在登录页完成登录后查看日志数据。"
+              : !selectedProjectKey
+                ? "暂无项目，请先去项目管理页创建项目。"
+                : "当前筛选条件下暂无日志。"
+          }
+          rowClassName={(log) => (log.is_hidden ? "opacity-60" : undefined)}
+          search={{
+            value: filters.search,
+            onChange: (value) => updateFilter("search", value),
+            placeholder: "搜索内容 / IP / 地区",
+          }}
+          filters={
+            <>
+              <DataTableSelectFilter
+                label="级别"
+                value={filters.level}
+                onChange={(value) => updateFilter("level", value as FilterState["level"])}
+                options={levelOptions.map((option) => ({
+                  label: option.label,
+                  value: String(option.value),
+                }))}
+              />
+              <DataTableSelectFilter
+                label="平台"
+                value={filters.platform}
+                onChange={(value) => updateFilter("platform", value as FilterState["platform"])}
+                options={PLATFORM_OPTIONS}
+              />
+              <label className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                起
+                <input
+                  type="datetime-local"
+                  aria-label="开始时间"
+                  className={FILTER_INPUT_CLASS}
+                  value={filters.startTime}
+                  onChange={(event) => updateFilter("startTime", event.target.value)}
+                />
+              </label>
+              <label className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                止
+                <input
+                  type="datetime-local"
+                  aria-label="结束时间"
+                  className={FILTER_INPUT_CLASS}
+                  value={filters.endTime}
+                  onChange={(event) => updateFilter("endTime", event.target.value)}
+                />
+              </label>
+            </>
+          }
+          onResetFilters={resetFilters}
+          toolbarExtra={
+            <DataTableToggle
+              label="显示已隐藏"
+              checked={filters.includeHidden}
+              onChange={(checked) => updateFilter("includeHidden", checked)}
             />
-          </div>
-
-          <div className="space-y-2">
-            <label className={FIELD_LABEL_CLASS} htmlFor="logs-end-time">
-              结束时间
-            </label>
-            <input
-              id="logs-end-time"
-              type="datetime-local"
-              className={FIELD_CLASS}
-              value={draftFilters.endTime}
-              onChange={(event) =>
-                setDraftFilters((current) => ({ ...current, endTime: event.target.value }))
-              }
-            />
-          </div>
-
-          <div className="flex items-end gap-2">
-            <Button
-              type="submit"
-              className="flex-1 bg-teal-200 text-slate-900 hover:bg-teal-100"
-              disabled={!hasToken || loading}
-            >
-              应用筛选
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="border-slate-900/20 hover:bg-slate-900/5 dark:border-white/30 dark:bg-white/10 dark:hover:bg-white/20"
-              onClick={resetFilters}
-            >
-              重置
-            </Button>
-          </div>
-        </form>
-
-        <div className="overflow-hidden rounded-2xl border border-slate-900/10 dark:border-white/15">
-          <div className="border-b border-slate-900/10 bg-slate-900/[0.02] px-4 py-3 dark:border-white/10 dark:bg-white/8">
-            <AdminListHeader title="日志列表" total={total} page={page} totalPages={totalPages} />
-          </div>
-
-          {loading ? <ListRowsSkeleton /> : null}
-
-          {!loading && error ? (
-            <div className="flex min-h-56 items-center justify-center px-4 text-center text-sm text-rose-600 dark:text-rose-300">
-              {error}
+          }
+          renderExpanded={(log) => (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <JsonField label="device_info" value={log.device_info} />
+              <JsonField label="custom_data" value={log.custom_data} />
             </div>
-          ) : null}
-
-          {!loading && !error && logs.length === 0 ? (
-            <div className="flex min-h-56 flex-col items-center justify-center gap-2 px-4 text-center text-sm text-slate-500 dark:text-slate-300">
-              <Clock3 className="size-5 text-slate-400" />
-              当前筛选条件下暂无日志。
-            </div>
-          ) : null}
-
-          {!loading && !error && logs.length > 0 ? (
-            <div className="divide-y divide-slate-900/10 dark:divide-white/10">
-              {logs.map((item) => (
-                <LogEntry key={item.id} log={item} />
-              ))}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="rounded-2xl border border-slate-900/10 bg-slate-900/[0.02] px-4 py-3 dark:border-white/15 dark:bg-white/5">
-          <p className="text-xs text-slate-500 dark:text-slate-300">
-            当前偏移量 {offset}，每页 {PAGE_SIZE} 条
-          </p>
-          <AdminPagination
-            hasPrev={hasPrev && !loading}
-            hasNext={hasNext && !loading}
-            onPrev={onPrev}
-            onNext={onNext}
-          />
-        </div>
+          )}
+          pagination={{ total, page, totalPages, hasPrev, hasNext, onPrev, onNext }}
+        />
       </AdminCard>
 
       <AdminFormDialog
@@ -550,6 +636,7 @@ export function LogsDashboard() {
         submitting={createLoading}
         submitDisabled={!selectedProjectKey}
         onSubmit={() => void handleCreateLog()}
+        formValue={createForm}
         className="sm:max-w-3xl"
       >
         <label className="space-y-1 text-sm">
@@ -642,6 +729,18 @@ export function LogsDashboard() {
             placeholder='例如：{"build":"1.0.0"}'
             className={`${FIELD_CLASS} font-mono text-xs`}
           />
+        </label>
+
+        <label className="inline-flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+          <input
+            type="checkbox"
+            checked={createForm.is_hidden}
+            onChange={(event) =>
+              setCreateForm((prev) => ({ ...prev, is_hidden: event.target.checked }))
+            }
+            className="size-4"
+          />
+          隐藏日志（列表默认不显示，等级统计仍计入）
         </label>
       </AdminFormDialog>
     </section>

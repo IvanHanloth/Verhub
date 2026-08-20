@@ -21,12 +21,20 @@ import { isAuthError } from "@/lib/api-client"
 import { getSessionToken } from "@/lib/auth-session"
 import { getErrorMessage } from "@/lib/error-utils"
 import { useConfirm } from "@/components/common/confirm-dialog"
-import { TableSkeleton } from "@/components/common/skeleton"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
-import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
+import {
+  BoolMark,
+  DataTable,
+  DataTableSelectFilter,
+  EmptyValue,
+  TruncatedCell,
+  type DataTableColumn,
+} from "@/components/common/data-table"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
+import { PLATFORM_OPTIONS, type Platform } from "@/lib/platform"
+import { formatTimestamp } from "@/lib/format"
 import { useAdminProjects } from "@/hooks/use-admin-projects"
 import { usePagination } from "@/hooks/use-pagination"
 import {
@@ -57,6 +65,80 @@ import { VersionFormFields } from "./version-form-fields"
 
 const VERSION_PAGE_SIZE = 10
 
+type FilterState = {
+  search: string
+  platform: "" | Platform
+  /** 空串表示不限；"true" / "false" 分别对应只看是 / 只看否。 */
+  isPreview: string
+  isDeprecated: string
+  isMilestone: string
+}
+
+const emptyFilters: FilterState = {
+  search: "",
+  platform: "",
+  isPreview: "",
+  isDeprecated: "",
+  isMilestone: "",
+}
+
+const yesNoOptions = [
+  { label: "是", value: "true" },
+  { label: "否", value: "false" },
+]
+
+/** 三态开关：空串不带进请求，其余按字符串转布尔。 */
+function toOptionalBoolean(value: string): boolean | undefined {
+  return value === "" ? undefined : value === "true"
+}
+
+/**
+ * 下载列。多平台包会有好几条链接，单元格里只列出来，长地址靠 title 兜底。
+ *
+ * download_links 优先于 download_url：后者是单链接时代的旧字段，两者并存的行
+ * 以列表为准，否则同一个包会显示两遍。
+ */
+function VersionDownloadCell({ version }: { version: VersionItem }) {
+  const linkClass = "block max-w-[16rem] truncate text-cyan-700 hover:underline dark:text-cyan-300"
+
+  if (version.download_links.length > 0) {
+    return (
+      <div className="space-y-0.5 text-xs">
+        {version.download_links.map((link, index) => (
+          <a
+            key={`${version.id}-${index}`}
+            className={linkClass}
+            href={link.url}
+            target="_blank"
+            rel="noreferrer"
+            title={link.url}
+          >
+            {link.name ? `${link.name} · ` : ""}
+            {link.platform ? `[${link.platform}] ` : ""}
+            {link.url}
+          </a>
+        ))}
+      </div>
+    )
+  }
+
+  if (version.download_url) {
+    return (
+      <a
+        className={`${linkClass} text-xs`}
+        href={version.download_url}
+        target="_blank"
+        rel="noreferrer"
+        title={version.download_url}
+      >
+        {version.download_url}
+      </a>
+    )
+  }
+
+  return <EmptyValue>未配置</EmptyValue>
+}
+
 export function VersionsDashboard() {
   const confirm = useConfirm()
   const [token, setToken] = React.useState(() => getSessionToken().trim())
@@ -80,6 +162,7 @@ export function VersionsDashboard() {
   } = usePagination({ pageSize: VERSION_PAGE_SIZE })
   const [versionsLoading, setVersionsLoading] = React.useState(false)
   const [versionsError, setVersionsError] = React.useState<string | null>(null)
+  const [filters, setFilters] = React.useState<FilterState>(emptyFilters)
 
   const [form, setForm] = React.useState<VersionFormState>(emptyVersionForm)
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false)
@@ -118,7 +201,15 @@ export function VersionsDashboard() {
         const response = await listVersions(
           token,
           selectedProjectKey,
-          { limit: VERSION_PAGE_SIZE, offset: nextOffset },
+          {
+            limit: VERSION_PAGE_SIZE,
+            offset: nextOffset,
+            search: filters.search.trim() || undefined,
+            platform: filters.platform || undefined,
+            is_preview: toOptionalBoolean(filters.isPreview),
+            is_deprecated: toOptionalBoolean(filters.isDeprecated),
+            is_milestone: toOptionalBoolean(filters.isMilestone),
+          },
           signal,
         )
         setVersions(response.data)
@@ -140,7 +231,7 @@ export function VersionsDashboard() {
         }
       }
     },
-    [selectedProjectKey, token, setTotalVersions],
+    [selectedProjectKey, token, setTotalVersions, filters],
   )
 
   React.useEffect(() => {
@@ -155,6 +246,20 @@ export function VersionsDashboard() {
   React.useEffect(() => {
     resetVersionsOffset()
   }, [selectedProjectKey, resetVersionsOffset])
+
+  /** 改任何一个筛选条件都回到第一页：留在第 5 页看新条件的结果没有意义。 */
+  const updateFilter = React.useCallback(
+    <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
+      setFilters((current) => ({ ...current, [key]: value }))
+      resetVersionsOffset()
+    },
+    [resetVersionsOffset],
+  )
+
+  function resetFilters() {
+    setFilters(emptyFilters)
+    resetVersionsOffset()
+  }
 
   function openCreateDialog() {
     setForm(emptyVersionForm)
@@ -506,6 +611,143 @@ export function VersionsDashboard() {
     }
   }
 
+  // 不做 memo：操作按钮闭包了当前页数据，缓存下来会让编辑/删除作用在上一轮的行上。
+  const versionColumns: Array<DataTableColumn<VersionItem>> = [
+    {
+      id: "version",
+      header: "版本号",
+      label: "版本号",
+      alwaysVisible: true,
+      className: "font-medium whitespace-nowrap",
+      cell: (version) => (
+        <span className="inline-flex items-center gap-1.5">
+          {version.version}
+          {version.is_latest ? (
+            <Star className="size-3.5 text-amber-500" aria-label="最新" />
+          ) : null}
+          {version.is_preview ? (
+            <Sparkles className="size-3.5 text-sky-500" aria-label="预览版" />
+          ) : null}
+        </span>
+      ),
+    },
+    {
+      id: "comparable_version",
+      header: "可比较版本号",
+      label: "可比较版本号",
+      className: "font-mono text-xs whitespace-nowrap text-slate-600 dark:text-slate-300",
+      cell: (version) => version.comparable_version ?? <EmptyValue>未设置</EmptyValue>,
+    },
+    {
+      id: "title",
+      header: "标题",
+      label: "标题",
+      cell: (version) =>
+        version.title ? (
+          <TruncatedCell className="max-w-[18rem]" title={version.title}>
+            {version.title}
+          </TruncatedCell>
+        ) : (
+          <EmptyValue />
+        ),
+    },
+    {
+      id: "platforms",
+      header: "平台",
+      label: "平台",
+      className: "text-xs text-slate-600 dark:text-slate-300",
+      cell: (version) =>
+        version.platforms && version.platforms.length > 0
+          ? version.platforms.join(", ")
+          : (version.platform ?? <EmptyValue>全部</EmptyValue>),
+    },
+    {
+      id: "forced",
+      header: "强制",
+      label: "强制更新",
+      className: "text-xs",
+      cell: (version) => <BoolMark value={version.forced} />,
+    },
+    {
+      id: "is_milestone",
+      header: "里程碑",
+      label: "里程碑",
+      className: "text-xs",
+      cell: (version) => <BoolMark value={version.is_milestone} />,
+    },
+    {
+      id: "is_deprecated",
+      header: "废弃",
+      label: "废弃",
+      className: "text-xs",
+      cell: (version) => <BoolMark value={version.is_deprecated} />,
+    },
+    {
+      id: "download",
+      header: "下载",
+      label: "下载地址",
+      cell: (version) => <VersionDownloadCell version={version} />,
+    },
+    {
+      id: "published_at",
+      header: "发布时间",
+      label: "发布时间",
+      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      cell: (version) => formatTimestamp(version.published_at, "—"),
+    },
+    {
+      id: "id",
+      header: "ID",
+      label: "版本 ID",
+      defaultHidden: true,
+      className: "font-mono text-xs text-slate-500 dark:text-slate-400",
+      cell: (version) => version.id,
+    },
+    {
+      id: "actions",
+      header: "操作",
+      label: "操作",
+      alwaysVisible: true,
+      headerClassName: "text-right",
+      className: "text-right",
+      cell: (version) => (
+        // 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。
+        <div className="flex justify-end gap-1.5">
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            title="复制配置"
+            aria-label="复制配置"
+            onClick={() => copyFromVersion(version)}
+          >
+            <Copy className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            title="编辑版本"
+            aria-label="编辑版本"
+            onClick={() => beginEdit(version)}
+          >
+            <PencilLine className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="destructive"
+            title="删除版本"
+            aria-label="删除版本"
+            onClick={() => void handleDelete(version.id)}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ]
+
   return (
     <section className="space-y-6">
       <AdminPageHeader
@@ -654,171 +896,68 @@ export function VersionsDashboard() {
         ) : null}
       </AdminCard>
 
-      <AdminCard as="section">
-        <AdminListHeader
-          title="版本列表"
-          total={totalVersions}
-          page={page}
-          totalPages={totalPages}
+      <AdminCard as="section" className="space-y-4">
+        <h2 className="text-lg font-semibold">版本列表</h2>
+
+        <DataTable
+          storageKey="versions"
+          columns={versionColumns}
+          rows={versions}
+          getRowId={(version) => version.id}
+          loading={hasToken && Boolean(selectedProjectKey) && versionsLoading}
+          error={versionsError}
+          emptyMessage={
+            !hasToken
+              ? "请先在登录页完成登录后查看版本数据。"
+              : !selectedProjectKey
+                ? "暂无项目，请先去项目管理页创建项目。"
+                : "当前筛选条件下暂无版本。"
+          }
+          rowClassName={(version) => (version.is_deprecated ? "opacity-60" : undefined)}
+          search={{
+            value: filters.search,
+            onChange: (value) => updateFilter("search", value),
+            placeholder: "搜索版本号 / 标题 / 内容",
+          }}
+          filters={
+            <>
+              <DataTableSelectFilter
+                label="平台"
+                value={filters.platform}
+                onChange={(value) => updateFilter("platform", value as FilterState["platform"])}
+                options={PLATFORM_OPTIONS}
+              />
+              <DataTableSelectFilter
+                label="预览版"
+                value={filters.isPreview}
+                onChange={(value) => updateFilter("isPreview", value)}
+                options={yesNoOptions}
+              />
+              <DataTableSelectFilter
+                label="已废弃"
+                value={filters.isDeprecated}
+                onChange={(value) => updateFilter("isDeprecated", value)}
+                options={yesNoOptions}
+              />
+              <DataTableSelectFilter
+                label="里程碑"
+                value={filters.isMilestone}
+                onChange={(value) => updateFilter("isMilestone", value)}
+                options={yesNoOptions}
+              />
+            </>
+          }
+          onResetFilters={resetFilters}
+          pagination={{
+            total: totalVersions,
+            page,
+            totalPages,
+            hasPrev: versionsPaginationHasPrev,
+            hasNext: versionsPaginationHasNext,
+            onPrev: onVersionsPrev,
+            onNext: onVersionsNext,
+          }}
         />
-
-        {!hasToken ? (
-          <div className="rounded-2xl border border-dashed border-cyan-300/40 bg-cyan-100/70 p-6 text-sm text-cyan-800 dark:border-cyan-200/30 dark:bg-cyan-100/5 dark:text-cyan-100">
-            请先在登录页完成登录后查看版本数据。
-          </div>
-        ) : null}
-
-        {hasToken && !selectedProjectKey ? (
-          <div className="rounded-2xl border border-dashed border-slate-900/20 bg-slate-100/60 p-6 text-sm text-slate-600 dark:border-white/20 dark:bg-white/5 dark:text-slate-300">
-            暂无项目，请先去项目管理页创建项目。
-          </div>
-        ) : null}
-
-        {hasToken && selectedProjectKey && versionsLoading ? <TableSkeleton /> : null}
-
-        {hasToken && selectedProjectKey && !versionsLoading && versionsError ? (
-          <div className="rounded-2xl border border-rose-300/30 bg-rose-300/10 p-6 text-sm text-rose-200">
-            {versionsError}
-          </div>
-        ) : null}
-
-        {hasToken &&
-        selectedProjectKey &&
-        !versionsLoading &&
-        !versionsError &&
-        versions.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-slate-300">
-            暂无版本，点击右上角“新增版本”发布第一条版本记录。
-          </div>
-        ) : null}
-
-        {hasToken &&
-        selectedProjectKey &&
-        !versionsLoading &&
-        !versionsError &&
-        versions.length > 0 ? (
-          <div className="space-y-3">
-            <div className="overflow-x-auto rounded-2xl border border-slate-900/15 bg-white/70 dark:border-white/10 dark:bg-white/5">
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-100/80 text-left text-slate-700 dark:bg-white/10 dark:text-slate-200">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">版本</th>
-                    <th className="px-3 py-2 font-medium">状态</th>
-                    <th className="px-3 py-2 font-medium">下载</th>
-                    <th className="px-3 py-2 font-medium">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {versions.map((version) => (
-                    <tr
-                      key={version.id}
-                      className="border-t border-slate-900/10 dark:border-white/10"
-                    >
-                      <td className="px-3 py-2 align-top">
-                        <p className="inline-flex items-center gap-2 font-medium text-slate-900 dark:text-slate-100">
-                          {version.version}
-                          {version.is_latest ? <Star className="size-4 text-amber-500" /> : null}
-                          {version.is_preview ? <Sparkles className="size-4 text-sky-500" /> : null}
-                        </p>
-                        <p className="font-mono text-xs text-slate-600 dark:text-slate-300">
-                          ID: {version.id}
-                        </p>
-                        <p className="text-xs text-slate-600 dark:text-slate-300">
-                          comparable: {version.comparable_version ?? "未设置"}
-                        </p>
-                      </td>
-                      <td className="px-3 py-2 align-top text-xs text-slate-700 dark:text-slate-300">
-                        <p>
-                          平台：
-                          {version.platforms && version.platforms.length > 0
-                            ? version.platforms.join(", ")
-                            : (version.platform ?? "全部")}
-                        </p>
-                        <p>里程碑：{version.is_milestone ? "是" : "否"}</p>
-                        <p>废弃：{version.is_deprecated ? "是" : "否"}</p>
-                        <p>发布：{new Date(version.published_at * 1000).toLocaleString("zh-CN")}</p>
-                      </td>
-                      <td className="px-3 py-2 align-top text-xs text-slate-700 dark:text-slate-300">
-                        {version.download_links.length > 0 ? (
-                          <div className="space-y-1">
-                            {version.download_links.map((link, index) => (
-                              <a
-                                key={`${version.id}-${index}`}
-                                className="block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
-                                href={link.url}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                {link.name ? `${link.name} · ` : ""}
-                                {link.platform ? `[${link.platform}] ` : ""}
-                                {link.url}
-                              </a>
-                            ))}
-                          </div>
-                        ) : version.download_url ? (
-                          <a
-                            className="inline-block text-cyan-700 underline-offset-2 hover:underline dark:text-cyan-200"
-                            href={version.download_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {version.download_url}
-                          </a>
-                        ) : (
-                          <span className="text-slate-500 dark:text-slate-400">未配置下载地址</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 align-top">
-                        {/* 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。 */}
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="border-white/20 bg-white/5"
-                            title="复制配置"
-                            aria-label="复制配置"
-                            onClick={() => copyFromVersion(version)}
-                          >
-                            <Copy className="size-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="border-white/20 bg-white/5"
-                            title="编辑版本"
-                            aria-label="编辑版本"
-                            onClick={() => beginEdit(version)}
-                          >
-                            <PencilLine className="size-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="destructive"
-                            title="删除版本"
-                            aria-label="删除版本"
-                            onClick={() => void handleDelete(version.id)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <AdminPagination
-              hasPrev={versionsPaginationHasPrev}
-              hasNext={versionsPaginationHasNext}
-              onPrev={onVersionsPrev}
-              onNext={onVersionsNext}
-            />
-          </div>
-        ) : null}
       </AdminCard>
 
       <AdminFormDialog
@@ -831,6 +970,7 @@ export function VersionsDashboard() {
         submitting={submitLoading}
         submitDisabled={!selectedProjectKey}
         onSubmit={() => void handleCreateVersion()}
+        formValue={form}
         footerExtra={
           <Button type="button" variant="outline" onClick={() => setForm(emptyVersionForm)}>
             清空表单

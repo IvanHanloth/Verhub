@@ -21,7 +21,11 @@ import { CreateVersionDto } from "./dto/create-version.dto"
 import { QueryVersionsDto } from "./dto/query-versions.dto"
 import { UpdateVersionDto } from "./dto/update-version.dto"
 import { UpsertVersionDto } from "./dto/upsert-version.dto"
-import { compareComparableVersions, parseComparableVersion } from "./version-comparator"
+import {
+  compareComparableVersions,
+  parseComparableVersion,
+  toComparableVersionSortKey,
+} from "./version-comparator"
 import {
   isUniqueViolation,
   normalizeVersionTag,
@@ -30,9 +34,65 @@ import {
   toPlatforms,
   toVersionItem,
 } from "./version-mapping"
-import { toPlatform } from "../common/platform"
+import { toPlatform, type PlatformValue } from "../common/platform"
+import { searchContains } from "../common/query-filters"
 import type { VersionItem, VersionListResponse } from "./types"
 import { nowSeconds } from "./types"
+
+/**
+ * 版本列表的筛选条件。
+ *
+ * 平台与关键字各自是一组 `OR`，所以都收进 `AND` 数组——写在 where 顶层的话
+ * 后一个 `OR` 会把前一个整段覆盖掉。空数组表示不加限制。
+ */
+function buildVersionListWhere(
+  projectKey: string,
+  query: QueryVersionsDto,
+): Prisma.VersionWhereInput {
+  const groups: Prisma.VersionWhereInput[] = []
+
+  const platform = platformScope(query.platform)
+  if (platform) {
+    groups.push(platform)
+  }
+
+  if (query.search) {
+    const contains = searchContains(query.search)
+    groups.push({
+      OR: [
+        { version: contains },
+        { comparableVersion: contains },
+        { title: contains },
+        { content: contains },
+      ],
+    })
+  }
+
+  return {
+    projectKey,
+    isPreview: query.is_preview,
+    isDeprecated: query.is_deprecated,
+    isMilestone: query.is_milestone,
+    forced: query.forced,
+    AND: groups,
+  }
+}
+
+/** 未限定平台的版本（platforms 为空且 platform 为空）对所有平台可见。 */
+function platformScope(platform: PlatformValue | undefined): Prisma.VersionWhereInput | null {
+  const mapped = toPlatform(platform)
+  if (!mapped) {
+    return null
+  }
+
+  return {
+    OR: [
+      { platforms: { has: mapped } },
+      { AND: [{ platforms: { isEmpty: true } }, { platform: null }] },
+      { platform: mapped },
+    ],
+  }
+}
 
 @Injectable()
 export class VersionsService {
@@ -80,13 +140,21 @@ export class VersionsService {
   async findAll(projectKey: string, query: QueryVersionsDto): Promise<VersionListResponse> {
     const normalizedKey = await this.resolveProjectKey(projectKey)
 
+    const where = buildVersionListWhere(normalizedKey, query)
+
     const [total, data] = await this.prisma.$transaction([
-      this.prisma.version.count({ where: { projectKey: normalizedKey } }),
+      this.prisma.version.count({ where }),
       this.prisma.version.findMany({
-        where: { projectKey: normalizedKey },
+        where,
         take: query.limit,
         skip: query.offset,
-        orderBy: [{ comparableVersion: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
+        // 没有排序键（comparable_version 未设置或格式不合规）的版本沉底，
+        // 而不是靠 Postgres DESC 默认的 NULLS FIRST 冒到最前面。
+        orderBy: [
+          { comparableVersionSort: { sort: "desc", nulls: "last" } },
+          { publishedAt: "desc" },
+          { createdAt: "desc" },
+        ],
       }),
     ])
 
@@ -156,7 +224,11 @@ export class VersionsService {
 
     const latestPreview = await this.prisma.version.findFirst({
       where: { projectKey: normalizedKey, isPreview: true },
-      orderBy: [{ comparableVersion: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
+      orderBy: [
+        { comparableVersionSort: { sort: "desc", nulls: "last" } },
+        { publishedAt: "desc" },
+        { createdAt: "desc" },
+      ],
     })
     return latestPreview ? toVersionItem(latestPreview) : null
   }
@@ -203,6 +275,7 @@ export class VersionsService {
             projectKey: normalizedKey,
             version: dto.version,
             comparableVersion,
+            comparableVersionSort: toComparableVersionSortKey(comparableVersion),
             title: dto.title,
             content: dto.content,
             downloadUrl: downloadData.downloadUrl,
@@ -352,6 +425,7 @@ export class VersionsService {
           data: {
             version: dto.version,
             comparableVersion: nextComparableVersion,
+            comparableVersionSort: toComparableVersionSortKey(nextComparableVersion),
             title: dto.title,
             content: dto.content,
             downloadUrl: nextDownloadData.downloadUrl,

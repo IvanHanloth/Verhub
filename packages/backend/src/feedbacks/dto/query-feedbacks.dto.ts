@@ -1,5 +1,8 @@
 import { Transform } from "class-transformer"
-import { IsBoolean, IsInt, IsOptional, Max, Min } from "class-validator"
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator"
+
+import { NormalizePlatform, PLATFORM_VALUES, type PlatformValue } from "../../common/platform"
+import { MAX_SEARCH_LENGTH, NormalizeSearch } from "../../common/query-filters"
 
 export class QueryFeedbacksDto {
   @IsOptional()
@@ -23,4 +26,24 @@ export class QueryFeedbacksDto {
   @Transform(({ value }) => value === true || value === "true" || value === "1")
   @IsBoolean()
   include_hidden = false
+
+  /** 关键字，匹配反馈内容、用户 ID、联系方式与来源信息。 */
+  @IsOptional()
+  @NormalizeSearch()
+  @IsString()
+  @MaxLength(MAX_SEARCH_LENGTH)
+  search?: string
+
+  @IsOptional()
+  @NormalizePlatform()
+  @IsIn(PLATFORM_VALUES)
+  platform?: PlatformValue
+
+  /** 只看某个评分的反馈；未评分的行不会命中任何评分值。 */
+  @IsOptional()
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  rating?: number
 }

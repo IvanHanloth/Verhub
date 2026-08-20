@@ -66,6 +66,8 @@ export type VersionRecord = {
   projectKey: string
   version: string
   comparableVersion: string | null
+  /** comparableVersion 的定长排序键，仅供数据库排序，不出现在任何响应里。 */
+  comparableVersionSort: string | null
   title: string | null
   content: string | null
   downloadUrl: string | null

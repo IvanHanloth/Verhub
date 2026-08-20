@@ -1,4 +1,4 @@
-import { requestJson } from "@/lib/api-client"
+import { buildListQuery, requestJson } from "@/lib/api-client"
 import type { Platform } from "@/lib/platform"
 
 export type VersionDownloadLink = {
@@ -89,24 +89,38 @@ export type CheckVersionUpdateResponse = {
   }
 }
 
+export type ListVersionsParams = {
+  limit: number
+  offset: number
+  search?: string
+  platform?: Platform
+  is_preview?: boolean
+  is_deprecated?: boolean
+  is_milestone?: boolean
+  forced?: boolean
+}
+
 export async function listVersions(
   token: string,
   projectKey: string,
-  params: { limit: number; offset: number },
+  params: ListVersionsParams,
   signal?: AbortSignal,
 ): Promise<ListVersionsResponse> {
-  const query = new URLSearchParams({
-    limit: String(params.limit),
-    offset: String(params.offset),
+  const query = buildListQuery({
+    limit: params.limit,
+    offset: params.offset,
+    search: params.search,
+    platform: params.platform,
+    is_preview: params.is_preview,
+    is_deprecated: params.is_deprecated,
+    is_milestone: params.is_milestone,
+    forced: params.forced,
   })
 
-  return requestJson<ListVersionsResponse>(
-    `/admin/projects/${projectKey}/versions?${query.toString()}`,
-    {
-      token,
-      signal,
-    },
-  )
+  return requestJson<ListVersionsResponse>(`/admin/projects/${projectKey}/versions?${query}`, {
+    token,
+    signal,
+  })
 }
 
 export async function createVersion(

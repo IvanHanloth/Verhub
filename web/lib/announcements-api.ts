@@ -1,4 +1,4 @@
-import { requestJson } from "@/lib/api-client"
+import { buildListQuery, requestJson } from "@/lib/api-client"
 import type { Platform } from "@/lib/platform"
 
 export type AnnouncementItem = {
@@ -29,19 +29,32 @@ export type AnnouncementMutationInput = {
   published_at?: number
 }
 
+export type ListAnnouncementsParams = {
+  limit: number
+  offset: number
+  search?: string
+  platform?: Platform
+  is_pinned?: boolean
+  is_hidden?: boolean
+}
+
 export async function listAnnouncements(
   token: string,
   projectKey: string,
-  params: { limit: number; offset: number },
+  params: ListAnnouncementsParams,
   signal?: AbortSignal,
 ): Promise<ListAnnouncementsResponse> {
-  const query = new URLSearchParams({
-    limit: String(params.limit),
-    offset: String(params.offset),
+  const query = buildListQuery({
+    limit: params.limit,
+    offset: params.offset,
+    search: params.search,
+    platform: params.platform,
+    is_pinned: params.is_pinned,
+    is_hidden: params.is_hidden,
   })
 
   return requestJson<ListAnnouncementsResponse>(
-    `/admin/projects/${projectKey}/announcements?${query.toString()}`,
+    `/admin/projects/${projectKey}/announcements?${query}`,
     {
       token,
       signal,

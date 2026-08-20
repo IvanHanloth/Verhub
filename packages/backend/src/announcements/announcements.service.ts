@@ -5,6 +5,7 @@ import { PrismaService } from "../database/prisma.service"
 import { ProjectResolverService } from "../database/project-resolver.service"
 import { nowSeconds } from "../common/utils"
 import { fromPlatforms, type PlatformValue } from "../common/platform"
+import { searchContains } from "../common/query-filters"
 import { CreateAnnouncementDto } from "./dto/create-announcement.dto"
 import { QueryAnnouncementsDto } from "./dto/query-announcements.dto"
 import { UpdateAnnouncementDto } from "./dto/update-announcement.dto"
@@ -35,6 +36,37 @@ type AnnouncementListResponse = {
   data: AnnouncementItem[]
 }
 
+/**
+ * 平台维度的可见范围：未限定平台的公告（platforms 为空）对所有平台可见。
+ *
+ * 返回的是 `AND` 数组的一项而不是裸的 `OR`，因为关键字搜索同样要用 `OR`——
+ * 两者若都写在 where 的顶层，后写的那个会把前一个整段覆盖掉。
+ */
+function platformScopeFilter(platform: PlatformValue | undefined): Prisma.AnnouncementWhereInput[] {
+  if (!platform) {
+    return []
+  }
+
+  return [
+    {
+      OR: [
+        { platforms: { isEmpty: true } },
+        { platforms: { has: platform.toUpperCase() as Platform } },
+      ],
+    },
+  ]
+}
+
+/** 关键字命中范围：标题、正文与作者。 */
+function searchFilter(search: string | undefined): Prisma.AnnouncementWhereInput[] {
+  if (!search) {
+    return []
+  }
+
+  const contains = searchContains(search)
+  return [{ OR: [{ title: contains }, { content: contains }, { author: contains }] }]
+}
+
 @Injectable()
 export class AnnouncementsService {
   constructor(
@@ -62,6 +94,9 @@ export class AnnouncementsService {
 
     const where: Prisma.AnnouncementWhereInput = {
       projectKey: normalizedProjectKey,
+      isPinned: query.is_pinned,
+      isHidden: query.is_hidden,
+      AND: [...platformScopeFilter(query.platform), ...searchFilter(query.search)],
     }
 
     const [total, data] = await this.prisma.$transaction([
@@ -101,17 +136,12 @@ export class AnnouncementsService {
   ): Promise<AnnouncementListResponse> {
     const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
+    // 公开端永远只返回未隐藏的公告：is_hidden / is_pinned 是后台的筛选维度，
+    // 客户端传了也不生效。
     const where: Prisma.AnnouncementWhereInput = {
       projectKey: normalizedProjectKey,
       isHidden: false,
-      ...(query.platform
-        ? {
-            OR: [
-              { platforms: { isEmpty: true } },
-              { platforms: { has: query.platform.toUpperCase() as Platform } },
-            ],
-          }
-        : {}),
+      AND: [...platformScopeFilter(query.platform), ...searchFilter(query.search)],
     }
 
     const [total, data] = await this.prisma.$transaction([
@@ -139,14 +169,7 @@ export class AnnouncementsService {
     const where: Prisma.AnnouncementWhereInput = {
       projectKey: normalizedProjectKey,
       isHidden: false,
-      ...(query?.platform
-        ? {
-            OR: [
-              { platforms: { isEmpty: true } },
-              { platforms: { has: query.platform.toUpperCase() as Platform } },
-            ],
-          }
-        : {}),
+      AND: platformScopeFilter(query?.platform),
     }
 
     const latest = await this.prisma.announcement.findFirst({

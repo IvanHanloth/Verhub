@@ -37,6 +37,7 @@ export function VersionEditDialog({
       submitting={saving}
       submitDisabled={!editingVersionId}
       onSubmit={onSave}
+      formValue={form}
     >
       <VersionFormFields
         form={form}

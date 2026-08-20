@@ -9,6 +9,7 @@ import type { PublicFeedbackOptions } from "../github-app/types"
 import { buildDedupHash, resolveDedupWindowSeconds, stableStringify } from "../common/dedup"
 import { nowSeconds } from "../common/utils"
 import { fromPlatform, toPlatform, type PlatformValue } from "../common/platform"
+import { searchContains } from "../common/query-filters"
 import type { ClientOrigin } from "../geo/client-origin.service"
 import { CreateFeedbackDto } from "./dto/create-feedback.dto"
 import { QueryFeedbacksDto } from "./dto/query-feedbacks.dto"
@@ -98,7 +99,10 @@ export class FeedbacksService {
     // 隐藏的反馈只是不出现在列表里；统计接口照旧全量计算，所以隐藏不会改变平均分。
     const where: Prisma.FeedbackWhereInput = {
       projectKey: normalizedProjectKey,
+      platform: toPlatform(query.platform) ?? undefined,
+      rating: query.rating,
       ...(query.include_hidden ? {} : { isHidden: false }),
+      ...(query.search ? { OR: this.buildSearchFilters(query.search) } : {}),
     }
 
     const [total, data] = await this.prisma.$transaction([
@@ -115,6 +119,27 @@ export class FeedbacksService {
       total,
       data: data.map((feedback) => this.toFeedbackItem(feedback)),
     }
+  }
+
+  /**
+   * 关键字命中范围：正文 + 提交者标识 + 服务端记录的来源字段。
+   *
+   * 联系方式也在内，因为按邮箱回捞同一个人的历史反馈是这页最常见的用法；
+   * custom_data 是 JSON 列，不参与匹配。
+   */
+  private buildSearchFilters(search: string): Prisma.FeedbackWhereInput[] {
+    const contains = searchContains(search)
+
+    return [
+      { content: contains },
+      { userId: contains },
+      { contact: contains },
+      { ip: contains },
+      { city: contains },
+      { countryName: contains },
+      { regionName: contains },
+      { platformVersion: contains },
+    ]
   }
 
   async findOne(projectKey: string, id: string): Promise<FeedbackItem> {

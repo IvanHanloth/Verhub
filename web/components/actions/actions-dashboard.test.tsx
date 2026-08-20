@@ -1,5 +1,6 @@
 import * as React from "react"
 import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { listProjects } from "@/lib/projects-api"
@@ -70,9 +71,18 @@ describe("ActionsDashboard", () => {
     mockedListActionRecords.mockResolvedValue({ total: 0, data: [] })
   })
 
-  it("shows action id in action list", async () => {
+  it("lists actions and reveals the id column on demand", async () => {
+    const user = userEvent.setup()
     render(React.createElement(ActionsDashboard))
 
-    expect(await screen.findByText("ID: action-1")).toBeInTheDocument()
+    expect(await screen.findByText("打开设置")).toBeInTheDocument()
+    // 行为 ID 默认隐藏：排查时才需要，平时只会挤占宽度。
+    expect(screen.queryByText("action-1")).not.toBeInTheDocument()
+
+    const [actionsColumnToggle] = screen.getAllByRole("button", { name: /^列（/ })
+    await user.click(actionsColumnToggle!)
+    await user.click(screen.getByRole("checkbox", { name: "行为 ID" }))
+
+    expect(screen.getByText("action-1")).toBeInTheDocument()
   })
 })

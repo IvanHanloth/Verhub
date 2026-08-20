@@ -27,6 +27,7 @@ import {
 
 import { getErrorMessage } from "@/lib/error-utils"
 import { LoadingLine } from "@/components/common/skeleton"
+import { useUnsavedChangesGuard } from "@/components/common/unsaved-changes-guard"
 import { FeaturePanel } from "@/components/github/feature-panel"
 import { IssueTemplateEditor } from "@/components/github/issue-template-editor"
 import {
@@ -147,6 +148,29 @@ export function GithubIntegrationDialog({
   const [repoTemplateLoading, setRepoTemplateLoading] = React.useState(false)
   const [webhook, setWebhook] = React.useState<WebhookSettings | null>(null)
   const [webhookSecret, setWebhookSecret] = React.useState<WebhookSecretState>(EMPTY_SECRET_STATE)
+
+  // 这个弹窗是异步填表、且保存成功后不关闭，所以基线跟着 view 走：applyView 每次
+  // 换新引用（首次加载完成、每次保存成功）都正好是该把当前值重设为基线的时刻。
+  const handleOpenChange = useUnsavedChangesGuard({
+    open,
+    onOpenChange,
+    value: {
+      repo,
+      feedbackEnabled,
+      templateSource,
+      templateRepoPath,
+      templateRepoRef,
+      titleTemplate,
+      bodyTemplate,
+      labels,
+      commandsEnabled,
+      associations,
+      allowedUsers,
+      commands,
+      webhookSecret,
+    },
+    baselineKey: view,
+  })
 
   const applyView = React.useCallback(
     (next: ProjectGithubIntegrationView, config: GithubAppConfigView) => {
@@ -320,7 +344,7 @@ export function GithubIntegrationDialog({
     Boolean(appConfig?.configured && appConfig.enabled_features.includes(feature))
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -621,7 +645,7 @@ export function GithubIntegrationDialog({
         </DialogBody>
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
             关闭
           </Button>
           {/* 一个按钮同时落两个选项卡的改动，切来切去也不会漏保存。 */}

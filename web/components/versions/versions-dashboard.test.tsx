@@ -225,7 +225,7 @@ describe("VersionsDashboard", () => {
 
     render(React.createElement(VersionsDashboard))
 
-    await screen.findByText("1.0.0")
+    await screen.findAllByText("1.0.0")
     await user.click(screen.getByRole("button", { name: "同步历史版本" }))
 
     await waitFor(() => {
@@ -241,7 +241,7 @@ describe("VersionsDashboard", () => {
     const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined)
     render(React.createElement(VersionsDashboard))
 
-    await screen.findByText("1.0.0")
+    await screen.findAllByText("1.0.0")
     await user.click(screen.getByRole("button", { name: "编辑版本" }))
     expect(scrollSpy).not.toHaveBeenCalled()
 
@@ -336,7 +336,7 @@ describe("VersionsDashboard", () => {
     const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined)
     render(React.createElement(VersionsDashboard))
 
-    await screen.findByText("1.0.0")
+    await screen.findAllByText("1.0.0")
     await user.click(screen.getByRole("button", { name: "复制配置" }))
     expect(scrollSpy).not.toHaveBeenCalled()
 
@@ -348,13 +348,47 @@ describe("VersionsDashboard", () => {
     scrollSpy.mockRestore()
   })
 
+  it("强制 / 里程碑 / 废弃三列渲染成勾与叉", async () => {
+    mockedListVersions.mockResolvedValue({
+      total: 1,
+      data: [
+        {
+          id: "version-flags",
+          version: "1.0.0",
+          comparable_version: "1.0.0",
+          title: "稳定版",
+          content: null,
+          download_url: null,
+          download_links: [],
+          forced: true,
+          is_latest: false,
+          is_preview: false,
+          is_milestone: false,
+          is_deprecated: true,
+          platform: "web",
+          custom_data: null,
+          published_at: 1774087200,
+          created_at: 1774087200,
+        },
+      ],
+    })
+
+    render(React.createElement(VersionsDashboard))
+
+    // 强制与废弃为是（两个勾），里程碑为否（一个叉）。
+    await waitFor(() => {
+      expect(screen.getAllByLabelText("是")).toHaveLength(2)
+    })
+    expect(screen.getAllByLabelText("否")).toHaveLength(1)
+  })
+
   it("deletes version from list", async () => {
     const user = userEvent.setup()
     vi.spyOn(window, "confirm").mockReturnValue(true)
 
     render(React.createElement(VersionsDashboard))
 
-    await screen.findByText("1.0.0")
+    await screen.findAllByText("1.0.0")
     await user.click(screen.getByRole("button", { name: "删除版本" }))
 
     await waitFor(() => {
@@ -388,7 +422,7 @@ describe("VersionsDashboard", () => {
 
     render(React.createElement(VersionsDashboard))
 
-    await screen.findByText("1.0.0")
+    await screen.findAllByText("1.0.0")
     await user.click(screen.getByRole("button", { name: "新增版本" }))
     const dialog = await screen.findByRole("dialog")
     await user.click(within(dialog).getByRole("button", { name: "按版本号获取 Release 信息" }))
@@ -431,7 +465,7 @@ describe("VersionsDashboard", () => {
 
     render(React.createElement(VersionsDashboard))
 
-    await screen.findByText("1.0.0")
+    await screen.findAllByText("1.0.0")
     await user.click(screen.getByRole("button", { name: "同步最新 Release" }))
 
     // 走 upsert：同一个 Release 反复同步不应该撞版本号唯一约束。
@@ -472,7 +506,7 @@ describe("VersionsDashboard", () => {
 
     render(React.createElement(VersionsDashboard))
 
-    await screen.findByText("1.0.0")
+    await screen.findAllByText("1.0.0")
     await user.click(screen.getByRole("button", { name: "新增版本" }))
     const dialog = await screen.findByRole("dialog")
     const versionInput = within(dialog).getByPlaceholderText("例如：2.3.0")
@@ -514,7 +548,7 @@ describe("VersionsDashboard", () => {
 
     render(React.createElement(VersionsDashboard))
 
-    await screen.findByText("1.0.0")
+    await screen.findAllByText("1.0.0")
     await user.click(screen.getByRole("button", { name: "新增版本" }))
     const dialog = await screen.findByRole("dialog")
     await user.click(within(dialog).getByRole("button", { name: "按版本号获取 Release 信息" }))

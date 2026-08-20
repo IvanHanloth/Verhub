@@ -14,6 +14,8 @@ import {
   DialogTitle,
 } from "@workspace/ui/components/dialog"
 
+import { useUnsavedChangesGuard } from "@/components/common/unsaved-changes-guard"
+
 type AdminFormDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -27,6 +29,11 @@ type AdminFormDialogProps = {
   onSubmit: () => void
   /** 放在页脚左侧的辅助操作，如"清空表单"。 */
   footerExtra?: React.ReactNode
+  /**
+   * 当前表单值。传了就启用未保存改动确认：内容相对打开那一刻有变化时，
+   * 关闭前先问一次。不传则维持原来的直接关闭。
+   */
+  formValue?: unknown
   className?: string
   children: React.ReactNode
 }
@@ -47,11 +54,14 @@ export function AdminFormDialog({
   submitDisabled = false,
   onSubmit,
   footerExtra,
+  formValue,
   className = "sm:max-w-4xl",
   children,
 }: AdminFormDialogProps) {
+  const handleOpenChange = useUnsavedChangesGuard({ open, onOpenChange, value: formValue })
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className={className}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -72,7 +82,7 @@ export function AdminFormDialog({
           <DialogFooter className="mt-0 sm:justify-between">
             <div className="flex flex-wrap gap-2">{footerExtra}</div>
             <div className="flex flex-wrap gap-2 sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
                 取消
               </Button>
               <Button type="submit" disabled={submitting || submitDisabled}>

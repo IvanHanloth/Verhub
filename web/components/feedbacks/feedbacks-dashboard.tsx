@@ -19,14 +19,20 @@ import { Button } from "@workspace/ui/components/button"
 import { isAuthError } from "@/lib/api-client"
 import { getErrorMessage } from "@/lib/error-utils"
 import { useConfirm } from "@/components/common/confirm-dialog"
-import { TableSkeleton } from "@/components/common/skeleton"
 import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
-import { AdminListHeader, AdminPagination } from "@/components/admin/admin-list"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { ClientOriginBadges } from "@/components/common/client-origin-badges"
+import {
+  DataTable,
+  DataTableSelectFilter,
+  DataTableToggle,
+  EmptyValue,
+  TruncatedCell,
+  type DataTableColumn,
+} from "@/components/common/data-table"
 import { JsonField } from "@/components/common/json-viewer"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import { useAdminProjects } from "@/hooks/use-admin-projects"
@@ -38,7 +44,12 @@ import {
   type FeedbackItem,
   type FeedbackMutationInput,
 } from "@/lib/feedbacks-api"
-import { PLATFORM_OPTIONS as platformOptions, type Platform } from "@/lib/platform"
+import {
+  PLATFORM_OPTIONS as platformOptions,
+  formatPlatformVersion,
+  type Platform,
+} from "@/lib/platform"
+import { formatTimestamp } from "@/lib/format"
 
 const PAGE_SIZE = 10
 
@@ -51,6 +62,26 @@ type FeedbackFormState = {
   platform: "" | Platform
   custom_data: string
 }
+
+type FilterState = {
+  search: string
+  platform: "" | Platform
+  /** 空串表示不限；下拉框的取值是字符串，转数字留到发请求时做。 */
+  rating: string
+  includeHidden: boolean
+}
+
+const emptyFilters: FilterState = {
+  search: "",
+  platform: "",
+  rating: "",
+  includeHidden: false,
+}
+
+const ratingOptions = [1, 2, 3, 4, 5].map((value) => ({
+  label: `${value} 分`,
+  value: String(value),
+}))
 
 const emptyForm: FeedbackFormState = {
   user_id: "",
@@ -255,7 +286,8 @@ export function FeedbacksDashboard() {
   } = usePagination({ pageSize: PAGE_SIZE })
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const [includeHidden, setIncludeHidden] = React.useState(false)
+  const [filters, setFilters] = React.useState<FilterState>(emptyFilters)
+  const includeHidden = filters.includeHidden
 
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [form, setForm] = React.useState<FeedbackFormState>(emptyForm)
@@ -282,7 +314,14 @@ export function FeedbacksDashboard() {
         const response = await listFeedbacks(
           token,
           selectedProjectKey,
-          { limit: PAGE_SIZE, offset: nextOffset, includeHidden },
+          {
+            limit: PAGE_SIZE,
+            offset: nextOffset,
+            includeHidden: filters.includeHidden,
+            search: filters.search.trim() || undefined,
+            platform: filters.platform || undefined,
+            rating: filters.rating ? Number(filters.rating) : undefined,
+          },
           signal,
         )
         setFeedbacks(response.data)
@@ -306,7 +345,7 @@ export function FeedbacksDashboard() {
         }
       }
     },
-    [selectedProjectKey, token, setTotal, includeHidden],
+    [selectedProjectKey, token, setTotal, filters],
   )
 
   React.useEffect(() => {
@@ -326,6 +365,20 @@ export function FeedbacksDashboard() {
     setEditDialogOpen(false)
     setCreateDialogOpen(false)
   }, [selectedProjectKey, resetOffset])
+
+  /** 改任何一个筛选条件都回到第一页：留在第 5 页看新条件的结果没有意义。 */
+  const updateFilter = React.useCallback(
+    <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
+      setFilters((current) => ({ ...current, [key]: value }))
+      resetOffset()
+    },
+    [resetOffset],
+  )
+
+  function resetFilters() {
+    setFilters(emptyFilters)
+    resetOffset()
+  }
 
   function openCreateDialog() {
     setCreateForm(emptyForm)
@@ -525,6 +578,167 @@ export function FeedbacksDashboard() {
     }
   }
 
+  // 不做 memo：操作按钮闭包了当前页数据，缓存下来会让隐藏/删除作用在上一轮的行上。
+  const columns: Array<DataTableColumn<FeedbackItem>> = [
+    {
+      id: "content",
+      header: "内容",
+      label: "内容",
+      alwaysVisible: true,
+      className: "min-w-64",
+      cell: (item) => (
+        <TruncatedCell className="max-w-[28rem]" title={item.content}>
+          {item.content}
+        </TruncatedCell>
+      ),
+    },
+    {
+      id: "rating",
+      header: "评分",
+      label: "评分",
+      className: "whitespace-nowrap text-xs tabular-nums",
+      cell: (item) =>
+        item.rating === null ? <EmptyValue>未评分</EmptyValue> : `${item.rating} 分`,
+    },
+    {
+      id: "user_id",
+      header: "用户",
+      label: "用户 ID",
+      className: "text-xs text-slate-600 dark:text-slate-300",
+      cell: (item) => item.user_id ?? <EmptyValue>匿名</EmptyValue>,
+    },
+    {
+      id: "contact",
+      header: "联系方式",
+      label: "联系方式",
+      className: "text-xs text-slate-600 dark:text-slate-300",
+      cell: (item) =>
+        item.contact ? (
+          <TruncatedCell className="max-w-[14rem]" title={item.contact}>
+            {item.contact}
+          </TruncatedCell>
+        ) : (
+          <EmptyValue />
+        ),
+    },
+    {
+      id: "status",
+      header: "状态",
+      label: "状态（隐藏 / Issue）",
+      cell: (item) => (
+        <div className="flex flex-wrap items-center gap-1">
+          {item.is_hidden ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:border-amber-300/40 dark:bg-amber-300/10 dark:text-amber-200">
+              <EyeOff className="size-3" />
+              已隐藏
+            </span>
+          ) : null}
+          {item.forwarded_to_github ? <GithubIssueBadge item={item} /> : null}
+          {!item.is_hidden && !item.forwarded_to_github ? (
+            <span className="text-xs text-slate-500 dark:text-slate-400">正常</span>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      id: "platform",
+      header: "平台",
+      label: "平台",
+      className: "whitespace-nowrap text-xs text-slate-600 dark:text-slate-300",
+      cell: (item) => formatPlatformVersion(item.platform, item.platform_version) ?? <EmptyValue />,
+    },
+    {
+      id: "created_at",
+      header: "提交时间",
+      label: "提交时间",
+      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      cell: (item) => formatTimestamp(item.created_at, "—"),
+    },
+    {
+      id: "ip",
+      header: "IP",
+      label: "来源 IP",
+      defaultHidden: true,
+      className: "font-mono text-xs text-slate-600 dark:text-slate-300",
+      cell: (item) => item.ip ?? <EmptyValue />,
+    },
+    {
+      id: "location",
+      header: "地区",
+      label: "来源地区",
+      defaultHidden: true,
+      className: "text-xs text-slate-600 dark:text-slate-300",
+      cell: (item) => {
+        const parts = [item.city, item.region_name, item.country_name ?? item.country_code]
+          .map((part) => part?.trim())
+          .filter((part): part is string => Boolean(part))
+        const unique = parts.filter((part, index) => parts.indexOf(part) === index)
+        return unique.length > 0 ? unique.join(" · ") : <EmptyValue />
+      },
+    },
+    {
+      id: "id",
+      header: "ID",
+      label: "反馈 ID",
+      defaultHidden: true,
+      className: "font-mono text-xs text-slate-500 dark:text-slate-400",
+      cell: (item) => item.id,
+    },
+    {
+      id: "actions",
+      header: "操作",
+      label: "操作",
+      alwaysVisible: true,
+      headerClassName: "text-right",
+      className: "text-right",
+      cell: (item) => (
+        // 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。
+        <div className="flex justify-end gap-1.5">
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            title="复制配置"
+            aria-label="复制配置"
+            onClick={() => copyFromFeedback(item)}
+          >
+            <Copy className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            title={item.is_hidden ? "取消隐藏" : "隐藏"}
+            aria-label={item.is_hidden ? "取消隐藏" : "隐藏"}
+            onClick={() => void handleToggleHidden(item)}
+          >
+            {item.is_hidden ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="outline"
+            title="编辑"
+            aria-label="编辑"
+            onClick={() => beginEdit(item)}
+          >
+            <PencilLine className="size-4" />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="destructive"
+            title="删除"
+            aria-label="删除"
+            onClick={() => void handleDelete(item.id)}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ]
+
   return (
     <section className="space-y-6">
       <AdminPageHeader
@@ -553,154 +767,62 @@ export function FeedbacksDashboard() {
         </AdminCard>
       ) : null}
 
-      <AdminCard as="section">
-        <AdminListHeader title="反馈列表" total={total} page={page} totalPages={totalPages} />
+      <AdminCard as="section" className="space-y-4">
+        <h2 className="text-lg font-semibold">反馈列表</h2>
 
-        {/* 隐藏的反馈默认不列出；开关只影响展示，评分统计始终按全量算。 */}
-        <label className="mb-3 inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-          <input
-            type="checkbox"
-            checked={includeHidden}
-            onChange={(event) => {
-              setIncludeHidden(event.target.checked)
-              resetOffset()
-            }}
-            className="size-4"
-          />
-          显示隐藏的反馈
-        </label>
-
-        {!hasToken ? (
-          <div className="rounded-2xl border border-dashed border-rose-200/30 bg-rose-100/5 p-6 text-sm text-rose-100">
-            请先在登录页完成登录后查看反馈数据。
-          </div>
-        ) : null}
-
-        {hasToken && !selectedProjectKey ? (
-          <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-slate-300">
-            暂无项目，请先去项目管理页创建项目。
-          </div>
-        ) : null}
-
-        {hasToken && selectedProjectKey && loading ? <TableSkeleton /> : null}
-
-        {hasToken && selectedProjectKey && !loading && error ? (
-          <div className="rounded-2xl border border-rose-300/30 bg-rose-300/10 p-6 text-sm text-rose-200">
-            {error}
-          </div>
-        ) : null}
-
-        {hasToken && selectedProjectKey && !loading && !error && feedbacks.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-slate-300">
-            暂无反馈，等待客户端上报后在此管理。
-          </div>
-        ) : null}
-
-        {hasToken && selectedProjectKey && !loading && !error && feedbacks.length > 0 ? (
-          <div className="space-y-3">
-            <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/5">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b border-white/10 text-left text-slate-300">
-                    <th className="px-3 py-2 font-medium">内容</th>
-                    <th className="px-3 py-2 font-medium">用户/评分</th>
-                    <th className="px-3 py-2 font-medium">来源</th>
-                    <th className="px-3 py-2 font-medium">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {feedbacks.map((item) => (
-                    <tr key={item.id} className="border-b border-white/5 align-top">
-                      <td className="px-3 py-2 text-slate-200">
-                        {item.is_hidden || item.forwarded_to_github ? (
-                          <div className="mb-1 flex flex-wrap items-center gap-1">
-                            {item.is_hidden ? (
-                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-300/10 px-2 py-0.5 text-xs text-amber-200">
-                                <EyeOff className="size-3" />
-                                已隐藏
-                              </span>
-                            ) : null}
-                            {item.forwarded_to_github ? <GithubIssueBadge item={item} /> : null}
-                          </div>
-                        ) : null}
-                        <p>{item.content}</p>
-                        {item.custom_data ? (
-                          <div className="mt-2 max-w-md">
-                            <JsonField label="custom_data" value={item.custom_data} />
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-slate-300">
-                        <p>{item.user_id ?? "匿名"}</p>
-                        <p>评分：{item.rating ?? "未评分"}</p>
-                        <p>联系方式：{item.contact ?? "未留"}</p>
-                      </td>
-                      {/* 平台已并入来源徽章，避免同一信息占两列。 */}
-                      <td className="max-w-xs px-3 py-2 text-xs text-slate-300">
-                        <ClientOriginBadges origin={item} />
-                        {!item.ip && !item.platform ? <span>未采集</span> : null}
-                      </td>
-                      <td className="px-3 py-2">
-                        {/* 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。 */}
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="border-white/20 bg-white/5"
-                            title="复制配置"
-                            aria-label="复制配置"
-                            onClick={() => copyFromFeedback(item)}
-                          >
-                            <Copy className="size-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="border-white/20 bg-white/5"
-                            title={item.is_hidden ? "取消隐藏" : "隐藏"}
-                            aria-label={item.is_hidden ? "取消隐藏" : "隐藏"}
-                            onClick={() => void handleToggleHidden(item)}
-                          >
-                            {item.is_hidden ? (
-                              <Eye className="size-4" />
-                            ) : (
-                              <EyeOff className="size-4" />
-                            )}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            className="border-white/20 bg-white/5"
-                            title="编辑"
-                            aria-label="编辑"
-                            onClick={() => beginEdit(item)}
-                          >
-                            <PencilLine className="size-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="destructive"
-                            title="删除"
-                            aria-label="删除"
-                            onClick={() => void handleDelete(item.id)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <DataTable
+          storageKey="feedbacks"
+          columns={columns}
+          rows={feedbacks}
+          getRowId={(item) => item.id}
+          loading={hasToken && Boolean(selectedProjectKey) && loading}
+          error={error}
+          emptyMessage={
+            !hasToken
+              ? "请先在登录页完成登录后查看反馈数据。"
+              : !selectedProjectKey
+                ? "暂无项目，请先去项目管理页创建项目。"
+                : "当前筛选条件下暂无反馈。"
+          }
+          rowClassName={(item) => (item.is_hidden ? "opacity-60" : undefined)}
+          search={{
+            value: filters.search,
+            onChange: (value) => updateFilter("search", value),
+            placeholder: "搜索内容 / 用户 / 联系方式",
+          }}
+          filters={
+            <>
+              <DataTableSelectFilter
+                label="平台"
+                value={filters.platform}
+                onChange={(value) => updateFilter("platform", value as FilterState["platform"])}
+                options={platformOptions}
+              />
+              <DataTableSelectFilter
+                label="评分"
+                value={filters.rating}
+                onChange={(value) => updateFilter("rating", value)}
+                options={ratingOptions}
+              />
+            </>
+          }
+          onResetFilters={resetFilters}
+          toolbarExtra={
+            // 隐藏的反馈默认不列出；开关只影响展示，评分统计始终按全量算。
+            <DataTableToggle
+              label="显示已隐藏"
+              checked={filters.includeHidden}
+              onChange={(checked) => updateFilter("includeHidden", checked)}
+            />
+          }
+          renderExpanded={(item) => (
+            <div className="space-y-3">
+              <ClientOriginBadges origin={item} />
+              <JsonField label="custom_data" value={item.custom_data} />
             </div>
-
-            <AdminPagination hasPrev={hasPrev} hasNext={hasNext} onPrev={onPrev} onNext={onNext} />
-          </div>
-        ) : null}
+          )}
+          pagination={{ total, page, totalPages, hasPrev, hasNext, onPrev, onNext }}
+        />
       </AdminCard>
 
       <AdminFormDialog
@@ -713,6 +835,7 @@ export function FeedbacksDashboard() {
         submitting={createLoading}
         submitDisabled={!selectedProjectKey}
         onSubmit={() => void handleCreate()}
+        formValue={createForm}
         className="sm:max-w-3xl"
       >
         <FeedbackFormFields form={createForm} setForm={setCreateForm} />
@@ -728,6 +851,7 @@ export function FeedbacksDashboard() {
         submitting={submitLoading}
         submitDisabled={!editingId}
         onSubmit={() => void handleSubmit()}
+        formValue={form}
         className="sm:max-w-3xl"
       >
         <FeedbackFormFields form={form} setForm={setForm} />

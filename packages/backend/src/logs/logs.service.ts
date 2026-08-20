@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common"
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common"
 
 import { Prisma, Platform, LogLevel } from "@prisma/client"
 
@@ -7,9 +7,11 @@ import { ProjectResolverService } from "../database/project-resolver.service"
 import { buildDedupHash, resolveDedupWindowSeconds, stableStringify } from "../common/dedup"
 import { nowSeconds } from "../common/utils"
 import { fromPlatform, toPlatform, type PlatformValue } from "../common/platform"
+import { searchContains } from "../common/query-filters"
 import type { ClientOrigin } from "../geo/client-origin.service"
 import { CreateLogDto } from "./dto/create-log.dto"
 import { QueryLogsDto } from "./dto/query-logs.dto"
+import { UpdateLogDto } from "./dto/update-log.dto"
 import { UploadLogDto } from "./dto/upload-log.dto"
 
 type LogItem = {
@@ -18,6 +20,7 @@ type LogItem = {
   content: string
   device_info: Prisma.JsonValue | null
   custom_data: Prisma.JsonValue | null
+  is_hidden: boolean
   ip: string | null
   user_agent: string | null
   country_code: string | null
@@ -36,6 +39,7 @@ type LogRecord = {
   content: string
   deviceInfo: Prisma.JsonValue | null
   customData: Prisma.JsonValue | null
+  isHidden: boolean
   ip: string | null
   userAgent: string | null
   countryCode: string | null
@@ -99,13 +103,17 @@ export class LogsService {
       throw new BadRequestException("start_time must be less than or equal to end_time")
     }
 
+    // 隐藏的日志只是不出现在列表里；统计接口照旧全量计算，所以隐藏不会改变等级分布。
     const where: Prisma.LogWhereInput = {
       projectKey: normalizedProjectKey,
       level: this.toLogLevel(query.level),
+      platform: toPlatform(query.platform) ?? undefined,
       createdAt: {
         gte: query.start_time,
         lte: query.end_time,
       },
+      ...(query.include_hidden ? {} : { isHidden: false }),
+      ...(query.search ? { OR: this.buildSearchFilters(query.search) } : {}),
     }
 
     const [total, data] = await this.prisma.$transaction([
@@ -189,10 +197,58 @@ export class LogsService {
         customData: dto.custom_data as Prisma.InputJsonValue | undefined,
         platform: toPlatform(dto.platform),
         platformVersion: dto.platform_version,
+        isHidden: dto.is_hidden ?? false,
       },
     })
 
     return this.toLogItem(created)
+  }
+
+  /**
+   * 改动日志的可见性。
+   *
+   * 只处理 is_hidden，其余字段不可改；未传该字段时按原样返回，让前端的乐观更新
+   * 不至于因为一次空提交把行状态改掉。
+   */
+  async update(projectKey: string, id: string, dto: UpdateLogDto): Promise<LogItem> {
+    const normalizedProjectKey = await this.resolveProjectKey(projectKey)
+
+    const existing = await this.prisma.log.findFirst({
+      where: { id, projectKey: normalizedProjectKey },
+    })
+    if (!existing) {
+      throw new NotFoundException("Log not found")
+    }
+
+    if (dto.is_hidden === undefined) {
+      return this.toLogItem(existing)
+    }
+
+    const updated = await this.prisma.log.update({
+      where: { id },
+      data: { isHidden: dto.is_hidden },
+    })
+
+    return this.toLogItem(updated)
+  }
+
+  /**
+   * 关键字命中范围：内容 + 服务端记录的来源字段。
+   *
+   * 排障时手上往往只有一个 IP 或一句报错，把两者放进同一个搜索框比让人先挑
+   * 「按什么搜」要快；device_info / custom_data 是 JSON 列，不参与匹配。
+   */
+  private buildSearchFilters(search: string): Prisma.LogWhereInput[] {
+    const contains = searchContains(search)
+
+    return [
+      { content: contains },
+      { ip: contains },
+      { city: contains },
+      { countryName: contains },
+      { regionName: contains },
+      { platformVersion: contains },
+    ]
   }
 
   /** The most recent identical upload inside the dedup window, if any. */
@@ -262,6 +318,7 @@ export class LogsService {
       content: log.content,
       device_info: log.deviceInfo,
       custom_data: log.customData,
+      is_hidden: log.isHidden,
       ip: log.ip,
       user_agent: log.userAgent,
       country_code: log.countryCode,

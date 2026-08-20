@@ -143,17 +143,19 @@ export class VersionUpdateCheckService {
       where: {
         projectKey,
         isPreview: false,
-        comparableVersion: { not: null },
+        // 用排序键而非 comparableVersion 判空：格式脏到解析不出排序键的版本
+        // 不该参与"最新版"竞争，否则会顶掉真正的最新版推给客户端。
+        comparableVersionSort: { not: null },
       },
-      orderBy: [{ comparableVersion: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
+      orderBy: [{ comparableVersionSort: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
     })
     const latestPreview = await this.prisma.version.findFirst({
       where: {
         projectKey,
         isPreview: true,
-        comparableVersion: { not: null },
+        comparableVersionSort: { not: null },
       },
-      orderBy: [{ comparableVersion: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
+      orderBy: [{ comparableVersionSort: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
     })
 
     const latestCandidate = includePreview

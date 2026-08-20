@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, MaxLength } from "class-validator"
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from "class-validator"
 
 import { NormalizePlatform, PLATFORM_VALUES, type PlatformValue } from "../../common/platform"
 import { MAX_PLATFORM_VERSION_LENGTH } from "../../stats/platform-detection"
@@ -9,7 +9,8 @@ import { UploadLogDto } from "./upload-log.dto"
  * 后台手动补录日志的请求体。
  *
  * 比客户端上报多出 platform / platform_version：上报路径靠 UA 推断，手动补录
- * 没有真实客户端可推断，只能由管理员显式指定。
+ * 没有真实客户端可推断，只能由管理员显式指定。is_hidden 同理：客户端上报的日志
+ * 一律可见，补录时才可能想先建后放。
  */
 export class CreateLogDto extends UploadLogDto {
   @IsOptional()
@@ -21,4 +22,8 @@ export class CreateLogDto extends UploadLogDto {
   @IsString()
   @MaxLength(MAX_PLATFORM_VERSION_LENGTH)
   platform_version?: string
+
+  @IsOptional()
+  @IsBoolean()
+  is_hidden?: boolean
 }

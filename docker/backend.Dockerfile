@@ -2,7 +2,10 @@
 # stage both branch off this so they resolve identical dependencies.
 FROM node:24-alpine AS backend-deps
 
-RUN apk add --no-cache openssl python3 make g++
+# openssl 供 Prisma 的 linux-musl-openssl-3.0.x query engine 使用。
+# 不装 node-gyp 工具链：bcrypt 自带 musl 预编译产物，且 pnpm 10 默认不执行依赖的
+# install 脚本（无 onlyBuiltDependencies 白名单），没有任何依赖会从源码编译。
+RUN apk add --no-cache openssl
 WORKDIR /app
 
 RUN corepack enable && corepack prepare pnpm@10.20.0 --activate

@@ -79,6 +79,25 @@ describe("ProjectsService", () => {
     })
   })
 
+  it("findAll matches the keyword against project fields and aliases", async () => {
+    const prisma = createPrismaMock()
+    prisma.$transaction.mockResolvedValue([0, []])
+
+    const service = createService(prisma)
+    await service.findAll({ limit: 10, offset: 0, search: "verhub" })
+
+    const where = prisma.project.count.mock.calls[0]?.[0]?.where as {
+      OR?: Array<Record<string, unknown>>
+    }
+    expect(where.OR).toContainEqual({
+      projectKey: { contains: "verhub", mode: "insensitive" },
+    })
+    // 改名后的项目要能按旧 key 搜到，所以别名表也参与匹配。
+    expect(where.OR).toContainEqual({
+      aliases: { some: { alias: { contains: "verhub", mode: "insensitive" } } },
+    })
+  })
+
   it("extracts author metadata when previewing github repo", async () => {
     const prisma = createPrismaMock()
     const service = createService(prisma)

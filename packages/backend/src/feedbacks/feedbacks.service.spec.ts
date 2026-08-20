@@ -407,6 +407,37 @@ describe("FeedbacksService", () => {
     expect(prisma.feedback.count).toHaveBeenLastCalledWith({ where: { projectKey: "proj" } })
   })
 
+  it("findAll narrows by keyword, platform and rating", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.$transaction.mockResolvedValue([0, []])
+
+    const service = new FeedbacksService(
+      prisma as never,
+      makeResolver(prisma),
+      createForwarderMock() as never,
+    )
+    await service.findAll("proj", {
+      limit: 10,
+      offset: 0,
+      include_hidden: false,
+      search: "user@example.com",
+      platform: "ios",
+      rating: 5,
+    })
+
+    const where = prisma.feedback.count.mock.calls[0]?.[0]?.where as {
+      platform?: string
+      rating?: number
+      OR?: Array<Record<string, unknown>>
+    }
+    expect(where.platform).toBe("IOS")
+    expect(where.rating).toBe(5)
+    expect(where.OR).toContainEqual({
+      contact: { contains: "user@example.com", mode: "insensitive" },
+    })
+  })
+
   it("findAll throws when project does not exist", async () => {
     const prisma = createPrismaMock()
     prisma.project.findUnique.mockResolvedValue(null)

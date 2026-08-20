@@ -377,30 +377,36 @@ model ActionRecord {
 }
 
 model Version {
-  id                String     @id @default(cuid())
-  projectKey        String
-  version           String
-  comparableVersion String?
-  title             String?
-  content           String?
-  downloadUrl       String?
-  downloadLinks     Json?
-  forced            Boolean    @default(false)
-  isLatest          Boolean    @default(false)
-  isPreview         Boolean    @default(false)
-  isMilestone       Boolean    @default(false)
-  isDeprecated      Boolean    @default(false)
-  platforms         Platform[] @default([])
-  platform          Platform?
-  customData        Json?
-  publishedAt       Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  createdAt         Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  id                    String     @id @default(cuid())
+  projectKey            String
+  version               String
+  comparableVersion     String?
+  /// comparableVersion 的定长排序键，由 toComparableVersionSortKey 生成。
+  /// 存在的理由：comparableVersion 是 TEXT，字符串序把 "3.1.0-rc.2" 排在 "3.1.0" 之上，
+  /// 与 semver 语义相反。这一列让数据库的字符串排序等价于语义排序。
+  comparableVersionSort String?
+  title                 String?
+  content               String?
+  downloadUrl           String?
+  downloadLinks         Json?
+  forced                Boolean    @default(false)
+  isLatest              Boolean    @default(false)
+  isPreview             Boolean    @default(false)
+  isMilestone           Boolean    @default(false)
+  isDeprecated          Boolean    @default(false)
+  platforms             Platform[] @default([])
+  platform              Platform?
+  customData            Json?
+  publishedAt           Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  createdAt             Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
   @@unique([projectKey, version])
   @@index([projectKey, createdAt])
-  // 版本列表默认按 comparableVersion 降序分页；无此索引时排序退化为内存排序。
+  // 版本列表与最新版判定按 comparableVersionSort 降序；无此索引时排序退化为内存排序。
+  @@index([projectKey, comparableVersionSort])
+  // comparableVersion 仍被按版本号精确查找用到（findByVersionNumber）。
   @@index([projectKey, comparableVersion])
 }
 
@@ -470,6 +476,9 @@ model Log {
   content         String
   deviceInfo      Json?
   customData      Json?
+  /// 隐藏后不在后台列表默认返回（需显式 include_hidden），但记录仍在，
+  /// 等级统计也照常计入 —— 隐藏只影响展示，不影响数据。
+  isHidden        Boolean   @default(false)
   /// Caller origin, captured at submit time. Stored as columns rather than
   /// inside `deviceInfo` because that field is client-supplied and therefore
   /// forgeable, while these are observed server-side — mixing the two would

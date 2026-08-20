@@ -101,7 +101,7 @@ describe("AnnouncementsService", () => {
       where: {
         projectKey: "project-1",
         isHidden: false,
-        OR: [{ platforms: { isEmpty: true } }, { platforms: { has: "WEB" } }],
+        AND: [{ OR: [{ platforms: { isEmpty: true } }, { platforms: { has: "WEB" } }] }],
       },
     })
     expect(prisma.announcement.findMany).toHaveBeenCalledWith(
@@ -109,7 +109,7 @@ describe("AnnouncementsService", () => {
         where: {
           projectKey: "project-1",
           isHidden: false,
-          OR: [{ platforms: { isEmpty: true } }, { platforms: { has: "WEB" } }],
+          AND: [{ OR: [{ platforms: { isEmpty: true } }, { platforms: { has: "WEB" } }] }],
         },
       }),
     )
@@ -135,7 +135,7 @@ describe("AnnouncementsService", () => {
     await service.findLatestByProjectKey("project-1")
 
     expect(prisma.announcement.findFirst).toHaveBeenCalledWith({
-      where: { projectKey: "project-1", isHidden: false },
+      where: { projectKey: "project-1", isHidden: false, AND: [] },
       orderBy: { createdAt: "desc" },
     })
   })
@@ -240,7 +240,7 @@ describe("AnnouncementsService", () => {
       where: {
         projectKey: "proj",
         isHidden: false,
-        OR: [{ platforms: { isEmpty: true } }, { platforms: { has: "IOS" } }],
+        AND: [{ OR: [{ platforms: { isEmpty: true } }, { platforms: { has: "IOS" } }] }],
       },
       orderBy: { createdAt: "desc" },
     })
@@ -367,7 +367,7 @@ describe("AnnouncementsService", () => {
 
     expect(result.total).toBe(0)
     expect(prisma.announcement.count).toHaveBeenCalledWith({
-      where: { projectKey: "proj", isHidden: false },
+      where: { projectKey: "proj", isHidden: false, AND: [] },
     })
   })
 

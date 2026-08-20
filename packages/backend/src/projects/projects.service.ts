@@ -10,6 +10,7 @@ import { Prisma } from "@prisma/client"
 import { PrismaService } from "../database/prisma.service"
 import { ProjectResolverService } from "../database/project-resolver.service"
 import { isUniqueViolation, normalizeProjectKey, nowSeconds } from "../common/utils"
+import { searchContains } from "../common/query-filters"
 import { parseGithubRepository } from "../versions/github-release.service"
 import { CreateProjectDto } from "./dto/create-project.dto"
 import { QueryProjectsDto } from "./dto/query-projects.dto"
@@ -75,9 +76,24 @@ export class ProjectsService {
   }
 
   async findAll(query: QueryProjectsDto): Promise<ProjectListResponse> {
+    // 别名也参与匹配：项目改名后，按旧 key 搜索仍应找得到它。
+    const where: Prisma.ProjectWhereInput = query.search
+      ? {
+          OR: [
+            { projectKey: searchContains(query.search) },
+            { name: searchContains(query.search) },
+            { description: searchContains(query.search) },
+            { author: searchContains(query.search) },
+            { repoUrl: searchContains(query.search) },
+            { aliases: { some: { alias: searchContains(query.search) } } },
+          ],
+        }
+      : {}
+
     const [total, data] = await this.prisma.$transaction([
-      this.prisma.project.count(),
+      this.prisma.project.count({ where }),
       this.prisma.project.findMany({
+        where,
         take: query.limit,
         skip: query.offset,
         orderBy: {

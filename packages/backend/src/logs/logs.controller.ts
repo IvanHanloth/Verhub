@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common"
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common"
 import type { Request } from "express"
 
 import { AdminOrApiKeyGuard } from "../auth/guards/admin-or-api-key.guard"
@@ -11,6 +11,7 @@ import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 
 import { CreateLogDto } from "./dto/create-log.dto"
 import { QueryLogsDto } from "./dto/query-logs.dto"
+import { UpdateLogDto } from "./dto/update-log.dto"
 import { UploadLogDto } from "./dto/upload-log.dto"
 import { LogsService } from "./logs.service"
 
@@ -33,6 +34,17 @@ export class LogsController {
   @RequireApiScope("logs:write")
   async createByAdmin(@Param("projectKey") projectKey: string, @Body() dto: CreateLogDto) {
     return this.logsService.createByAdmin(projectKey, dto)
+  }
+
+  @Patch("admin/projects/:projectKey/logs/:logId")
+  @UseGuards(AdminOrApiKeyGuard)
+  @RequireApiScope("logs:write")
+  async updateByAdmin(
+    @Param("projectKey") projectKey: string,
+    @Param("logId") logId: string,
+    @Body() dto: UpdateLogDto,
+  ) {
+    return this.logsService.update(projectKey, logId, dto)
   }
 
   @Post("public/:projectKey/logs")

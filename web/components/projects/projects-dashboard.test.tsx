@@ -125,7 +125,7 @@ describe("ProjectsDashboard", () => {
     render(React.createElement(ProjectsDashboard))
 
     expect(
-      await screen.findByText("暂无项目，点击右上角“新增项目”创建第一条项目记录。"),
+      await screen.findByText("当前筛选条件下暂无项目，可点击右上角「新增项目」创建。"),
     ).toBeInTheDocument()
     expect(mockedListProjects).toHaveBeenCalledWith(
       "valid-token",
@@ -182,7 +182,7 @@ describe("ProjectsDashboard", () => {
 
     render(React.createElement(ProjectsDashboard))
 
-    expect(await screen.findByText("ID: project-1")).toBeInTheDocument()
+    expect(await screen.findByText("Verhub")).toBeInTheDocument()
   })
 
   it("prefills project form from github repository metadata", async () => {
@@ -248,7 +248,7 @@ describe("ProjectsDashboard", () => {
 
     render(React.createElement(ProjectsDashboard))
 
-    await screen.findByText("ID: project-1")
+    await screen.findByText("Verhub")
     await user.click(screen.getByRole("button", { name: "复制配置" }))
 
     const dialog = await screen.findByRole("dialog")
@@ -318,7 +318,7 @@ describe("ProjectsDashboard", () => {
 
     render(React.createElement(ProjectsDashboard))
 
-    await screen.findByText("ID: project-1")
+    await screen.findByText("Verhub")
     await user.click(screen.getByRole("button", { name: "编辑" }))
 
     const dialog = screen.getByRole("dialog")
@@ -375,7 +375,7 @@ describe("ProjectsDashboard", () => {
 
     render(React.createElement(ProjectsDashboard))
 
-    await screen.findByText("ID: project-1")
+    await screen.findByText("Verhub")
     await user.click(screen.getByRole("button", { name: "GitHub 集成" }))
 
     const dialog = screen.getByRole("dialog")

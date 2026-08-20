@@ -665,6 +665,7 @@ export const openApiDocument: OpenApiDocument = {
       get: {
         tags: ["Projects"],
         summary: "获取项目列表",
+        description: "分页返回全部项目，支持关键字搜索。",
         security: [
           {
             BearerAuth: [],
@@ -679,6 +680,18 @@ export const openApiDocument: OpenApiDocument = {
           },
           {
             $ref: "#/components/parameters/Offset",
+          },
+          {
+            name: "search",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              maxLength: 128,
+            },
+            description:
+              "关键字，不区分大小写地匹配 project_key、name、description、author、repo_url 与历史别名——项目改名后按旧 key 搜索仍能找到它。",
+            example: "verhub",
           },
         ],
         responses: {
@@ -1608,6 +1621,7 @@ export const openApiDocument: OpenApiDocument = {
       get: {
         tags: ["Versions"],
         summary: "获取版本列表",
+        description: "分页返回项目下的版本，支持关键字搜索与平台、状态位筛选。",
         security: [
           {
             BearerAuth: [],
@@ -1622,6 +1636,57 @@ export const openApiDocument: OpenApiDocument = {
           },
           {
             $ref: "#/components/parameters/Offset",
+          },
+          {
+            name: "search",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              maxLength: 128,
+            },
+            description:
+              "关键字，不区分大小写地匹配 version、comparable_version、title 与 content。",
+            example: 1.2,
+          },
+          {
+            $ref: "#/components/parameters/ListPlatform",
+          },
+          {
+            name: "is_preview",
+            in: "query",
+            required: false,
+            schema: {
+              type: "boolean",
+            },
+            description: "只看预览版 / 只看正式版；不传则不限。",
+          },
+          {
+            name: "is_deprecated",
+            in: "query",
+            required: false,
+            schema: {
+              type: "boolean",
+            },
+            description: "只看已废弃 / 只看未废弃；不传则不限。",
+          },
+          {
+            name: "is_milestone",
+            in: "query",
+            required: false,
+            schema: {
+              type: "boolean",
+            },
+            description: "只看里程碑版本；不传则不限。",
+          },
+          {
+            name: "forced",
+            in: "query",
+            required: false,
+            schema: {
+              type: "boolean",
+            },
+            description: "只看强制更新版本；不传则不限。",
           },
         ],
         responses: {
@@ -2230,6 +2295,7 @@ export const openApiDocument: OpenApiDocument = {
       get: {
         tags: ["Announcements"],
         summary: "获取公告列表",
+        description: "分页返回项目下的公告（含已隐藏的），支持关键字搜索与平台、置顶、隐藏筛选。",
         security: [
           {
             BearerAuth: [],
@@ -2244,6 +2310,39 @@ export const openApiDocument: OpenApiDocument = {
           },
           {
             $ref: "#/components/parameters/Offset",
+          },
+          {
+            name: "search",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              maxLength: 128,
+            },
+            description: "关键字，不区分大小写地匹配 title、content 与 author。",
+            example: "维护",
+          },
+          {
+            $ref: "#/components/parameters/ListPlatform",
+          },
+          {
+            name: "is_pinned",
+            in: "query",
+            required: false,
+            schema: {
+              type: "boolean",
+            },
+            description: "只看置顶 / 只看非置顶；不传则不限。",
+          },
+          {
+            name: "is_hidden",
+            in: "query",
+            required: false,
+            schema: {
+              type: "boolean",
+            },
+            description:
+              "只看已隐藏 / 只看未隐藏；不传则不限。与反馈、日志的 include_hidden 不同： 公告的隐藏是发布流程的一部分（先建后放），后台默认就会列出隐藏的公告。",
           },
         ],
         responses: {
@@ -2618,7 +2717,7 @@ export const openApiDocument: OpenApiDocument = {
         tags: ["Feedbacks"],
         summary: "查询反馈列表",
         description:
-          "按项目分页查询反馈。默认不返回已隐藏的反馈，`include_hidden=true` 时一并返回。",
+          "按项目分页查询反馈，支持关键字搜索与平台、评分筛选。默认不返回已隐藏的反馈， `include_hidden=true` 时一并返回。",
         "x-verhub-doc": true,
         security: [
           {
@@ -2644,6 +2743,32 @@ export const openApiDocument: OpenApiDocument = {
               default: false,
             },
             description: "是否连已隐藏的反馈一起返回。",
+          },
+          {
+            name: "search",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              maxLength: 128,
+            },
+            description:
+              "关键字，不区分大小写地匹配 content、user_id、contact、ip、city、country_name、 region_name 与 platform_version；custom_data 为 JSON 列，不参与匹配。",
+            example: "user@example.com",
+          },
+          {
+            $ref: "#/components/parameters/ListPlatform",
+          },
+          {
+            name: "rating",
+            in: "query",
+            required: false,
+            schema: {
+              type: "integer",
+              minimum: 1,
+              maximum: 5,
+            },
+            description: "只看该评分的反馈；未评分的反馈不会命中任何评分值。",
           },
         ],
         responses: {
@@ -3206,6 +3331,20 @@ export const openApiDocument: OpenApiDocument = {
           {
             $ref: "#/components/parameters/Offset",
           },
+          {
+            name: "search",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              maxLength: 128,
+            },
+            description:
+              "关键字，不区分大小写地匹配 version、comparable_version、title 与 content。",
+          },
+          {
+            $ref: "#/components/parameters/ListPlatform",
+          },
         ],
         responses: {
           "200": {
@@ -3441,6 +3580,16 @@ export const openApiDocument: OpenApiDocument = {
               $ref: "#/components/schemas/Platform",
             },
             description: "平台过滤（仅返回该平台或全平台公告）",
+          },
+          {
+            name: "search",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              maxLength: 128,
+            },
+            description: "关键字，不区分大小写地匹配 title、content 与 author。",
           },
         ],
         responses: {
@@ -4132,7 +4281,8 @@ export const openApiDocument: OpenApiDocument = {
       get: {
         tags: ["Logs"],
         summary: "查询日志列表",
-        description: "按项目查询日志，支持级别与时间范围筛选。",
+        description:
+          "按项目查询日志，支持级别、平台、时间范围与关键字筛选。默认不返回已隐藏的日志， `include_hidden=true` 时一并返回。",
         "x-verhub-doc": true,
         security: [
           {
@@ -4157,6 +4307,31 @@ export const openApiDocument: OpenApiDocument = {
           },
           {
             $ref: "#/components/parameters/LogLevel",
+          },
+          {
+            $ref: "#/components/parameters/ListPlatform",
+          },
+          {
+            name: "search",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              maxLength: 128,
+            },
+            description:
+              "关键字，不区分大小写地匹配 content、ip、city、country_name、region_name 与 platform_version；device_info / custom_data 为 JSON 列，不参与匹配。",
+            example: "timeout",
+          },
+          {
+            name: "include_hidden",
+            in: "query",
+            required: false,
+            schema: {
+              type: "boolean",
+              default: false,
+            },
+            description: "是否连已隐藏的日志一起返回。",
           },
         ],
         responses: {
@@ -4214,6 +4389,65 @@ export const openApiDocument: OpenApiDocument = {
         responses: {
           "201": {
             description: "创建成功",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/LogItem",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/logs/{logId}": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          name: "logId",
+          in: "path",
+          required: true,
+          description: "日志记录主键 id",
+          schema: {
+            type: "string",
+          },
+        },
+      ],
+      patch: {
+        tags: ["Logs"],
+        summary: "更新日志可见性",
+        description:
+          "只开放 `is_hidden`。日志是排障凭证，内容、级别与来源一经写入不再可改； 隐藏只影响后台列表的默认返回，记录仍在，等级统计照常计入。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateLogDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            description: "更新成功",
             content: {
               "application/json": {
                 schema: {
@@ -4357,7 +4591,7 @@ export const openApiDocument: OpenApiDocument = {
       get: {
         tags: ["Actions"],
         summary: "查询行为定义",
-        description: "按项目获取行为定义列表。",
+        description: "按项目获取行为定义列表，支持按名称与描述搜索。",
         "x-verhub-doc": true,
         security: [
           {
@@ -4373,6 +4607,17 @@ export const openApiDocument: OpenApiDocument = {
           },
           {
             $ref: "#/components/parameters/Offset",
+          },
+          {
+            name: "search",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              maxLength: 128,
+            },
+            description: "关键字，不区分大小写地匹配 name 与 description。",
+            example: "打开设置",
           },
         ],
         responses: {
@@ -4899,6 +5144,28 @@ export const openApiDocument: OpenApiDocument = {
           maximum: 3,
         },
         description: "0=debug, 1=info, 2=warn, 3=error",
+      },
+      Search: {
+        name: "search",
+        in: "query",
+        required: false,
+        schema: {
+          type: "string",
+          maxLength: 128,
+        },
+        description:
+          "关键字，不区分大小写的子串匹配。命中字段由各接口说明给出；\n空串等同于不传。\n",
+        example: "timeout",
+      },
+      ListPlatform: {
+        name: "platform",
+        in: "query",
+        required: false,
+        schema: {
+          $ref: "#/components/schemas/Platform",
+        },
+        description:
+          "按平台筛选列表内容（不是客户端平台声明，与请求统计无关）。\n对版本与公告这类有发布范围的资源，未限定平台的记录对任何平台都可见。\n",
       },
     },
     responses: {
@@ -8377,6 +8644,11 @@ export const openApiDocument: OpenApiDocument = {
                 type: "string",
                 maxLength: 32,
               },
+              is_hidden: {
+                type: "boolean",
+                default: false,
+                description: "补录时即隐藏。客户端上报的日志一律可见。",
+              },
             },
           },
         ],
@@ -8387,6 +8659,19 @@ export const openApiDocument: OpenApiDocument = {
           platform_version: "11",
         },
       },
+      UpdateLogDto: {
+        type: "object",
+        description: "只开放可见性；日志的内容与来源写入后不可修改。",
+        properties: {
+          is_hidden: {
+            type: "boolean",
+            description: "隐藏后不在后台列表默认返回（需 `include_hidden=true`），等级统计仍计入。",
+          },
+        },
+        example: {
+          is_hidden: true,
+        },
+      },
       LogItem: {
         type: "object",
         required: [
@@ -8395,6 +8680,7 @@ export const openApiDocument: OpenApiDocument = {
           "content",
           "device_info",
           "custom_data",
+          "is_hidden",
           "ip",
           "user_agent",
           "country_code",
@@ -8439,6 +8725,10 @@ export const openApiDocument: OpenApiDocument = {
                 type: "null",
               },
             ],
+          },
+          is_hidden: {
+            type: "boolean",
+            description: "隐藏后后台列表默认不返回（需 `include_hidden=true`），等级统计仍计入。",
           },
           ip: {
             type: ["string", "null"],
@@ -8493,6 +8783,7 @@ export const openApiDocument: OpenApiDocument = {
           custom_data: {
             app_version: "1.2.0",
           },
+          is_hidden: false,
           ip: "203.0.113.9",
           user_agent: "verhub-sdk/1.0",
           country_code: "CN",

@@ -29,6 +29,8 @@ from .models import (
     LogStatistics,
     ProjectItem,
     ProjectAliasListResponse,
+    ProjectLocaleItem,
+    ProjectLocaleListResponse,
     ProjectListResponse,
     ProjectStatistics,
     VersionImportResult,
@@ -97,6 +99,7 @@ class AdminApi:
         optional_update_min_comparable_version: Any = UNSET,
         optional_update_max_comparable_version: Any = UNSET,
         stats_retention_days: Any = UNSET,
+        translations: Any = UNSET,
     ) -> ProjectItem:
         """
         创建项目。``project_key`` 是新项目的标识，省略则用客户端绑定的那个。
@@ -114,6 +117,8 @@ class AdminApi:
         :param optional_update_min_comparable_version: 可选更新范围下限
         :param optional_update_max_comparable_version: 可选更新范围上限
         :param stats_retention_days: 请求统计保留天数，1..365，默认 365
+        :param translations: 项目名称与描述的译文（ProjectTranslation 列表）。传了即整体
+            替换全部译文，空列表即清空；语言必须先在项目里注册，否则整个请求 400
         :return: 创建出的项目
         """
         return self._http.request(
@@ -138,6 +143,7 @@ class AdminApi:
                         optional_update_max_comparable_version
                     ),
                     "stats_retention_days": stats_retention_days,
+                    "translations": translations,
                 }
             ),
             auth=True,
@@ -170,6 +176,7 @@ class AdminApi:
         optional_update_min_comparable_version: Any = UNSET,
         optional_update_max_comparable_version: Any = UNSET,
         stats_retention_days: Any = UNSET,
+        translations: Any = UNSET,
     ) -> ProjectItem:
         """
         更新绑定的项目。
@@ -188,6 +195,7 @@ class AdminApi:
         :param optional_update_min_comparable_version: 可选更新范围下限
         :param optional_update_max_comparable_version: 可选更新范围上限
         :param stats_retention_days: 请求统计保留天数，1..365
+        :param translations: 项目译文。传了即整体替换全部译文，空列表即清空；不传则不动
         :return: 更新后的项目
         """
         return self._http.request(
@@ -213,6 +221,7 @@ class AdminApi:
                         optional_update_max_comparable_version
                     ),
                     "stats_retention_days": stats_retention_days,
+                    "translations": translations,
                 }
             ),
             auth=True,
@@ -255,6 +264,62 @@ class AdminApi:
             path_params={
                 "projectKey": self._http.require_project_key(),
                 "alias": alias,
+            },
+            auth=True,
+        )
+
+    def list_project_locales(self) -> ProjectLocaleListResponse:
+        """
+        列出绑定项目注册的语言。只有注册过的语言能存公告译文，也只有它们的偏好
+        会被公开接口认账——公开端收到未注册的语言偏好时返回公告的默认内容。
+
+        :return: 语言列表
+        """
+        return self._http.request(
+            "GET",
+            "/admin/projects/{projectKey}/locales",
+            path_params={"projectKey": self._http.require_project_key()},
+            auth=True,
+        )
+
+    def create_project_locale(
+        self,
+        *,
+        locale: str,
+        aliases: Any = UNSET,
+        label: Any = UNSET,
+    ) -> ProjectLocaleItem:
+        """
+        注册一个语言。已注册（主标签或同义标签命中，均忽略大小写）时只更新其余字段，
+        不会新建第二行。
+
+        :param locale: 语言标签，如 zh-CN / en-US
+        :param aliases: 同义标签列表，例如主标签 ``en`` 列出 ``en-US`` / ``en-GB``；
+            客户端提交其中任何一个都等价于命中主标签。与本项目其它语言相撞会 400
+        :param label: 后台展示名，如「简体中文」
+        :return: 注册后的语言
+        """
+        return self._http.request(
+            "POST",
+            "/admin/projects/{projectKey}/locales",
+            path_params={"projectKey": self._http.require_project_key()},
+            body=compact({"locale": locale, "aliases": aliases, "label": label}),
+            auth=True,
+        )
+
+    def delete_project_locale(self, locale: str) -> DeleteSuccessResponse:
+        """
+        注销一个语言。已录入的公告译文不会被删除，只是暂时不可达，重新注册即恢复。
+
+        :param locale: 要注销的语言标签，匹配大小写不敏感
+        :return: 删除结果
+        """
+        return self._http.request(
+            "DELETE",
+            "/admin/projects/{projectKey}/locales/{locale}",
+            path_params={
+                "projectKey": self._http.require_project_key(),
+                "locale": locale,
             },
             auth=True,
         )
@@ -570,6 +635,9 @@ class AdminApi:
         is_hidden: Any = UNSET,
         platforms: Any = UNSET,
         author: Any = UNSET,
+        min_comparable_version: Any = UNSET,
+        max_comparable_version: Any = UNSET,
+        translations: Any = UNSET,
         published_at: Any = UNSET,
     ) -> AnnouncementItem:
         """
@@ -579,6 +647,10 @@ class AdminApi:
         :param is_hidden: 是否隐藏，隐藏后公开接口取不到
         :param platforms: 投放平台，最多 8 个；留空表示全平台
         :param author: 作者
+        :param min_comparable_version: 可见版本范围下界（含），留空即该端不限
+        :param max_comparable_version: 可见版本范围上界（含），留空即该端不限
+        :param translations: 译文集合（AnnouncementTranslation 列表）。传了即整体替换
+            全部译文，空列表即清空；语言必须先在项目里注册，否则整个请求 400
         :param published_at: 发布时间（Unix 秒）
         :return: 创建出的公告
         """
@@ -594,6 +666,9 @@ class AdminApi:
                     "is_hidden": is_hidden,
                     "platforms": platforms,
                     "author": author,
+                    "min_comparable_version": min_comparable_version,
+                    "max_comparable_version": max_comparable_version,
+                    "translations": translations,
                     "published_at": published_at,
                 }
             ),
@@ -622,6 +697,9 @@ class AdminApi:
         is_hidden: Any = UNSET,
         platforms: Any = UNSET,
         author: Any = UNSET,
+        min_comparable_version: Any = UNSET,
+        max_comparable_version: Any = UNSET,
+        translations: Any = UNSET,
         published_at: Any = UNSET,
     ) -> AnnouncementItem:
         """
@@ -632,6 +710,9 @@ class AdminApi:
         :param is_hidden: 是否隐藏
         :param platforms: 投放平台，最多 8 个
         :param author: 作者
+        :param min_comparable_version: 可见版本范围下界（含）
+        :param max_comparable_version: 可见版本范围上界（含）
+        :param translations: 译文集合。传了即整体替换全部译文，空列表即清空；不传则不动
         :param published_at: 发布时间（Unix 秒）
         :return: 更新后的公告
         """
@@ -647,6 +728,9 @@ class AdminApi:
                     "is_hidden": is_hidden,
                     "platforms": platforms,
                     "author": author,
+                    "min_comparable_version": min_comparable_version,
+                    "max_comparable_version": max_comparable_version,
+                    "translations": translations,
                     "published_at": published_at,
                 }
             ),

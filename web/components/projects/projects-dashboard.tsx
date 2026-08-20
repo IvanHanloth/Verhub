@@ -45,15 +45,20 @@ import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { MarkdownEditor } from "@/components/markdown/markdown-editor"
 import { GithubIntegrationDialog } from "@/components/projects/github-integration-dialog"
 import { ProjectAliasesSettings } from "@/components/projects/project-aliases-settings"
+import { ProjectLocalesSettings } from "@/components/projects/project-locales-settings"
+import { SegmentedButton, SegmentedGroup } from "@/components/github/ui"
 import { validateComparableVersion } from "@/lib/comparable-version"
 import { formatTimestamp } from "@/lib/format"
 import {
   createProject,
   deleteProject,
+  listProjectLocales,
   listProjects,
   previewProjectFromGithubRepo,
   type ProjectItem,
+  type ProjectLocaleItem,
   type ProjectMutationInput,
+  type ProjectTranslation,
   updateProject,
 } from "@/lib/projects-api"
 
@@ -78,6 +83,8 @@ type FormState = {
   optional_update_min_comparable_version: string
   optional_update_max_comparable_version: string
   stats_retention_days: string
+  /** 按语言存的名称/描述草稿。两项都留空的语言不会提交。 */
+  translations: Record<string, { name: string; description: string }>
 }
 
 const emptyForm: FormState = {
@@ -94,6 +101,7 @@ const emptyForm: FormState = {
   optional_update_min_comparable_version: "",
   optional_update_max_comparable_version: "",
   stats_retention_days: String(DEFAULT_STATS_RETENTION_DAYS),
+  translations: {},
 }
 
 /** 链接列：显示地址本身并截断，完整地址进 title —— 域名和仓库名都在开头，够认。 */
@@ -180,7 +188,75 @@ function toMutationInput(
     optional_update_min_comparable_version: resolveOptionalField(optionalMin),
     optional_update_max_comparable_version: resolveOptionalField(optionalMax),
     stats_retention_days: toStatsRetentionDays(form.stats_retention_days),
+    // 只有编辑弹窗会填译文（新建时项目还不存在，必然没注册语言），
+    // 新建请求里它恒为空数组，与"没有译文"同义。
+    translations: toProjectTranslationList(form.translations),
   }
+}
+
+/** 名称与描述都留空的语言不算配过，不提交。 */
+function toProjectTranslationList(translations: FormState["translations"]): ProjectTranslation[] {
+  return Object.entries(translations)
+    .filter(([, value]) => value.name.trim() || value.description.trim())
+    .map(([locale, value]) => ({
+      locale,
+      name: value.name.trim() || null,
+      description: value.description.trim() || null,
+    }))
+}
+
+function toProjectFormTranslations(
+  translations: ProjectTranslation[] | undefined,
+): FormState["translations"] {
+  return Object.fromEntries(
+    (translations ?? []).map((item) => [
+      item.locale,
+      { name: item.name ?? "", description: item.description ?? "" },
+    ]),
+  )
+}
+
+/** 某个语言页的名称与描述。两项各自留空即沿用项目自身的值。 */
+function ProjectTranslationFields({
+  locale,
+  draft,
+  onChange,
+}: {
+  locale: string
+  draft: { name: string; description: string }
+  onChange: (patch: { name?: string; description?: string }) => void
+}) {
+  const inputClassName =
+    "w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+
+  return (
+    <>
+      <p className="text-xs text-slate-500 dark:text-slate-400">
+        两项各自留空即沿用项目自身的值；都留空就等于没为 {locale}{" "}
+        配过内容。其余字段只在默认内容页设置，对所有语言生效。
+      </p>
+
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">项目名称（{locale}）</span>
+        <input
+          type="text"
+          value={draft.name}
+          onChange={(event) => onChange({ name: event.target.value })}
+          className={inputClassName}
+          maxLength={128}
+        />
+      </label>
+
+      <MarkdownEditor
+        label={`项目描述（${locale}）`}
+        value={draft.description}
+        onChange={(value) => onChange({ description: value })}
+        rows={4}
+        className={inputClassName}
+        maxLength={1024}
+      />
+    </>
+  )
 }
 
 function ProjectFormFields({
@@ -405,6 +481,9 @@ export function ProjectsDashboard() {
   const [githubProjectRepoUrl, setGithubProjectRepoUrl] = React.useState<string | null>(null)
   const [editForm, setEditForm] = React.useState<FormState>(emptyForm)
   const [savingEdit, setSavingEdit] = React.useState(false)
+  // 编辑弹窗的语言页签：注册过的语言 + 当前停在哪一页（空串 = 默认内容页）。
+  const [locales, setLocales] = React.useState<ProjectLocaleItem[]>([])
+  const [editLocale, setEditLocale] = React.useState("")
   // 别名区块（ProjectAliasesSettings）有自己的即时保存，不算表单草稿，不纳入比较。
   const handleEditOpenChange = useUnsavedChangesGuard({
     open: editDialogOpen,
@@ -485,6 +564,14 @@ export function ProjectsDashboard() {
 
   function beginEdit(project: ProjectItem) {
     setEditingProjectKey(project.project_key)
+    setEditLocale("")
+    // 语言列表决定弹窗里出现哪些页签；拉不到就只显示默认内容页，不拦住编辑。
+    setLocales([])
+    if (token) {
+      void listProjectLocales(token, project.project_key)
+        .then((result) => setLocales(result.data))
+        .catch(() => setLocales([]))
+    }
     setEditForm({
       project_key: project.project_key,
       name: project.name,
@@ -501,6 +588,7 @@ export function ProjectsDashboard() {
       optional_update_min_comparable_version: project.optional_update_min_comparable_version ?? "",
       optional_update_max_comparable_version: project.optional_update_max_comparable_version ?? "",
       stats_retention_days: String(project.stats_retention_days ?? DEFAULT_STATS_RETENTION_DAYS),
+      translations: toProjectFormTranslations(project.translations),
     })
     setEditDialogOpen(true)
   }
@@ -522,6 +610,8 @@ export function ProjectsDashboard() {
       optional_update_min_comparable_version: project.optional_update_min_comparable_version ?? "",
       optional_update_max_comparable_version: project.optional_update_max_comparable_version ?? "",
       stats_retention_days: String(project.stats_retention_days ?? DEFAULT_STATS_RETENTION_DAYS),
+      // 译文绑在原项目的语言注册上，复制到新建表单没有意义。
+      translations: {},
     })
     setCreateDialogOpen(true)
     toast.success("已复制配置到表单，可直接创建新项目。")
@@ -977,20 +1067,72 @@ export function ProjectsDashboard() {
 
           <DialogBody>
             <div className="grid gap-3">
-              <ProjectFormFields
-                form={editForm}
-                setForm={setEditForm}
-                minComparableError={editMinComparableError}
-                maxComparableError={editMaxComparableError}
-                theme="light"
-              />
-              {/* GitHub 相关配置（App 功能 + Release Webhook）已整体移至
-                  行内「GitHub 集成」弹窗，编辑弹窗只保留项目自身信息。 */}
-              <ProjectAliasesSettings
-                key={`aliases-${editingProjectKey ?? "none"}`}
-                token={token}
-                projectKey={editingProjectKey}
-              />
+              {locales.length > 0 ? (
+                <SegmentedGroup role="tablist" className="flex w-full flex-wrap text-sm">
+                  <SegmentedButton
+                    role="tab"
+                    grow
+                    active={editLocale === ""}
+                    onClick={() => setEditLocale("")}
+                    label="默认内容"
+                  />
+                  {locales.map((item) => (
+                    <SegmentedButton
+                      key={item.locale}
+                      role="tab"
+                      grow
+                      active={editLocale === item.locale}
+                      onClick={() => setEditLocale(item.locale)}
+                      label={item.label ? `${item.label}（${item.locale}）` : item.locale}
+                    />
+                  ))}
+                </SegmentedGroup>
+              ) : null}
+
+              {editLocale ? (
+                <ProjectTranslationFields
+                  locale={editLocale}
+                  draft={editForm.translations[editLocale] ?? { name: "", description: "" }}
+                  onChange={(patch) =>
+                    setEditForm((prev) => {
+                      const previous = prev.translations[editLocale] ?? {
+                        name: "",
+                        description: "",
+                      }
+                      return {
+                        ...prev,
+                        translations: {
+                          ...prev.translations,
+                          [editLocale]: { ...previous, ...patch },
+                        },
+                      }
+                    })
+                  }
+                />
+              ) : (
+                <>
+                  <ProjectFormFields
+                    form={editForm}
+                    setForm={setEditForm}
+                    minComparableError={editMinComparableError}
+                    maxComparableError={editMaxComparableError}
+                    theme="light"
+                  />
+                  {/* GitHub 相关配置（App 功能 + Release Webhook）已整体移至
+                      行内「GitHub 集成」弹窗，编辑弹窗只保留项目自身信息。 */}
+                  <ProjectAliasesSettings
+                    key={`aliases-${editingProjectKey ?? "none"}`}
+                    token={token}
+                    projectKey={editingProjectKey}
+                  />
+                  <ProjectLocalesSettings
+                    key={`locales-${editingProjectKey ?? "none"}`}
+                    token={token}
+                    projectKey={editingProjectKey}
+                    onLocalesChange={setLocales}
+                  />
+                </>
+              )}
             </div>
           </DialogBody>
 

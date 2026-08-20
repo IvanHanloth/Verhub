@@ -23,6 +23,11 @@ function createPrismaMock() {
       create: jest.fn(),
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
+    projectLocale: {
+      findMany: jest.fn().mockResolvedValue([]),
+      upsert: jest.fn(),
+      delete: jest.fn(),
+    },
     $transaction: jest.fn(),
   }
 }
@@ -74,6 +79,8 @@ describe("ProjectsService", () => {
       optional_update_min_comparable_version: null,
       optional_update_max_comparable_version: null,
       aliases: [],
+      locale: null,
+      translations: [],
       created_at: 1767225600,
       updated_at: 1767312000,
     })
@@ -512,5 +519,271 @@ describe("ProjectsService", () => {
     await expect(service.removeAlias("new-key", "unknown")).rejects.toBeInstanceOf(
       NotFoundException,
     )
+  })
+
+  // ── 语言注册 ──
+
+  it("listLocales returns registered locales oldest first", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.projectLocale.findMany.mockResolvedValue([
+      { locale: "zh-CN", aliases: [], label: "简体中文", createdAt: 1000 },
+      { locale: "en-US", aliases: ["en", "en-GB"], label: null, createdAt: 2000 },
+    ])
+
+    const service = createService(prisma)
+    const result = await service.listLocales("proj")
+
+    expect(result.data).toEqual([
+      { locale: "zh-CN", aliases: [], label: "简体中文", created_at: 1000 },
+      { locale: "en-US", aliases: ["en", "en-GB"], label: null, created_at: 2000 },
+    ])
+  })
+
+  it("addLocale registers a new locale", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.projectLocale.upsert.mockResolvedValue({
+      locale: "en-US",
+      aliases: [],
+      label: "English",
+      createdAt: 1000,
+    })
+
+    const service = createService(prisma)
+    const result = await service.addLocale("proj", { locale: "en-US", label: "English" })
+
+    expect(prisma.projectLocale.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { projectKey_locale: { projectKey: "proj", locale: "en-US" } },
+      }),
+    )
+    expect(result.locale).toBe("en-US")
+  })
+
+  it("addLocale updates the existing row instead of creating a case variant", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.projectLocale.findMany.mockResolvedValue([{ locale: "en-US", aliases: [] }])
+    prisma.projectLocale.upsert.mockResolvedValue({
+      locale: "en-US",
+      aliases: [],
+      label: "英文",
+      createdAt: 1000,
+    })
+
+    const service = createService(prisma)
+    await service.addLocale("proj", { locale: "EN-us", label: "英文" })
+
+    // 认已注册的 en-US，而不是新建一行 EN-us —— 否则译文会分裂到两个语言下
+    expect(prisma.projectLocale.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { projectKey_locale: { projectKey: "proj", locale: "en-US" } },
+        update: { aliases: [], label: "英文" },
+      }),
+    )
+  })
+
+  it("removeLocale matches case-insensitively and leaves translations alone", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.projectLocale.findMany.mockResolvedValue([{ locale: "en-US", aliases: [] }])
+
+    const service = createService(prisma)
+    await service.removeLocale("proj", "en-us")
+
+    expect(prisma.projectLocale.delete).toHaveBeenCalledWith({
+      where: { projectKey_locale: { projectKey: "proj", locale: "en-US" } },
+    })
+  })
+
+  it("removeLocale throws when the locale is not registered", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.projectLocale.findMany.mockResolvedValue([])
+
+    const service = createService(prisma)
+    await expect(service.removeLocale("proj", "ja-JP")).rejects.toBeInstanceOf(NotFoundException)
+    expect(prisma.projectLocale.delete).not.toHaveBeenCalled()
+  })
+
+  // ── 同义标签 ──
+
+  it("addLocale stores aliases and drops the ones that repeat the canonical tag", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.projectLocale.upsert.mockResolvedValue({
+      locale: "en",
+      aliases: ["en-US", "en-GB"],
+      label: null,
+      createdAt: 1000,
+    })
+
+    const service = createService(prisma)
+    await service.addLocale("proj", { locale: "en", aliases: ["en-US", "EN", "en-GB", "en-us"] })
+
+    expect(prisma.projectLocale.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        // "EN" 是主标签自己，"en-us" 与 "en-US" 重复，都被丢掉
+        create: expect.objectContaining({ aliases: ["en-US", "en-GB"] }),
+      }),
+    )
+  })
+
+  it("addLocale rejects an alias already owned by another locale", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.projectLocale.findMany.mockResolvedValue([
+      { locale: "en", aliases: ["en-GB"] },
+      { locale: "zh-CN", aliases: [] },
+    ])
+
+    const service = createService(prisma)
+
+    await expect(
+      service.addLocale("proj", { locale: "fr", aliases: ["EN-gb"] }),
+    ).rejects.toBeInstanceOf(BadRequestException)
+    // 撞上别的语言的主标签同样不行
+    await expect(
+      service.addLocale("proj", { locale: "fr", aliases: ["zh-cn"] }),
+    ).rejects.toBeInstanceOf(BadRequestException)
+    expect(prisma.projectLocale.upsert).not.toHaveBeenCalled()
+  })
+
+  it("removeLocale matches an alias, not just the canonical tag", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.projectLocale.findMany.mockResolvedValue([{ locale: "en", aliases: ["en-US"] }])
+
+    const service = createService(prisma)
+    await service.removeLocale("proj", "en-us")
+
+    expect(prisma.projectLocale.delete).toHaveBeenCalledWith({
+      where: { projectKey_locale: { projectKey: "proj", locale: "en" } },
+    })
+  })
+
+  // ── 项目译文 ──
+
+  it("findOneByProjectKey overrides name and description per field", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({
+      projectKey: "proj",
+      name: "默认名称",
+      description: "默认描述",
+      repoUrl: null,
+      author: null,
+      authorHomepageUrl: null,
+      iconUrl: null,
+      websiteUrl: null,
+      publishedAt: null,
+      optionalUpdateMinComparableVersion: null,
+      optionalUpdateMaxComparableVersion: null,
+      createdAt: 1,
+      updatedAt: 1,
+      aliases: [],
+      // 只翻了描述，名称留空
+      translations: [{ locale: "en-US", name: null, description: "English description" }],
+    })
+    prisma.projectLocale.findMany.mockResolvedValue([{ locale: "en-US", aliases: [] }])
+
+    const service = createService(prisma)
+    const result = await service.findOneByProjectKey("proj", "en-US")
+
+    expect(result.name).toBe("默认名称")
+    expect(result.description).toBe("English description")
+    expect(result.locale).toBe("en-US")
+    // 公开端不带出全部译文
+    expect(result.translations).toBeUndefined()
+  })
+
+  it("findOneByProjectKey falls back when the locale is not registered", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({
+      projectKey: "proj",
+      name: "默认名称",
+      description: "默认描述",
+      repoUrl: null,
+      author: null,
+      authorHomepageUrl: null,
+      iconUrl: null,
+      websiteUrl: null,
+      publishedAt: null,
+      optionalUpdateMinComparableVersion: null,
+      optionalUpdateMaxComparableVersion: null,
+      createdAt: 1,
+      updatedAt: 1,
+      aliases: [],
+      translations: [{ locale: "en-US", name: "English", description: null }],
+    })
+    prisma.projectLocale.findMany.mockResolvedValue([{ locale: "en-US", aliases: [] }])
+
+    const service = createService(prisma)
+    const result = await service.findOneByProjectKey("proj", "ja-JP")
+
+    expect(result.name).toBe("默认名称")
+    expect(result.locale).toBeNull()
+  })
+
+  it("update replaces the whole translation set", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({
+      projectKey: "proj",
+      name: "Project",
+      optionalUpdateMinComparableVersion: null,
+      optionalUpdateMaxComparableVersion: null,
+    })
+    prisma.projectLocale.findMany.mockResolvedValue([{ locale: "en-US", aliases: [] }])
+    prisma.project.update.mockResolvedValue({
+      projectKey: "proj",
+      name: "Project",
+      description: null,
+      repoUrl: null,
+      author: null,
+      authorHomepageUrl: null,
+      iconUrl: null,
+      websiteUrl: null,
+      publishedAt: null,
+      optionalUpdateMinComparableVersion: null,
+      optionalUpdateMaxComparableVersion: null,
+      createdAt: 1,
+      updatedAt: 2,
+      aliases: [],
+      translations: [],
+    })
+
+    const service = createService(prisma)
+    await service.update("proj", {
+      translations: [{ locale: "en-US", name: "English", description: "  " }],
+    })
+
+    expect(prisma.project.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          translations: {
+            deleteMany: {},
+            // 全空白的描述归一成 null，回落到项目自身的值
+            create: [{ locale: "en-US", name: "English", description: null }],
+          },
+        }),
+      }),
+    )
+  })
+
+  it("update rejects a translation for an unregistered locale", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({
+      projectKey: "proj",
+      optionalUpdateMinComparableVersion: null,
+      optionalUpdateMaxComparableVersion: null,
+    })
+    prisma.projectLocale.findMany.mockResolvedValue([])
+
+    const service = createService(prisma)
+
+    await expect(
+      service.update("proj", { translations: [{ locale: "en-US", name: "English" }] }),
+    ).rejects.toBeInstanceOf(BadRequestException)
+    expect(prisma.project.update).not.toHaveBeenCalled()
   })
 })

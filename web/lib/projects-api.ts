@@ -17,6 +17,10 @@ export type ProjectItem = {
   stats_retention_days?: number
   /** 改名后保留的旧 Project Key（别名），均可访问到本项目。新到旧排序。 */
   aliases?: string[]
+  /** 本条 name / description 来自哪个语言的译文；null 表示项目自身的值。 */
+  locale?: string | null
+  /** 全部译文，仅管理接口返回。 */
+  translations?: ProjectTranslation[]
   created_at: number
   updated_at: number
 }
@@ -29,6 +33,22 @@ export type ListProjectsResponse = {
 export type ProjectAliasItem = {
   alias: string
   created_at: number
+}
+
+/** 项目注册的一个语言。只有注册过的语言能存译文，也只有它们的偏好被公开端认账。 */
+export type ProjectLocaleItem = {
+  locale: string
+  /** 同义标签：客户端提交其中任何一个都等价于命中主标签。 */
+  aliases: string[]
+  label: string | null
+  created_at: number
+}
+
+/** 某个语言下项目名称与描述的覆盖设置，字段留空即回落项目自身的值。 */
+export type ProjectTranslation = {
+  locale: string
+  name: string | null
+  description: string | null
 }
 
 export type ProjectMutationInput = {
@@ -45,6 +65,8 @@ export type ProjectMutationInput = {
   optional_update_min_comparable_version?: string | null
   optional_update_max_comparable_version?: string | null
   stats_retention_days?: number
+  /** 传了即整体替换全部译文，空数组即清空；不传则保持原样。 */
+  translations?: ProjectTranslation[]
 }
 
 export type GithubRepoProjectPreview = {
@@ -154,6 +176,40 @@ export async function deleteProjectAlias(
 ): Promise<{ success: true }> {
   return requestJson<{ success: true }>(
     `/admin/projects/${projectKey}/aliases/${encodeURIComponent(alias)}`,
+    { method: "DELETE", token },
+  )
+}
+
+export async function listProjectLocales(
+  token: string,
+  projectKey: string,
+  signal?: AbortSignal,
+): Promise<{ data: ProjectLocaleItem[] }> {
+  return requestJson<{ data: ProjectLocaleItem[] }>(`/admin/projects/${projectKey}/locales`, {
+    token,
+    signal,
+  })
+}
+
+export async function createProjectLocale(
+  token: string,
+  projectKey: string,
+  input: { locale: string; aliases?: string[]; label?: string },
+): Promise<ProjectLocaleItem> {
+  return requestJson<ProjectLocaleItem>(`/admin/projects/${projectKey}/locales`, {
+    method: "POST",
+    token,
+    body: input,
+  })
+}
+
+export async function deleteProjectLocale(
+  token: string,
+  projectKey: string,
+  locale: string,
+): Promise<{ success: true }> {
+  return requestJson<{ success: true }>(
+    `/admin/projects/${projectKey}/locales/${encodeURIComponent(locale)}`,
     { method: "DELETE", token },
   )
 }

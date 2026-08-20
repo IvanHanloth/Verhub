@@ -15,7 +15,11 @@ const PRE_RELEASE_WEIGHT: Record<PreReleaseTag, number> = {
   rc: 3,
 }
 
-const COMPARABLE_VERSION_PATTERN =
+/**
+ * 可比较版本号的格式。导出供 DTO 的 `@Matches` 复用——校验与解析必须是同一条规则，
+ * 否则会出现"校验放行、解析抛错"的组合。
+ */
+export const COMPARABLE_VERSION_PATTERN =
   /^(?<core>\d+(?:\.\d+)*)(?:-(?<tag>alpha|beta|rc)(?:\.(?<tail>\d+(?:\.\d+)*))?)?$/
 
 /**

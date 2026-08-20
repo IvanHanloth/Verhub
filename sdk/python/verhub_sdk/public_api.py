@@ -39,14 +39,18 @@ class PublicApi:
         """
         self._http = http
 
-    def get_project(self) -> ProjectItem:
+    def get_project(self, *, locale: Optional[str] = None) -> ProjectItem:
         """
+        :param locale: 语言偏好。命中项目注册的语言（主标签或同义标签，大小写不敏感）
+            且该语言译文填了对应字段时，``name`` / ``description`` 返回译文，
+            ``locale`` 标出实际语言；否则回落项目自身的值
         :return: 项目公开信息
         """
         return self._http.request(
             "GET",
             "/public/{projectKey}",
             path_params={"projectKey": self._http.require_project_key()},
+            query={"locale": locale},
         )
 
     def list_versions(
@@ -138,30 +142,50 @@ class PublicApi:
         limit: Optional[int] = None,
         offset: Optional[int] = None,
         platform: Optional[Platform] = None,
+        version: Optional[str] = None,
+        locale: Optional[str] = None,
     ) -> AnnouncementListResponse:
         """
         :param limit: 分页大小，1..100，默认 20
         :param offset: 分页偏移，默认 0
         :param platform: 只取投放到该平台的公告
+        :param version: 客户端当前版本号，用来筛掉不在可见版本范围内的公告。
+            **不传时，所有设了可见版本范围的公告都不会返回。**
+        :param locale: 语言偏好。命中项目注册的语言且该公告有译文时返回译文，
+            否则返回默认内容；返回项的 ``locale`` 字段标出实际语言（None 即默认内容）
         :return: 公告列表
         """
         return self._http.request(
             "GET",
             "/public/{projectKey}/announcements",
             path_params={"projectKey": self._http.require_project_key()},
-            query={"limit": limit, "offset": offset, "platform": platform},
+            query={
+                "limit": limit,
+                "offset": offset,
+                "platform": platform,
+                "version": version,
+                "locale": locale,
+            },
         )
 
-    def get_latest_announcement(self, *, platform: Optional[Platform] = None) -> AnnouncementItem:
+    def get_latest_announcement(
+        self,
+        *,
+        platform: Optional[Platform] = None,
+        version: Optional[str] = None,
+        locale: Optional[str] = None,
+    ) -> AnnouncementItem:
         """
         :param platform: 只取投放到该平台的公告
+        :param version: 客户端当前版本号；不传时设了可见版本范围的公告不会返回
+        :param locale: 语言偏好，未注册或无译文时回落到默认内容
         :return: 最新公告
         """
         return self._http.request(
             "GET",
             "/public/{projectKey}/announcements/latest",
             path_params={"projectKey": self._http.require_project_key()},
-            query={"platform": platform},
+            query={"platform": platform, "version": version, "locale": locale},
         )
 
     def get_feedback_options(self) -> PublicFeedbackOptions:

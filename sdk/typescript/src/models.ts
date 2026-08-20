@@ -49,6 +49,13 @@ export type ProjectItem = {
   stats_retention_days: number
   /** 改名后保留的旧 Project Key（别名），均可访问到本项目。新到旧排序。 */
   aliases: string[]
+  /**
+   * 本次返回的 name / description 实际来自哪个语言的译文；null 表示项目自身的值
+   * （没提语言偏好、语言未注册，或该语言的译文两个字段都留空）。
+   */
+  locale: string | null
+  /** 项目的全部译文，仅管理接口返回。 */
+  translations?: ProjectTranslation[]
   created_at: number
   updated_at: number
 }
@@ -73,6 +80,25 @@ export type VersionItem = {
   created_at: number
 }
 
+/**
+ * 某个语言下的覆盖设置，三个维度彼此独立：title 留空即用默认标题、content 留空即用
+ * 默认正文、is_hidden 为真则该语言下整条公告不返回。写入时三者至少要有一项有意义。
+ */
+export type AnnouncementTranslation = {
+  locale: string
+  title: string | null
+  content: string | null
+  is_hidden: boolean
+}
+
+/** 写入译文时用：三个覆盖项都可省略，但不能全省。 */
+export type AnnouncementTranslationInput = {
+  locale: string
+  title?: string | null
+  content?: string | null
+  is_hidden?: boolean
+}
+
 export type AnnouncementItem = {
   id: string
   title: string
@@ -81,6 +107,17 @@ export type AnnouncementItem = {
   is_hidden: boolean
   platforms: Platform[]
   author: string | null
+  /** 可见版本范围下界（含），null 表示该端不限。 */
+  min_comparable_version: string | null
+  /** 可见版本范围上界（含），null 表示该端不限。 */
+  max_comparable_version: string | null
+  /**
+   * 本次返回的 title / content 实际来自哪个语言的译文；null 表示默认内容
+   * （没提语言偏好、语言未注册，或该公告没有这个语言的译文）。
+   */
+  locale: string | null
+  /** 全部译文，仅管理接口返回。 */
+  translations?: AnnouncementTranslation[]
   published_at: number
   created_at: number
   updated_at: number
@@ -168,6 +205,48 @@ export type ProjectAliasItem = {
 
 export type ProjectAliasListResponse = {
   data: ProjectAliasItem[]
+}
+
+/** 项目注册的语言。只有注册过的语言能存译文，也只有它们的偏好被公开端认账。 */
+export type ProjectLocaleItem = {
+  locale: string
+  /**
+   * 同义标签：客户端提交其中任何一个都等价于命中主标签（多对一）。
+   * 只认显式列出的，不做 `en-*` 前缀自动回退。
+   */
+  aliases: string[]
+  label: string | null
+  created_at: number
+}
+
+/** 某个语言下项目名称与描述的覆盖设置，字段留空即回落项目自身的值。 */
+export type ProjectTranslation = {
+  locale: string
+  name: string | null
+  description: string | null
+}
+
+/** 写入项目译文时用：两个覆盖项都可省略，但不能全省。 */
+export type ProjectTranslationInput = {
+  locale: string
+  name?: string | null
+  description?: string | null
+}
+
+export type ProjectLocaleListResponse = {
+  data: ProjectLocaleItem[]
+}
+
+export type CreateProjectLocaleInput = {
+  /** 如 zh-CN / en-US。已注册（主标签或同义标签命中，均忽略大小写）时只更新其余字段。 */
+  locale: string
+  /**
+   * 同义标签，例如主标签 `en` 列出 `en-US` / `en-GB`。
+   * 与本项目其它语言的主标签或同义标签相撞会 400。
+   */
+  aliases?: string[]
+  /** 后台展示名，如「简体中文」。 */
+  label?: string
 }
 export type VersionListResponse = ListResponse<VersionItem>
 export type AnnouncementListResponse = ListResponse<AnnouncementItem>
@@ -401,6 +480,23 @@ export type CheckUpdateOptions = {
 export type ListAnnouncementsOptions = PageOptions & {
   /** 只取投放到该平台的公告。 */
   platform?: Platform
+  /**
+   * 客户端当前版本号，用来筛掉不在可见版本范围内的公告。
+   * **不传时，所有设了可见版本范围的公告都不会返回。**
+   */
+  version?: string
+  /**
+   * 语言偏好。命中项目注册的语言且该公告有译文时返回译文，否则返回默认内容。
+   * 返回项的 `locale` 字段标出实际语言（null 即默认内容）。
+   */
+  locale?: string
+}
+
+/** 最新公告接口的筛选项，与列表接口同义。 */
+export type LatestAnnouncementOptions = {
+  platform?: Platform
+  version?: string
+  locale?: string
 }
 
 export type ListFeedbacksOptions = PageOptions & {
@@ -475,6 +571,11 @@ export type CreateProjectInput = {
   optional_update_max_comparable_version?: string
   /** 请求统计保留天数，1..365，默认 365。 */
   stats_retention_days?: number
+  /**
+   * 项目名称与描述的译文。传了就整体替换全部译文，空数组即清空；不传则不动。
+   * 语言必须先在项目里注册（同义标签同样算命中），否则整个请求 400。
+   */
+  translations?: ProjectTranslationInput[]
 }
 
 export type UpdateProjectInput = Partial<CreateProjectInput>
@@ -514,6 +615,15 @@ export type CreateAnnouncementInput = {
   /** 投放平台，最多 8 个；留空表示全平台。 */
   platforms?: Platform[]
   author?: string
+  /** 可见版本范围下界（含）。留空即该端不限。 */
+  min_comparable_version?: string | null
+  /** 可见版本范围上界（含）。留空即该端不限。 */
+  max_comparable_version?: string | null
+  /**
+   * 译文集合。传了就整体替换该公告的全部译文，空数组即清空；不传则不动。
+   * 语言必须先在项目里注册，否则整个请求 400。
+   */
+  translations?: AnnouncementTranslationInput[]
   published_at?: number
 }
 

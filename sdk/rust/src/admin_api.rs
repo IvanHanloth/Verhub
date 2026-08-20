@@ -34,7 +34,10 @@ impl AdminApi<'_> {
         let mut body = serde_json::to_value(input).map_err(Error::Decode)?;
         if let Value::Object(map) = &mut body {
             if !map.contains_key("project_key") {
-                map.insert("project_key".into(), json!(self.inner.require_project_key()?));
+                map.insert(
+                    "project_key".into(),
+                    json!(self.inner.require_project_key()?),
+                );
             }
         }
         self.inner
@@ -105,7 +108,63 @@ impl AdminApi<'_> {
         self.inner
             .request::<_, ()>(
                 Method::DELETE,
-                &format!("/admin/projects/{}/aliases/{}", segment(&key), segment(alias)),
+                &format!(
+                    "/admin/projects/{}/aliases/{}",
+                    segment(&key),
+                    segment(alias)
+                ),
+                &[],
+                None,
+                true,
+            )
+            .await
+    }
+
+    /// 列出绑定项目注册的语言。只有注册过的语言能存译文，也只有它们的偏好
+    /// 会被公开接口认账——公开端收到未注册的语言偏好时返回默认内容。
+    pub async fn list_project_locales(&self) -> Result<ProjectLocaleListResponse> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request::<_, ()>(
+                Method::GET,
+                &format!("/admin/projects/{}/locales", segment(&key)),
+                &[],
+                None,
+                true,
+            )
+            .await
+    }
+
+    /// 注册一个语言。已注册（主标签或同义标签命中，均忽略大小写）时只更新其余字段，
+    /// 不会新建第二行。同义标签让多个写法指向同一份译文（主标签 `en` 列出
+    /// `en-US` / `en-GB`），与本项目其它语言相撞会 400。
+    pub async fn create_project_locale(
+        &self,
+        input: &CreateProjectLocaleInput,
+    ) -> Result<ProjectLocaleItem> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request(
+                Method::POST,
+                &format!("/admin/projects/{}/locales", segment(&key)),
+                &[],
+                Some(input),
+                true,
+            )
+            .await
+    }
+
+    /// 注销一个语言。已录入的译文不会被删除，只是暂时不可达，重新注册即恢复。
+    pub async fn delete_project_locale(&self, locale: &str) -> Result<DeleteSuccessResponse> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request::<_, ()>(
+                Method::DELETE,
+                &format!(
+                    "/admin/projects/{}/locales/{}",
+                    segment(&key),
+                    segment(locale)
+                ),
                 &[],
                 None,
                 true,
@@ -568,10 +627,19 @@ impl AdminApi<'_> {
     pub async fn create_action(&self, input: &CreateActionInput) -> Result<ActionItem> {
         let mut body = serde_json::to_value(input).map_err(Error::Decode)?;
         if let Value::Object(map) = &mut body {
-            map.insert("project_key".into(), json!(self.inner.require_project_key()?));
+            map.insert(
+                "project_key".into(),
+                json!(self.inner.require_project_key()?),
+            );
         }
         self.inner
-            .request(Method::POST, "/admin/projects/actions", &[], Some(&body), true)
+            .request(
+                Method::POST,
+                "/admin/projects/actions",
+                &[],
+                Some(&body),
+                true,
+            )
             .await
     }
 
@@ -694,7 +762,10 @@ impl AdminApi<'_> {
         self.inner
             .request::<_, ()>(
                 Method::POST,
-                &format!("/admin/projects/{}/github-webhook/regenerate", segment(&key)),
+                &format!(
+                    "/admin/projects/{}/github-webhook/regenerate",
+                    segment(&key)
+                ),
                 &[],
                 None,
                 true,

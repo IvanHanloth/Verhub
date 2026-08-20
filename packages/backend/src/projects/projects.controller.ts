@@ -4,6 +4,7 @@ import { AdminOrApiKeyGuard } from "../auth/guards/admin-or-api-key.guard"
 import { RequireApiScope } from "../auth/guards/api-scope.decorator"
 
 import { CreateProjectDto } from "./dto/create-project.dto"
+import { CreateProjectLocaleDto } from "./dto/create-project-locale.dto"
 import { PreviewGithubRepoDto } from "./dto/preview-github-repo.dto"
 import { QueryProjectsDto } from "./dto/query-projects.dto"
 import { UpdateProjectDto } from "./dto/update-project.dto"
@@ -48,6 +49,27 @@ export class ProjectsController {
   @RequireApiScope("projects:write")
   async removeAlias(@Param("projectKey") projectKey: string, @Param("alias") alias: string) {
     await this.projectsService.removeAlias(projectKey, alias)
+    return {
+      success: true,
+    }
+  }
+
+  @Get(":projectKey/locales")
+  @RequireApiScope("projects:read")
+  async listLocales(@Param("projectKey") projectKey: string) {
+    return this.projectsService.listLocales(projectKey)
+  }
+
+  @Post(":projectKey/locales")
+  @RequireApiScope("projects:write")
+  async addLocale(@Param("projectKey") projectKey: string, @Body() dto: CreateProjectLocaleDto) {
+    return this.projectsService.addLocale(projectKey, dto)
+  }
+
+  @Delete(":projectKey/locales/:locale")
+  @RequireApiScope("projects:write")
+  async removeLocale(@Param("projectKey") projectKey: string, @Param("locale") locale: string) {
+    await this.projectsService.removeLocale(projectKey, locale)
     return {
       success: true,
     }

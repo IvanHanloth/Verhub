@@ -9,6 +9,7 @@ import type {
   CreateActionRecordInput,
   CreateFeedbackInput,
   FeedbackItem,
+  LatestAnnouncementOptions,
   ListAnnouncementsOptions,
   LogItem,
   PageOptions,
@@ -32,9 +33,14 @@ export class PublicApi {
    */
   constructor(private readonly http: HttpClient) {}
 
-  getProject(): Promise<ProjectItem> {
+  /**
+   * @param options 语言偏好。命中项目注册的语言且该语言译文填了对应字段时，
+   *   `name` / `description` 返回译文，`locale` 标出实际语言；否则回落项目自身的值。
+   */
+  getProject(options: { locale?: string } = {}): Promise<ProjectItem> {
     return this.http.request("GET", "/public/{projectKey}", {
       pathParams: { projectKey: this.http.requireProjectKey() },
+      query: { locale: options.locale },
     })
   }
 
@@ -94,17 +100,27 @@ export class PublicApi {
   listAnnouncements(options: ListAnnouncementsOptions = {}): Promise<AnnouncementListResponse> {
     return this.http.request("GET", "/public/{projectKey}/announcements", {
       pathParams: { projectKey: this.http.requireProjectKey() },
-      query: { limit: options.limit, offset: options.offset, platform: options.platform },
+      query: {
+        limit: options.limit,
+        offset: options.offset,
+        platform: options.platform,
+        version: options.version,
+        locale: options.locale,
+      },
     })
   }
 
   /**
-   * @param options 平台筛选
+   * @param options 平台、客户端版本号与语言偏好
    */
-  getLatestAnnouncement(options: { platform?: Platform } = {}): Promise<AnnouncementItem> {
+  getLatestAnnouncement(options: LatestAnnouncementOptions = {}): Promise<AnnouncementItem> {
     return this.http.request("GET", "/public/{projectKey}/announcements/latest", {
       pathParams: { projectKey: this.http.requireProjectKey() },
-      query: { platform: options.platform },
+      query: {
+        platform: options.platform,
+        version: options.version,
+        locale: options.locale,
+      },
     })
   }
 

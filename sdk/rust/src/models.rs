@@ -130,6 +130,12 @@ pub struct ProjectItem {
     /// 改名后保留的旧 Project Key（别名），均可访问到本项目。新到旧排序。
     #[serde(default)]
     pub aliases: Vec<String>,
+    /// 本次返回的 name / description 实际来自哪个语言的译文；None 表示项目自身的值。
+    #[serde(default)]
+    pub locale: Option<String>,
+    /// 项目的全部译文，仅管理接口返回。
+    #[serde(default)]
+    pub translations: Option<Vec<ProjectTranslation>>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -167,9 +173,36 @@ pub struct AnnouncementItem {
     #[serde(default)]
     pub platforms: Vec<Platform>,
     pub author: Option<String>,
+    /// 可见版本范围下界（含），None 表示该端不限。
+    #[serde(default)]
+    pub min_comparable_version: Option<String>,
+    /// 可见版本范围上界（含），None 表示该端不限。
+    #[serde(default)]
+    pub max_comparable_version: Option<String>,
+    /// 本次返回的 title / content 实际来自哪个语言的译文；None 表示默认内容
+    /// （没提语言偏好、语言未注册，或该公告没有这个语言的译文）。
+    #[serde(default)]
+    pub locale: Option<String>,
+    /// 全部译文，仅管理接口返回；公开接口不带这个字段。
+    #[serde(default)]
+    pub translations: Option<Vec<AnnouncementTranslation>>,
     pub published_at: i64,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+/// 某个语言下的覆盖设置，三个维度彼此独立：title 留空即用默认标题、
+/// content 留空即用默认正文、is_hidden 为真则该语言下整条公告不返回。
+/// 写入时三者至少要有一项有意义。
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct AnnouncementTranslation {
+    pub locale: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub is_hidden: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -264,6 +297,34 @@ pub struct ProjectAliasItem {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProjectAliasListResponse {
     pub data: Vec<ProjectAliasItem>,
+}
+
+/// 项目注册的语言。只有注册过的语言能存译文，也只有它们的偏好被公开端认账。
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProjectLocaleItem {
+    pub locale: String,
+    /// 同义标签：客户端提交其中任何一个都等价于命中主标签（多对一）。
+    /// 只认显式列出的，不做 `en-*` 前缀自动回退。
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    pub label: Option<String>,
+    pub created_at: i64,
+}
+
+/// 某个语言下项目名称与描述的覆盖设置，字段留空即回落项目自身的值。
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ProjectTranslation {
+    pub locale: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// 语言列表响应，仅含 `data`（无分页 total）。
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProjectLocaleListResponse {
+    pub data: Vec<ProjectLocaleItem>,
 }
 
 pub type VersionListResponse = ListResponse<VersionItem>;
@@ -553,13 +614,27 @@ pub struct PageOptions {
     pub offset: Option<u32>,
 }
 
-/// 公告列表的分页与平台筛选。
+/// 公告列表的分页、平台、版本与语言筛选。
 #[derive(Debug, Clone, Default)]
 pub struct ListAnnouncementsOptions {
     pub limit: Option<u32>,
     pub offset: Option<u32>,
     /// 只取投放到该平台的公告。
     pub platform: Option<Platform>,
+    /// 客户端当前版本号，用来筛掉不在可见版本范围内的公告。
+    /// **不传时，所有设了可见版本范围的公告都不会返回。**
+    pub version: Option<String>,
+    /// 语言偏好。命中项目注册的语言且该公告有译文时返回译文，否则返回默认内容；
+    /// 返回项的 `locale` 字段标出实际语言（None 即默认内容）。
+    pub locale: Option<String>,
+}
+
+/// 最新公告的筛选项，与列表接口同义。
+#[derive(Debug, Clone, Default)]
+pub struct LatestAnnouncementOptions {
+    pub platform: Option<Platform>,
+    pub version: Option<String>,
+    pub locale: Option<String>,
 }
 
 /// 反馈列表的分页与隐藏项开关。
@@ -719,6 +794,10 @@ pub struct CreateProjectInput {
     /// 请求统计保留天数，1..=365，默认 365。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stats_retention_days: Option<u32>,
+    /// 项目名称与描述的译文。传了就整体替换全部译文，空数组即清空；不传则不动。
+    /// 语言必须先在项目里注册（同义标签同样算命中），否则整个请求 400。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub translations: Option<Vec<ProjectTranslation>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -750,6 +829,9 @@ pub struct UpdateProjectInput {
     pub optional_update_max_comparable_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stats_retention_days: Option<u32>,
+    /// 传了即整体替换全部译文，空数组即清空；不传则保持原样。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub translations: Option<Vec<ProjectTranslation>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -865,6 +947,16 @@ pub struct CreateAnnouncementInput {
     pub platforms: Option<Vec<Platform>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
+    /// 可见版本范围下界（含）。留空即该端不限。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_comparable_version: Option<String>,
+    /// 可见版本范围上界（含）。留空即该端不限。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_comparable_version: Option<String>,
+    /// 译文集合。传了就整体替换该公告的全部译文，空数组即清空；不传则不动。
+    /// 语言必须先在项目里注册，否则整个请求 400。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub translations: Option<Vec<AnnouncementTranslation>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub published_at: Option<i64>,
 }
@@ -884,7 +976,28 @@ pub struct UpdateAnnouncementInput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub author: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_comparable_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_comparable_version: Option<String>,
+    /// 传了即整体替换全部译文，空数组即清空；不传则保持原样。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub translations: Option<Vec<AnnouncementTranslation>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub published_at: Option<i64>,
+}
+
+/// 注册项目语言。已注册（主标签或同义标签命中，均忽略大小写）时只更新其余字段。
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CreateProjectLocaleInput {
+    /// 如 zh-CN / en-US。
+    pub locale: String,
+    /// 同义标签，例如主标签 `en` 列出 `en-US` / `en-GB`。
+    /// 与本项目其它语言的主标签或同义标签相撞会 400。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aliases: Option<Vec<String>>,
+    /// 后台展示名，如「简体中文」。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
 }
 
 /// 行为定义在绑定项目下创建，`project_key` 由客户端注入，不在此结构里。

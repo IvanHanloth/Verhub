@@ -1,5 +1,7 @@
-import { Transform } from "class-transformer"
+import { Transform, Type } from "class-transformer"
 import {
+  ArrayMaxSize,
+  IsArray,
   IsInt,
   IsOptional,
   IsString,
@@ -9,8 +11,10 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from "class-validator"
 
+import { LOCALE_PATTERN, MAX_LOCALE_LENGTH, NormalizeLocale } from "../../common/locale"
 import {
   MAX_STATS_RETENTION_DAYS,
   MIN_STATS_RETENTION_DAYS,
@@ -18,6 +22,29 @@ import {
 
 const COMPARABLE_VERSION_PATTERN =
   /^(?<core>\d+(?:\.\d+)*)(?:-(?<tag>alpha|beta|rc)(?:\.(?<tail>\d+(?:\.\d+)*))?)?$/
+
+/**
+ * 一份项目译文，本质是「某个语言下的覆盖设置」：名称与描述各自留空即回落项目
+ * 自身的值。两者全空会被拒——存下来只会让人以为配过什么。
+ */
+export class ProjectTranslationDto {
+  /** 必须是该项目已注册的语言（同义标签同样算命中），否则整个请求 400。 */
+  @NormalizeLocale()
+  @IsString()
+  @MaxLength(MAX_LOCALE_LENGTH)
+  @Matches(LOCALE_PATTERN, { message: "locale format is invalid" })
+  locale!: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  name?: string | null
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1024)
+  description?: string | null
+}
 
 /**
  * Transform that normalizes empty / whitespace-only strings to `null`.
@@ -108,4 +135,15 @@ export class CreateProjectDto {
     message: "optional_update_max_comparable_version format is invalid",
   })
   optional_update_max_comparable_version?: string | null
+
+  /**
+   * 项目名称与描述的译文。传了就整体替换全部译文，空数组即清空；不传则不动。
+   * 语言必须先在项目里注册（同义标签同样算命中），否则整个请求 400。
+   */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ProjectTranslationDto)
+  @ArrayMaxSize(32)
+  translations?: ProjectTranslationDto[]
 }

@@ -10,12 +10,30 @@ import { Prisma } from "@prisma/client"
 import { PrismaService } from "../database/prisma.service"
 import { ProjectResolverService } from "../database/project-resolver.service"
 import { isUniqueViolation, normalizeProjectKey, nowSeconds } from "../common/utils"
+import { localeKey, matchRegisteredLocale } from "../common/locale"
 import { searchContains } from "../common/query-filters"
 import { parseGithubRepository } from "../versions/github-release.service"
-import { CreateProjectDto } from "./dto/create-project.dto"
+import { CreateProjectDto, ProjectTranslationDto } from "./dto/create-project.dto"
+import { CreateProjectLocaleDto } from "./dto/create-project-locale.dto"
 import { QueryProjectsDto } from "./dto/query-projects.dto"
 import { UpdateProjectDto } from "./dto/update-project.dto"
 import { compareComparableVersions, parseComparableVersion } from "../versions/version-comparator"
+
+/** 项目注册的一个语言。`label` 为空时界面直接显示 `locale`。 */
+type ProjectLocaleItem = {
+  locale: string
+  /** 同义标签：命中其中任何一个都等价于命中主标签。 */
+  aliases: string[]
+  label: string | null
+  created_at: number
+}
+
+/** 项目名称与描述的译文。字段留空即回落项目自身的值。 */
+type ProjectTranslationItem = {
+  locale: string
+  name: string | null
+  description: string | null
+}
 
 type ProjectItem = {
   id: string
@@ -34,13 +52,21 @@ type ProjectItem = {
   stats_retention_days: number
   /// 该项目改名后保留的旧 Project Key，均可作为别名访问到本项目。新到旧排序。
   aliases: string[]
+  /**
+   * 本次返回的 name / description 实际来自哪个语言的译文；null 表示项目自身的值
+   * （没提语言偏好、语言未注册，或该语言的译文两个字段都留空）。
+   */
+  locale: string | null
+  /** 全部译文，仅管理接口返回。 */
+  translations?: ProjectTranslationItem[]
   created_at: number
   updated_at: number
 }
 
-/// 查项目时一并带出别名，供 toProjectItem 填充 aliases 字段。
+/// 查项目时一并带出别名与译文，供 toProjectItem 填充对应字段。
 const PROJECT_WITH_ALIASES = {
   aliases: { select: { alias: true }, orderBy: { createdAt: "desc" } },
+  translations: true,
 } as const satisfies Prisma.ProjectInclude
 
 type ProjectListResponse = {
@@ -105,7 +131,7 @@ export class ProjectsService {
 
     return {
       total,
-      data: data.map((project) => this.toProjectItem(project)),
+      data: data.map((project) => this.toProjectItem(project, { includeTranslations: true })),
     }
   }
 
@@ -118,18 +144,26 @@ export class ProjectsService {
       throw new NotFoundException("Project not found")
     }
 
-    return this.toProjectItem(project)
+    return this.toProjectItem(project, { includeTranslations: true })
   }
 
-  async findOneByProjectKey(projectKey: string): Promise<ProjectItem> {
+  async findOneByProjectKey(projectKey: string, locale?: string): Promise<ProjectItem> {
     // 公共详情：旧 key（别名）经解析后仍返回当前项目，客户端无需感知改名。
     const canonicalKey = await this.projectResolver.resolveCanonicalKeyOrThrow(projectKey)
-    const project = await this.prisma.project.findUniqueOrThrow({
-      where: { projectKey: canonicalKey },
-      include: PROJECT_WITH_ALIASES,
-    })
+    const [project, registered] = await Promise.all([
+      this.prisma.project.findUniqueOrThrow({
+        where: { projectKey: canonicalKey },
+        include: PROJECT_WITH_ALIASES,
+      }),
+      locale?.trim()
+        ? this.prisma.projectLocale.findMany({
+            where: { projectKey: canonicalKey },
+            select: { locale: true, aliases: true },
+          })
+        : Promise.resolve([]),
+    ])
 
-    return this.toProjectItem(project)
+    return this.toProjectItem(project, { locale: matchRegisteredLocale(registered, locale) })
   }
 
   async create(dto: CreateProjectDto): Promise<ProjectItem> {
@@ -163,7 +197,7 @@ export class ProjectsService {
         include: PROJECT_WITH_ALIASES,
       })
 
-      return this.toProjectItem(project)
+      return this.toProjectItem(project, { includeTranslations: true })
     } catch (error: unknown) {
       if (isUniqueViolation(error)) {
         throw new ConflictException("project_key already exists")
@@ -220,6 +254,13 @@ export class ProjectsService {
       updatedAt: nowSeconds(),
     }
 
+    // 传了就整体替换：逐条 upsert 没法表达「删掉某个语言」，与「表单里那几个语言
+    // 页签就是全部」的编辑心智也一致。不传则原样保留。
+    const translations = await this.resolveProjectTranslations(project.projectKey, dto.translations)
+    if (translations) {
+      data.translations = { deleteMany: {}, create: translations }
+    }
+
     try {
       if (!isRename) {
         const updated = await this.prisma.project.update({
@@ -227,7 +268,7 @@ export class ProjectsService {
           data,
           include: PROJECT_WITH_ALIASES,
         })
-        return this.toProjectItem(updated)
+        return this.toProjectItem(updated, { includeTranslations: true })
       }
 
       // 改名保留旧 key：三步须原子完成。
@@ -249,7 +290,7 @@ export class ProjectsService {
         })
       })
 
-      return this.toProjectItem(updated)
+      return this.toProjectItem(updated, { includeTranslations: true })
     } catch (error: unknown) {
       if (isUniqueViolation(error)) {
         throw new ConflictException("project_key already exists")
@@ -290,6 +331,171 @@ export class ProjectsService {
     if (result.count === 0) {
       throw new NotFoundException("Alias not found")
     }
+  }
+
+  /** 列出项目注册的语言，先注册的在前——注册顺序通常就是运营者心里的优先级。 */
+  async listLocales(id: string): Promise<{ data: ProjectLocaleItem[] }> {
+    const canonicalKey = await this.projectResolver.resolveCanonicalKeyOrThrow(id)
+    const locales = await this.prisma.projectLocale.findMany({
+      where: { projectKey: canonicalKey },
+      orderBy: { createdAt: "asc" },
+      select: { locale: true, aliases: true, label: true, createdAt: true },
+    })
+
+    return {
+      data: locales.map((item) => ({
+        locale: item.locale,
+        aliases: item.aliases,
+        label: item.label,
+        created_at: item.createdAt,
+      })),
+    }
+  }
+
+  /**
+   * 注册一个语言。已注册（主标签或同义标签命中，均忽略大小写）则更新它的同义标签与
+   * 展示名，不新建第二行——同一语言存成 `zh-CN` 和 `zh-cn` 两份，译文就会分裂。
+   */
+  async addLocale(id: string, dto: CreateProjectLocaleDto): Promise<ProjectLocaleItem> {
+    const canonicalKey = await this.projectResolver.resolveCanonicalKeyOrThrow(id)
+
+    const existing = await this.prisma.projectLocale.findMany({
+      where: { projectKey: canonicalKey },
+      select: { locale: true, aliases: true },
+    })
+    const canonical = matchRegisteredLocale(existing, dto.locale) ?? dto.locale
+    const aliases = this.normalizeLocaleAliases(existing, canonical, dto.aliases)
+
+    const saved = await this.prisma.projectLocale.upsert({
+      where: { projectKey_locale: { projectKey: canonicalKey, locale: canonical } },
+      create: {
+        projectKey: canonicalKey,
+        locale: canonical,
+        aliases,
+        label: dto.label ?? null,
+      },
+      update: { aliases, label: dto.label ?? null },
+      select: { locale: true, aliases: true, label: true, createdAt: true },
+    })
+
+    return {
+      locale: saved.locale,
+      aliases: saved.aliases,
+      label: saved.label,
+      created_at: saved.createdAt,
+    }
+  }
+
+  /**
+   * 同义标签去重并校验：不能与自己的主标签重复（冗余），也不能撞上本项目**其它**
+   * 语言的主标签或同义标签——撞了就说不清客户端传这个标签时该命中谁。
+   */
+  private normalizeLocaleAliases(
+    existing: { locale: string; aliases: string[] }[],
+    canonical: string,
+    aliases: string[] | undefined,
+  ): string[] {
+    if (!aliases?.length) {
+      return []
+    }
+
+    const canonicalKeyValue = localeKey(canonical)
+    const others = existing.filter((item) => localeKey(item.locale) !== canonicalKeyValue)
+    const taken = new Map<string, string>()
+    for (const item of others) {
+      taken.set(localeKey(item.locale), item.locale)
+      for (const alias of item.aliases) {
+        taken.set(localeKey(alias), item.locale)
+      }
+    }
+
+    const seen = new Set<string>()
+    const result: string[] = []
+    for (const raw of aliases) {
+      const alias = raw.trim()
+      const key = localeKey(alias)
+      if (!alias || key === canonicalKeyValue || seen.has(key)) {
+        continue
+      }
+
+      const owner = taken.get(key)
+      if (owner) {
+        throw new BadRequestException(
+          `Alias "${alias}" is already used by locale "${owner}" in this project.`,
+        )
+      }
+
+      seen.add(key)
+      result.push(alias)
+    }
+
+    return result
+  }
+
+  /**
+   * 注销一个语言。**不删已有译文**：译文留在库里，只是因为语言未注册而暂时
+   * 不可达（公开端会回落到默认内容），重新注册即恢复。误删语言不该连带丢内容。
+   */
+  async removeLocale(id: string, locale: string): Promise<void> {
+    const canonicalKey = await this.projectResolver.resolveCanonicalKeyOrThrow(id)
+    const existing = await this.prisma.projectLocale.findMany({
+      where: { projectKey: canonicalKey },
+      select: { locale: true, aliases: true },
+    })
+
+    const canonical = matchRegisteredLocale(existing, locale)
+    if (!canonical) {
+      throw new NotFoundException("Locale not found")
+    }
+
+    await this.prisma.projectLocale.delete({
+      where: { projectKey_locale: { projectKey: canonicalKey, locale: canonical } },
+    })
+  }
+
+  /**
+   * 校验并归一化提交的项目译文。返回 undefined 表示"这次不动译文"。
+   * 规则与公告译文一致：语言必须注册过、同一请求不能重复、一行至少有一个字段有值。
+   */
+  private async resolveProjectTranslations(
+    projectKey: string,
+    translations: ProjectTranslationDto[] | undefined,
+  ): Promise<ProjectTranslationItem[] | undefined> {
+    if (!translations) {
+      return undefined
+    }
+    if (translations.length === 0) {
+      return []
+    }
+
+    const registered = await this.prisma.projectLocale.findMany({
+      where: { projectKey },
+      select: { locale: true, aliases: true },
+    })
+
+    const seen = new Set<string>()
+    return translations.map((item) => {
+      const canonical = matchRegisteredLocale(registered, item.locale)
+      if (!canonical) {
+        throw new BadRequestException(
+          `Locale "${item.locale}" is not registered for this project. Register it first.`,
+        )
+      }
+      if (seen.has(canonical)) {
+        throw new BadRequestException(`Duplicate translation for locale "${item.locale}"`)
+      }
+      seen.add(canonical)
+
+      const name = item.name?.trim() || null
+      const description = item.description?.trim() || null
+      if (!name && !description) {
+        throw new BadRequestException(
+          `Translation for locale "${item.locale}" sets nothing. Provide a name or a description.`,
+        )
+      }
+
+      return { locale: canonical, name, description }
+    })
   }
 
   // 新 key 不能已被别的项目用作别名（project 与 alias 同命名空间，见 create）。
@@ -388,30 +594,45 @@ export class ProjectsService {
     }
   }
 
-  private toProjectItem(project: {
-    projectKey: string
-    name: string
-    repoUrl: string | null
-    description: string | null
-    author: string | null
-    authorHomepageUrl: string | null
-    iconUrl: string | null
-    websiteUrl: string | null
-    docsUrl: string | null
-    publishedAt: number | null
-    optionalUpdateMinComparableVersion: string | null
-    optionalUpdateMaxComparableVersion: string | null
-    statsRetentionDays: number
-    aliases?: { alias: string }[]
-    createdAt: number
-    updatedAt: number
-  }): ProjectItem {
+  /**
+   * @param options.locale 公开端请求的语言（已归一到主标签）。译文按字段覆盖：
+   *   名称与描述各自留空就回落项目自身的值。
+   * @param options.includeTranslations 后台接口带出全部译文供编辑；公开端不带。
+   */
+  private toProjectItem(
+    project: {
+      projectKey: string
+      name: string
+      repoUrl: string | null
+      description: string | null
+      author: string | null
+      authorHomepageUrl: string | null
+      iconUrl: string | null
+      websiteUrl: string | null
+      docsUrl: string | null
+      publishedAt: number | null
+      optionalUpdateMinComparableVersion: string | null
+      optionalUpdateMaxComparableVersion: string | null
+      statsRetentionDays: number
+      aliases?: { alias: string }[]
+      translations?: { locale: string; name: string | null; description: string | null }[]
+      createdAt: number
+      updatedAt: number
+    },
+    options: { locale?: string | null; includeTranslations?: boolean } = {},
+  ): ProjectItem {
+    const translation = options.locale
+      ? project.translations?.find((item) => item.locale === options.locale)
+      : undefined
+    const name = translation?.name ?? null
+    const description = translation?.description ?? null
+
     return {
       id: project.projectKey,
       project_key: project.projectKey,
-      name: project.name,
+      name: name ?? project.name,
       repo_url: project.repoUrl,
-      description: project.description,
+      description: description ?? project.description,
       author: project.author,
       author_homepage_url: project.authorHomepageUrl,
       icon_url: project.iconUrl,
@@ -422,6 +643,17 @@ export class ProjectsService {
       optional_update_max_comparable_version: project.optionalUpdateMaxComparableVersion,
       stats_retention_days: project.statsRetentionDays,
       aliases: project.aliases?.map((item) => item.alias) ?? [],
+      // 两个字段都留空的译文行对返回内容毫无贡献，报出去会让调用方以为拿到了译文。
+      locale: name || description ? (translation?.locale ?? null) : null,
+      ...(options.includeTranslations
+        ? {
+            translations: (project.translations ?? []).map((item) => ({
+              locale: item.locale,
+              name: item.name,
+              description: item.description,
+            })),
+          }
+        : {}),
       created_at: project.createdAt,
       updated_at: project.updatedAt,
     }

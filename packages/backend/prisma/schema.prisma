@@ -119,6 +119,8 @@ model Project {
   clientVersionStats                 ClientVersionStat[]
   platformVersionStats               PlatformVersionStat[]
   aliases                            ProjectAlias[]
+  locales                            ProjectLocale[]
+  translations                       ProjectTranslation[]
   githubIntegration                  ProjectGithubIntegration?
 }
 
@@ -215,6 +217,50 @@ model ProjectAlias {
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade, onUpdate: Cascade)
 
+  @@index([projectKey])
+}
+
+/// 项目注册的语言。公告与项目译文只认这张表里的语言：
+/// 客户端提交未注册的语言偏好，等同没提，回落到默认内容。
+///
+/// 注销一个语言不会删掉已有译文——译文留着，只是暂时不可达，重新注册即恢复。
+model ProjectLocale {
+  projectKey String
+  /// 语言标签，如 zh-CN / en-US。原样保存录入时的写法，匹配时大小写不敏感；
+  /// 不做 BCP 47 规范化——语言由项目自己定，服务端不该替它猜标准写法。
+  locale     String
+  /// 同义标签：命中其中任何一个都等价于命中主标签（多对一）。
+  /// 例如主标签 en 列出 en-US / en-GB，三种写法取到同一份译文。
+  /// 只认显式列出的，不做 en-* 前缀自动回退——那样无法单独给某个地区变体做
+  /// 不同处理，出问题时也说不清为什么命中了这个语言。
+  /// 应用层保证同一项目内不与其它语言的主标签或同义标签相撞。
+  aliases    String[] @default([])
+  /// 后台展示名，如「简体中文」。留空则界面上直接显示 locale。
+  label      String?
+  createdAt  Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([projectKey, locale])
+  @@index([projectKey])
+}
+
+/// 项目的名称与描述译文。与公告译文同一套语义：默认值在 Project 自身，
+/// 这里只是覆盖层，字段留空即回落默认值。
+model ProjectTranslation {
+  projectKey  String
+  /// 必须是本项目注册过的语言（见 ProjectLocale）。
+  locale      String
+  /// 留空即用项目自身的 name。
+  name        String?
+  /// 留空即用项目自身的 description。
+  description String?
+  createdAt   Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt   Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([projectKey, locale])
   @@index([projectKey])
 }
 
@@ -411,21 +457,52 @@ model Version {
 }
 
 model Announcement {
-  id          String     @id @default(cuid())
-  projectKey  String
-  title       String
-  content     String
-  isPinned    Boolean    @default(false)
-  isHidden    Boolean    @default(false)
-  platforms   Platform[] @default([])
-  author      String?
-  publishedAt Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  createdAt   Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  updatedAt   Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  id                       String     @id @default(cuid())
+  projectKey               String
+  title                    String
+  content                  String
+  isPinned                 Boolean    @default(false)
+  isHidden                 Boolean    @default(false)
+  platforms                Platform[] @default([])
+  author                   String?
+  /// 可见版本范围（闭区间，两端可空，空即该端不限）。语义与 Project 上的
+  /// optionalUpdateMin/MaxComparableVersion 一致：拿客户端上报的版本号去比。
+  /// 客户端没报版本号时，带范围的公告一律不返回——判断不了就不展示。
+  minComparableVersion     String?
+  maxComparableVersion     String?
+  /// 上面两个的定长排序键，由 toComparableVersionSortKey 生成，让范围过滤能在
+  /// SQL 层用字符串 lte/gte 完成（否则得把公告全量拉进内存比较，分页也会错）。
+  minComparableVersionSort String?
+  maxComparableVersionSort String?
+  publishedAt              Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  createdAt                Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt                Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
-  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
+  project      Project                   @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
+  translations AnnouncementTranslation[]
 
   @@index([projectKey, createdAt])
+}
+
+/// 公告译文，本质是「某个语言下的覆盖设置」，三个维度彼此独立：
+/// title 空即用默认标题、content 空即用默认正文、isHidden 为真则该语言下整条不返回。
+/// 因此「只想对英文用户藏起来、又不想写英文译文」是可表达的：只留 isHidden 即可。
+model AnnouncementTranslation {
+  announcementId String
+  /// 语言标签，取值必须是项目注册过的（见 ProjectLocale）。
+  /// 原样保存注册时的写法，匹配时大小写不敏感。
+  locale         String
+  title          String?
+  content        String?
+  /// 该语言下不返回这条公告。与公告自身的 isHidden 是两层：那个对所有人生效。
+  isHidden       Boolean @default(false)
+  createdAt      Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt      Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@id([announcementId, locale])
+  @@index([announcementId])
 }
 
 model Feedback {

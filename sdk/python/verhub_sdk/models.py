@@ -37,7 +37,7 @@ class VersionDownloadLink(TypedDict, total=False):
     platform: str
 
 
-class ProjectItem(TypedDict):
+class _ProjectItemBase(TypedDict):
     id: str
     project_key: str
     name: str
@@ -54,8 +54,16 @@ class ProjectItem(TypedDict):
     stats_retention_days: int
     # 改名后保留的旧 Project Key（别名），均可访问到本项目。新到旧排序。
     aliases: List[str]
+    #: 本次返回的 name / description 实际来自哪个语言的译文；None 表示项目自身的值
+    #: （没提语言偏好、语言未注册，或该语言的译文两个字段都留空）。
+    locale: Optional[str]
     created_at: int
     updated_at: int
+
+
+class ProjectItem(_ProjectItemBase, total=False):
+    #: 项目的全部译文，仅管理接口返回；公开接口不带这个键。
+    translations: List["ProjectTranslation"]
 
 
 class VersionItem(TypedDict):
@@ -78,7 +86,20 @@ class VersionItem(TypedDict):
     created_at: int
 
 
-class AnnouncementItem(TypedDict):
+class AnnouncementTranslation(TypedDict):
+    """
+    某个语言下的覆盖设置，三个维度彼此独立：title 留空即用默认标题、
+    content 留空即用默认正文、is_hidden 为真则该语言下整条公告不返回。
+    写入时三者至少要有一项有意义（写入可省略字段，读取时一定存在）。
+    """
+
+    locale: str
+    title: Optional[str]
+    content: Optional[str]
+    is_hidden: bool
+
+
+class _AnnouncementItemBase(TypedDict):
     id: str
     title: str
     content: str
@@ -86,9 +107,21 @@ class AnnouncementItem(TypedDict):
     is_hidden: bool
     platforms: List[Platform]
     author: Optional[str]
+    #: 可见版本范围下界（含），None 表示该端不限。
+    min_comparable_version: Optional[str]
+    #: 可见版本范围上界（含），None 表示该端不限。
+    max_comparable_version: Optional[str]
+    #: 本次返回的 title / content 实际来自哪个语言的译文；None 表示默认内容
+    #: （没提语言偏好、语言未注册，或该公告没有这个语言的译文）。
+    locale: Optional[str]
     published_at: int
     created_at: int
     updated_at: int
+
+
+class AnnouncementItem(_AnnouncementItemBase, total=False):
+    #: 全部译文，仅管理接口返回；公开接口不带这个键。
+    translations: List[AnnouncementTranslation]
 
 
 class FeedbackItem(TypedDict):
@@ -171,6 +204,29 @@ class ProjectAliasItem(TypedDict):
 
 class ProjectAliasListResponse(TypedDict):
     data: List[ProjectAliasItem]
+
+
+class ProjectLocaleItem(TypedDict):
+    """项目注册的语言。只有注册过的语言能存译文，也只有它们的偏好被公开端认账。"""
+
+    locale: str
+    #: 同义标签：客户端提交其中任何一个都等价于命中主标签（多对一）。
+    #: 只认显式列出的，不做 en-* 前缀自动回退。
+    aliases: List[str]
+    label: Optional[str]
+    created_at: int
+
+
+class ProjectTranslation(TypedDict):
+    """某个语言下项目名称与描述的覆盖设置，字段留空即回落项目自身的值。"""
+
+    locale: str
+    name: Optional[str]
+    description: Optional[str]
+
+
+class ProjectLocaleListResponse(TypedDict):
+    data: List[ProjectLocaleItem]
 
 
 class VersionListResponse(TypedDict):

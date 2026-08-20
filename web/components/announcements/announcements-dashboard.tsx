@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Copy, PencilLine, Pin, Plus, Save, Trash2 } from "lucide-react"
+import { Copy, Languages, PencilLine, Pin, Plus, Save, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
@@ -25,6 +25,7 @@ import {
   type DataTableColumn,
 } from "@/components/common/data-table"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
+import { SegmentedButton, SegmentedGroup } from "@/components/github/ui"
 import { MarkdownEditor } from "@/components/markdown/markdown-editor"
 import {
   createAnnouncement,
@@ -33,8 +34,11 @@ import {
   updateAnnouncement,
   type AnnouncementItem,
   type AnnouncementMutationInput,
+  type AnnouncementTranslation,
 } from "@/lib/announcements-api"
 import { isAuthError } from "@/lib/api-client"
+import { listProjectLocales, type ProjectLocaleItem } from "@/lib/projects-api"
+import { validateComparableVersion } from "@/lib/comparable-version"
 import { PLATFORM_OPTIONS, type Platform } from "@/lib/platform"
 import { getErrorMessage } from "@/lib/error-utils"
 import { useConfirm } from "@/components/common/confirm-dialog"
@@ -81,6 +85,13 @@ type AnnouncementFormState = {
   is_hidden: boolean
   platforms: Platform[]
   author: string
+  min_comparable_version: string
+  max_comparable_version: string
+  /**
+   * 按语言存的译文草稿。标题、正文、隐藏开关三者全无意义的语言不会提交，
+   * 等同该语言没有任何覆盖设置。
+   */
+  translations: Record<string, { title: string; content: string; is_hidden: boolean }>
   published_at: string
 }
 
@@ -91,7 +102,42 @@ const emptyForm: AnnouncementFormState = {
   is_hidden: false,
   platforms: [],
   author: "",
+  min_comparable_version: "",
+  max_comparable_version: "",
+  translations: {},
   published_at: "",
+}
+
+/**
+ * 只提交有意义的语言：标题、正文、隐藏开关三者任一有值即算配过。
+ * 三者全空的行后端会拒——存下来只会让人以为配过什么。
+ */
+function toTranslationList(
+  translations: AnnouncementFormState["translations"],
+): AnnouncementTranslation[] {
+  return Object.entries(translations)
+    .filter(([, value]) => value.title.trim() || value.content.trim() || value.is_hidden)
+    .map(([locale, value]) => ({
+      locale,
+      title: value.title.trim() || null,
+      content: value.content.trim() || null,
+      is_hidden: value.is_hidden,
+    }))
+}
+
+function toFormTranslations(
+  translations: AnnouncementTranslation[] | undefined,
+): AnnouncementFormState["translations"] {
+  return Object.fromEntries(
+    (translations ?? []).map((item) => [
+      item.locale,
+      {
+        title: item.title ?? "",
+        content: item.content ?? "",
+        is_hidden: item.is_hidden,
+      },
+    ]),
+  )
 }
 
 function toMutationInput(form: AnnouncementFormState): AnnouncementMutationInput {
@@ -102,6 +148,10 @@ function toMutationInput(form: AnnouncementFormState): AnnouncementMutationInput
     is_hidden: form.is_hidden,
     platforms: form.platforms,
     author: form.author.trim() || undefined,
+    // 空串要发 null 而不是 undefined：前者是「清掉这一端的限制」，后者是「不动它」。
+    min_comparable_version: form.min_comparable_version.trim() || null,
+    max_comparable_version: form.max_comparable_version.trim() || null,
+    translations: toTranslationList(form.translations),
     published_at: form.published_at ? toTimestamp(form.published_at) : undefined,
   }
 }
@@ -133,12 +183,17 @@ function togglePlatform(current: Platform[], next: Platform): Platform[] {
 function AnnouncementFormFields({
   form,
   setForm,
+  locales = [],
   theme = "dark",
 }: {
   form: AnnouncementFormState
   setForm: React.Dispatch<React.SetStateAction<AnnouncementFormState>>
+  /** 项目注册的语言。为空时不显示语言页签，表单退化成单一默认内容。 */
+  locales?: ProjectLocaleItem[]
   theme?: "dark" | "light"
 }) {
+  // 默认内容页用空串标识，与任何真实 locale 都不会撞。
+  const [activeLocale, setActiveLocale] = React.useState("")
   const inputClassName =
     theme === "light"
       ? "w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
@@ -149,95 +204,232 @@ function AnnouncementFormFields({
       : "rounded-xl border border-white/15 p-3"
   const textClassName = theme === "light" ? "text-slate-700 dark:text-slate-300" : "text-slate-200"
 
+  // 注销语言后表单里可能还停在那一页，回落到默认内容页而不是渲染一个空壳。
+  const currentLocale = locales.some((item) => item.locale === activeLocale) ? activeLocale : ""
+  const draft = form.translations[currentLocale] ?? { title: "", content: "", is_hidden: false }
+  const minVersionError = form.min_comparable_version.trim()
+    ? validateComparableVersion(form.min_comparable_version)
+    : null
+  const maxVersionError = form.max_comparable_version.trim()
+    ? validateComparableVersion(form.max_comparable_version)
+    : null
+
+  function updateTranslation(patch: { title?: string; content?: string; is_hidden?: boolean }) {
+    setForm((prev) => {
+      const previous = prev.translations[currentLocale] ?? {
+        title: "",
+        content: "",
+        is_hidden: false,
+      }
+      return {
+        ...prev,
+        translations: { ...prev.translations, [currentLocale]: { ...previous, ...patch } },
+      }
+    })
+  }
+
   return (
     <>
-      <label className="space-y-1 text-sm">
-        <span className="text-slate-700 dark:text-slate-300">公告标题</span>
-        <input
-          type="text"
-          value={form.title}
-          onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
-          className={inputClassName}
-          required
-          maxLength={128}
-        />
-      </label>
-
-      <MarkdownEditor
-        label="公告内容"
-        value={form.content}
-        onChange={(value) => setForm((prev) => ({ ...prev, content: value }))}
-        rows={6}
-        className={inputClassName}
-        required
-        maxLength={4096}
-      />
-
-      <label className="space-y-1 text-sm">
-        <span className="text-slate-700 dark:text-slate-300">发布时间</span>
-        <input
-          type="datetime-local"
-          value={form.published_at}
-          onChange={(event) => setForm((prev) => ({ ...prev, published_at: event.target.value }))}
-          className={inputClassName}
-        />
-      </label>
-
-      <label className="space-y-1 text-sm">
-        <span className="text-slate-700 dark:text-slate-300">作者</span>
-        <input
-          type="text"
-          value={form.author}
-          onChange={(event) => setForm((prev) => ({ ...prev, author: event.target.value }))}
-          className={inputClassName}
-          maxLength={64}
-        />
-      </label>
-
-      <div className={panelClassName}>
-        <p className={`mb-2 text-sm ${textClassName}`}>平台范围（多选，空表示全部）</p>
-        <div className="flex flex-wrap gap-3">
-          {platformOptions.map((item) => (
-            <label
-              key={item.value}
-              className={`inline-flex items-center gap-2 text-sm ${textClassName}`}
-            >
-              <input
-                type="checkbox"
-                checked={form.platforms.includes(item.value)}
-                onChange={() =>
-                  setForm((prev) => ({
-                    ...prev,
-                    platforms: togglePlatform(prev.platforms, item.value),
-                  }))
-                }
-                className="size-4"
-              />
-              {item.label}
-            </label>
+      {locales.length > 0 ? (
+        <SegmentedGroup role="tablist" className="flex w-full flex-wrap text-sm">
+          <SegmentedButton
+            role="tab"
+            grow
+            active={currentLocale === ""}
+            onClick={() => setActiveLocale("")}
+            label="默认内容"
+          />
+          {locales.map((item) => (
+            <SegmentedButton
+              key={item.locale}
+              role="tab"
+              grow
+              active={currentLocale === item.locale}
+              onClick={() => setActiveLocale(item.locale)}
+              label={item.label ? `${item.label}（${item.locale}）` : item.locale}
+            />
           ))}
-        </div>
-      </div>
+        </SegmentedGroup>
+      ) : null}
 
-      <label className={`inline-flex items-center gap-2 text-sm ${textClassName}`}>
-        <input
-          type="checkbox"
-          checked={form.is_pinned}
-          onChange={(event) => setForm((prev) => ({ ...prev, is_pinned: event.target.checked }))}
-          className="size-4"
-        />
-        置顶公告
-      </label>
+      {currentLocale ? (
+        <>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            标题与正文各自留空即沿用默认内容。
+            其余字段（平台、置顶、时间、版本范围等）只在默认内容页设置，对所有语言生效。
+          </p>
 
-      <label className={`inline-flex items-center gap-2 text-sm ${textClassName}`}>
-        <input
-          type="checkbox"
-          checked={form.is_hidden}
-          onChange={(event) => setForm((prev) => ({ ...prev, is_hidden: event.target.checked }))}
-          className="size-4"
-        />
-        隐藏公告（公开 API 不返回）
-      </label>
+          <label
+            className={`inline-flex items-center gap-2 text-sm ${textClassName}`}
+            key={`hidden-${currentLocale}`}
+          >
+            <input
+              type="checkbox"
+              checked={draft.is_hidden}
+              onChange={(event) => updateTranslation({ is_hidden: event.target.checked })}
+              className="size-4"
+            />
+            在 {currentLocale} 下隐藏这条公告
+          </label>
+
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">译文标题</span>
+            <input
+              type="text"
+              value={draft.title}
+              onChange={(event) => updateTranslation({ title: event.target.value })}
+              className={inputClassName}
+              maxLength={128}
+            />
+          </label>
+
+          <MarkdownEditor
+            label="译文内容"
+            value={draft.content}
+            onChange={(value) => updateTranslation({ content: value })}
+            rows={6}
+            className={inputClassName}
+            maxLength={4096}
+          />
+        </>
+      ) : (
+        <>
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">公告标题</span>
+            <input
+              type="text"
+              value={form.title}
+              onChange={(event) => setForm((prev) => ({ ...prev, title: event.target.value }))}
+              className={inputClassName}
+              required
+              maxLength={128}
+            />
+          </label>
+
+          <MarkdownEditor
+            label="公告内容"
+            value={form.content}
+            onChange={(value) => setForm((prev) => ({ ...prev, content: value }))}
+            rows={6}
+            className={inputClassName}
+            required
+            maxLength={4096}
+          />
+
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">发布时间</span>
+            <input
+              type="datetime-local"
+              value={form.published_at}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, published_at: event.target.value }))
+              }
+              className={inputClassName}
+            />
+          </label>
+
+          <label className="space-y-1 text-sm">
+            <span className="text-slate-700 dark:text-slate-300">作者</span>
+            <input
+              type="text"
+              value={form.author}
+              onChange={(event) => setForm((prev) => ({ ...prev, author: event.target.value }))}
+              className={inputClassName}
+              maxLength={64}
+            />
+          </label>
+
+          <div className={panelClassName}>
+            <p className={`mb-1 text-sm ${textClassName}`}>可见版本范围（闭区间，留空即不限）</p>
+            <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+              填了任意一端后，只有上报了版本号且落在范围内的客户端才看得到这条公告——没上报版本号的客户端一律看不到。
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="space-y-1 text-sm">
+                <span className={textClassName}>最低版本</span>
+                <input
+                  type="text"
+                  value={form.min_comparable_version}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, min_comparable_version: event.target.value }))
+                  }
+                  className={inputClassName}
+                  placeholder="例如：2.0.0"
+                  maxLength={64}
+                />
+                {minVersionError ? (
+                  <span className="text-xs text-rose-500">{minVersionError}</span>
+                ) : null}
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className={textClassName}>最高版本</span>
+                <input
+                  type="text"
+                  value={form.max_comparable_version}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, max_comparable_version: event.target.value }))
+                  }
+                  className={inputClassName}
+                  placeholder="例如：2.9.9"
+                  maxLength={64}
+                />
+                {maxVersionError ? (
+                  <span className="text-xs text-rose-500">{maxVersionError}</span>
+                ) : null}
+              </label>
+            </div>
+          </div>
+
+          <div className={panelClassName}>
+            <p className={`mb-2 text-sm ${textClassName}`}>平台范围（多选，空表示全部）</p>
+            <div className="flex flex-wrap gap-3">
+              {platformOptions.map((item) => (
+                <label
+                  key={item.value}
+                  className={`inline-flex items-center gap-2 text-sm ${textClassName}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.platforms.includes(item.value)}
+                    onChange={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        platforms: togglePlatform(prev.platforms, item.value),
+                      }))
+                    }
+                    className="size-4"
+                  />
+                  {item.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <label className={`inline-flex items-center gap-2 text-sm ${textClassName}`}>
+            <input
+              type="checkbox"
+              checked={form.is_pinned}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, is_pinned: event.target.checked }))
+              }
+              className="size-4"
+            />
+            置顶公告
+          </label>
+
+          <label className={`inline-flex items-center gap-2 text-sm ${textClassName}`}>
+            <input
+              type="checkbox"
+              checked={form.is_hidden}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, is_hidden: event.target.checked }))
+              }
+              className="size-4"
+            />
+            隐藏公告（公开 API 不返回）
+          </label>
+        </>
+      )}
     </>
   )
 }
@@ -275,6 +467,8 @@ export function AnnouncementsDashboard() {
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [editForm, setEditForm] = React.useState<AnnouncementFormState>(emptyForm)
   const [savingEdit, setSavingEdit] = React.useState(false)
+  // 项目注册的语言，决定公告弹窗里出现哪些语言页签。
+  const [locales, setLocales] = React.useState<ProjectLocaleItem[]>([])
   const handleEditOpenChange = useUnsavedChangesGuard({
     open: editDialogOpen,
     onOpenChange: setEditDialogOpen,
@@ -342,6 +536,27 @@ export function AnnouncementsDashboard() {
   }, [loadAnnouncements, offset])
 
   React.useEffect(() => {
+    if (!token || !selectedProjectKey) {
+      setLocales([])
+      return
+    }
+
+    const controller = new AbortController()
+    listProjectLocales(token, selectedProjectKey, controller.signal)
+      .then((result) => setLocales(result.data))
+      // 语言拉不到只是没有译文页签可编辑，不该拦住整个公告页——静默退化。
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setLocales([])
+        }
+      })
+
+    return () => {
+      controller.abort()
+    }
+  }, [token, selectedProjectKey])
+
+  React.useEffect(() => {
     resetOffset()
     setForm(emptyForm)
     setCreateDialogOpen(false)
@@ -377,6 +592,9 @@ export function AnnouncementsDashboard() {
       is_hidden: item.is_hidden,
       platforms: item.platforms,
       author: item.author ?? "",
+      min_comparable_version: item.min_comparable_version ?? "",
+      max_comparable_version: item.max_comparable_version ?? "",
+      translations: toFormTranslations(item.translations),
       published_at: toDateTimeLocal(item.published_at),
     })
     setEditDialogOpen(true)
@@ -390,6 +608,9 @@ export function AnnouncementsDashboard() {
       is_hidden: item.is_hidden,
       platforms: item.platforms,
       author: item.author ?? "",
+      min_comparable_version: item.min_comparable_version ?? "",
+      max_comparable_version: item.max_comparable_version ?? "",
+      translations: toFormTranslations(item.translations),
       published_at: toDateTimeLocal(item.published_at),
     })
     setCreateDialogOpen(true)
@@ -503,10 +724,33 @@ export function AnnouncementsDashboard() {
       alwaysVisible: true,
       className: "font-medium",
       cell: (item) => (
-        <TruncatedCell className="max-w-[20rem]" title={item.title}>
-          {item.title}
-        </TruncatedCell>
+        <span className="inline-flex items-center gap-1.5">
+          <TruncatedCell className="max-w-[20rem]" title={item.title}>
+            {item.title}
+          </TruncatedCell>
+          {item.translations && item.translations.length > 0 ? (
+            <span
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-slate-900/8 px-1.5 py-0.5 text-[11px] font-normal text-slate-600 dark:bg-white/15 dark:text-slate-300"
+              title={`已录入译文：${item.translations.map((tr) => tr.locale).join("、")}`}
+            >
+              <Languages className="size-3" />
+              {item.translations.length}
+            </span>
+          ) : null}
+        </span>
       ),
+    },
+    {
+      id: "version_range",
+      header: "版本范围",
+      label: "可见版本范围",
+      className: "font-mono text-xs whitespace-nowrap text-slate-600 dark:text-slate-300",
+      cell: (item) =>
+        item.min_comparable_version || item.max_comparable_version ? (
+          `${item.min_comparable_version ?? "*"} ~ ${item.max_comparable_version ?? "*"}`
+        ) : (
+          <EmptyValue>不限</EmptyValue>
+        ),
     },
     {
       id: "content",
@@ -722,7 +966,7 @@ export function AnnouncementsDashboard() {
         onSubmit={() => void handleCreate()}
         formValue={form}
       >
-        <AnnouncementFormFields form={form} setForm={setForm} theme="light" />
+        <AnnouncementFormFields form={form} setForm={setForm} locales={locales} theme="light" />
       </AdminFormDialog>
 
       <Dialog open={editDialogOpen} onOpenChange={handleEditOpenChange}>
@@ -734,7 +978,12 @@ export function AnnouncementsDashboard() {
 
           <DialogBody>
             <div className="grid gap-3">
-              <AnnouncementFormFields form={editForm} setForm={setEditForm} theme="light" />
+              <AnnouncementFormFields
+                form={editForm}
+                setForm={setEditForm}
+                locales={locales}
+                theme="light"
+              />
             </div>
           </DialogBody>
 

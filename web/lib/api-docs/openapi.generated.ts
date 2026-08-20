@@ -1040,6 +1040,138 @@ export const openApiDocument: OpenApiDocument = {
         },
       },
     },
+    "/admin/projects/{projectKey}/locales": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Projects"],
+        summary: "列出项目注册的语言",
+        description:
+          "列出该项目注册的语言，先注册的在前。只有这里注册过的语言才能存公告译文， 也只有这些语言的偏好会被公开接口认账——公开端收到未注册的语言偏好时， 一律返回公告的默认内容。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ProjectLocaleListResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      post: {
+        tags: ["Projects"],
+        summary: "注册项目语言",
+        description:
+          "注册一个语言。该语言已注册（匹配大小写不敏感）时只更新展示名，不会新建第二行—— 同一语言存成 `zh-CN` 与 `zh-cn` 两份会让公告译文分裂到两个语言下。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CreateProjectLocaleDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "201": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ProjectLocaleItem",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/locales/{locale}": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          name: "locale",
+          in: "path",
+          required: true,
+          schema: {
+            type: "string",
+          },
+          description: "要注销的语言标签，匹配大小写不敏感。",
+        },
+      ],
+      delete: {
+        tags: ["Projects"],
+        summary: "注销项目语言",
+        description:
+          "注销一个语言。**已有的公告译文不会被删除**：它们留在库里，只是因为语言未注册 而暂时不可达（公开端回落到默认内容），重新注册该语言即恢复。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DeleteSuccessResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
     "/admin/projects/{projectKey}/github-webhook": {
       parameters: [
         {
@@ -3285,6 +3417,21 @@ export const openApiDocument: OpenApiDocument = {
         summary: "获取项目公开信息",
         description: "提供项目基础信息，通常用于客户端启动时初始化展示。",
         "x-verhub-doc": true,
+        parameters: [
+          {
+            name: "locale",
+            in: "query",
+            required: false,
+            description:
+              "语言偏好。命中项目注册的语言（主标签或同义标签，大小写不敏感）且该语言的\n译文填了对应字段时，`name` / `description` 返回译文，`locale` 字段标出实际语言。\n\n没提本参数、语言未注册、或该语言的译文把字段留空，都回落项目自身的值且\n`locale` 为 `null`。两个字段各自独立回落。\n",
+            example: "en-US",
+            schema: {
+              type: "string",
+              maxLength: 35,
+              pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+            },
+          },
+        ],
         responses: {
           "200": {
             content: {
@@ -3591,6 +3738,12 @@ export const openApiDocument: OpenApiDocument = {
             },
             description: "关键字，不区分大小写地匹配 title、content 与 author。",
           },
+          {
+            $ref: "#/components/parameters/AnnouncementClientVersion",
+          },
+          {
+            $ref: "#/components/parameters/AnnouncementLocale",
+          },
         ],
         responses: {
           "200": {
@@ -3640,6 +3793,12 @@ export const openApiDocument: OpenApiDocument = {
               $ref: "#/components/schemas/Platform",
             },
             description: "平台过滤（仅返回该平台或全平台公告）",
+          },
+          {
+            $ref: "#/components/parameters/AnnouncementClientVersion",
+          },
+          {
+            $ref: "#/components/parameters/AnnouncementLocale",
           },
         ],
         responses: {
@@ -5088,6 +5247,31 @@ export const openApiDocument: OpenApiDocument = {
           maxLength: 32,
         },
       },
+      AnnouncementClientVersion: {
+        name: "version",
+        in: "query",
+        required: false,
+        description:
+          "客户端当前版本号，用来筛掉不在可见版本范围内的公告。\n\n先当可比较版本号解析，解析不了再按 `version` 去该项目的版本表精确查一次，\n取那条版本登记的可比较版本号——客户端报自己展示用的版本号即可，不必先自行换算。\n\n**不传（或两条路都解析不出）时，所有设了可见版本范围的公告都不会返回。**\n没设范围的公告不受影响，照常返回。\n",
+        example: "2.1.0",
+        schema: {
+          type: "string",
+          maxLength: 64,
+        },
+      },
+      AnnouncementLocale: {
+        name: "locale",
+        in: "query",
+        required: false,
+        description:
+          "语言偏好。命中该项目注册过的语言（匹配大小写不敏感）且该公告存有对应译文时，\n`title` / `content` 返回译文，`locale` 字段标出实际语言；\n\n以下三种情况一律返回公告的默认内容且 `locale` 为 `null`：不传本参数、\n传了项目未注册的语言、该公告没有这个语言的译文。\n",
+        example: "en-US",
+        schema: {
+          type: "string",
+          maxLength: 35,
+          pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+        },
+      },
       EntityId: {
         name: "id",
         in: "path",
@@ -5722,6 +5906,15 @@ export const openApiDocument: OpenApiDocument = {
             default: 365,
             description: "接口请求统计保留时长（天），超出部分每日自动清理",
           },
+          translations: {
+            type: "array",
+            maxItems: 32,
+            items: {
+              $ref: "#/components/schemas/ProjectTranslationDto",
+            },
+            description:
+              "项目名称与描述的译文。传了就整体替换全部译文，空数组即清空；不传则不动。 语言必须先在项目里注册（同义标签同样算命中），否则整个请求 400。",
+          },
         },
         example: {
           project_key: "verhub",
@@ -5798,6 +5991,15 @@ export const openApiDocument: OpenApiDocument = {
             default: 365,
             description: "接口请求统计保留时长（天），超出部分每日自动清理",
           },
+          translations: {
+            type: "array",
+            maxItems: 32,
+            items: {
+              $ref: "#/components/schemas/ProjectTranslationDto",
+            },
+            description:
+              "项目名称与描述的译文。传了就整体替换全部译文，空数组即清空；不传则不动。 语言必须先在项目里注册（同义标签同样算命中），否则整个请求 400。",
+          },
         },
         example: {
           name: "Verhub",
@@ -5825,6 +6027,7 @@ export const openApiDocument: OpenApiDocument = {
           "optional_update_max_comparable_version",
           "stats_retention_days",
           "aliases",
+          "locale",
           "created_at",
           "updated_at",
         ],
@@ -5880,6 +6083,18 @@ export const openApiDocument: OpenApiDocument = {
             },
             description:
               "项目改名后保留的旧 Project Key（别名），按新到旧排序。以其中任一别名访问 项目的公共与管理接口，都会透明命中当前项目。",
+          },
+          locale: {
+            type: ["string", "null"],
+            description:
+              "本次返回的 name / description 实际来自哪个语言的译文；null 表示项目自身的值 （没提语言偏好、语言未注册，或该语言的译文两个字段都留空）。",
+          },
+          translations: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/ProjectTranslationDto",
+            },
+            description: "项目的全部译文，仅管理接口返回。",
           },
           created_at: {
             type: "integer",
@@ -5947,6 +6162,123 @@ export const openApiDocument: OpenApiDocument = {
               created_at: 1760000000,
             },
           ],
+        },
+      },
+      CreateProjectLocaleDto: {
+        type: "object",
+        required: ["locale"],
+        properties: {
+          locale: {
+            type: "string",
+            maxLength: 35,
+            pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+            description:
+              "语言标签，如 zh-CN / en-US。原样保存录入时的写法，服务端不做 BCP 47 规范化——语言由项目自己定。匹配（含重复注册判定）大小写不敏感。",
+          },
+          aliases: {
+            type: "array",
+            maxItems: 16,
+            items: {
+              type: "string",
+              maxLength: 35,
+              pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+            },
+            description:
+              "同义标签：客户端提交其中任何一个都等价于命中主标签（多对一）。例如主标签 `en` 列出 `en-US` / `en-GB`，三种写法取到同一份译文，返回体里的 locale 始终是主标签 `en`。只认显式列出的，不做 `en-*` 前缀自动回退。 与本项目其它语言的主标签或同义标签相撞会 400；重复项与主标签自身会被忽略。",
+          },
+          label: {
+            type: "string",
+            maxLength: 64,
+            description: "后台展示名，如「简体中文」。留空则界面直接显示 locale。",
+          },
+        },
+        example: {
+          locale: "en",
+          aliases: ["en-US", "en-GB"],
+          label: "English",
+        },
+      },
+      ProjectLocaleItem: {
+        type: "object",
+        required: ["locale", "aliases", "label", "created_at"],
+        properties: {
+          locale: {
+            type: "string",
+          },
+          aliases: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+          },
+          label: {
+            type: ["string", "null"],
+          },
+          created_at: {
+            type: "integer",
+            format: "int64",
+          },
+        },
+        example: {
+          locale: "en",
+          aliases: ["en-US", "en-GB"],
+          label: "English",
+          created_at: 1760000000,
+        },
+      },
+      ProjectLocaleListResponse: {
+        type: "object",
+        required: ["data"],
+        properties: {
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/ProjectLocaleItem",
+            },
+          },
+        },
+        example: {
+          data: [
+            {
+              locale: "zh-CN",
+              aliases: [],
+              label: "简体中文",
+              created_at: 1760000000,
+            },
+            {
+              locale: "en",
+              aliases: ["en-US", "en-GB"],
+              label: "English",
+              created_at: 1760000100,
+            },
+          ],
+        },
+      },
+      ProjectTranslationDto: {
+        type: "object",
+        required: ["locale"],
+        description:
+          "某个语言下项目名称与描述的覆盖设置，两个字段各自留空即回落项目自身的值。 两者全空的译文会被拒。读取时（ProjectItem.translations）两个字段一定存在， 未设置的为 null。",
+        properties: {
+          locale: {
+            type: "string",
+            maxLength: 35,
+            pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+            description: "必须是该项目已注册的语言（主标签或同义标签均可）。",
+          },
+          name: {
+            type: ["string", "null"],
+            maxLength: 128,
+          },
+          description: {
+            type: ["string", "null"],
+            maxLength: 1024,
+          },
+        },
+        example: {
+          locale: "en",
+          name: "Verhub",
+          description: "Version and release management platform.",
         },
       },
       GithubWebhookSettings: {
@@ -8163,6 +8495,42 @@ export const openApiDocument: OpenApiDocument = {
           },
         },
       },
+      AnnouncementTranslationDto: {
+        type: "object",
+        required: ["locale"],
+        description:
+          "某个语言下的覆盖设置，三个维度彼此独立：title 留空即用默认标题、content 留空即用 默认正文、is_hidden 为真则该语言下整条公告不返回。三者至少要有一项有意义， 全空的译文会被拒。读取时（AnnouncementItem.translations）三个字段一定存在， 未设置的为 null / false。",
+        properties: {
+          locale: {
+            type: "string",
+            maxLength: 35,
+            pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+            description:
+              "语言标签，必须是该项目已注册的语言（主标签或同义标签均可，见 /admin/projects/{projectKey}/locales），未注册则整个请求 400。 匹配大小写不敏感，存储时归一到注册的主标签。",
+          },
+          title: {
+            type: ["string", "null"],
+            maxLength: 128,
+            description: "留空即该语言沿用公告的默认标题。",
+          },
+          content: {
+            type: ["string", "null"],
+            maxLength: 4096,
+            description: "留空即该语言沿用公告的默认正文。",
+          },
+          is_hidden: {
+            type: "boolean",
+            description:
+              "该语言下不返回这条公告。与公告自身的 is_hidden 是两层：那个对所有人生效， 这个只对这个语言生效。",
+          },
+        },
+        example: {
+          locale: "en-US",
+          title: "Scheduled maintenance",
+          content: "The platform will be down this Saturday 02:00-04:00.",
+          is_hidden: false,
+        },
+      },
       CreateAnnouncementDto: {
         type: "object",
         required: ["title", "content"],
@@ -8192,6 +8560,26 @@ export const openApiDocument: OpenApiDocument = {
             type: "string",
             maxLength: 64,
           },
+          min_comparable_version: {
+            type: ["string", "null"],
+            maxLength: 64,
+            description:
+              "可见版本范围下界（含）。留空即该端不限。客户端上报的版本号落在范围内才看得到 这条公告；客户端没上报版本号时，带范围的公告一律不返回。",
+          },
+          max_comparable_version: {
+            type: ["string", "null"],
+            maxLength: 64,
+            description: "可见版本范围上界（含）。留空即该端不限。",
+          },
+          translations: {
+            type: "array",
+            maxItems: 32,
+            items: {
+              $ref: "#/components/schemas/AnnouncementTranslationDto",
+            },
+            description:
+              "译文集合。传了就整体替换该公告的全部译文，空数组即清空；不传则不动。 默认内容仍是 title / content，译文只是覆盖层。",
+          },
           published_at: {
             type: "integer",
             format: "int64",
@@ -8204,6 +8592,14 @@ export const openApiDocument: OpenApiDocument = {
           is_hidden: false,
           platforms: ["windows", "web"],
           author: "运维团队",
+          min_comparable_version: "2.0.0",
+          translations: [
+            {
+              locale: "en-US",
+              title: "Scheduled maintenance",
+              content: "The platform will be down this Saturday 02:00-04:00.",
+            },
+          ],
           published_at: 1760000000,
         },
       },
@@ -8252,6 +8648,22 @@ export const openApiDocument: OpenApiDocument = {
             type: "string",
             maxLength: 64,
           },
+          min_comparable_version: {
+            type: ["string", "null"],
+            maxLength: 64,
+          },
+          max_comparable_version: {
+            type: ["string", "null"],
+            maxLength: 64,
+          },
+          translations: {
+            type: "array",
+            maxItems: 32,
+            items: {
+              $ref: "#/components/schemas/AnnouncementTranslationDto",
+            },
+            description: "传了即整体替换全部译文，空数组即清空；不传则保持原样。",
+          },
           published_at: {
             type: "integer",
             format: "int64",
@@ -8272,6 +8684,9 @@ export const openApiDocument: OpenApiDocument = {
           "is_pinned",
           "is_hidden",
           "platforms",
+          "min_comparable_version",
+          "max_comparable_version",
+          "locale",
           "published_at",
           "created_at",
           "updated_at",
@@ -8282,9 +8697,11 @@ export const openApiDocument: OpenApiDocument = {
           },
           title: {
             type: "string",
+            description: "命中译文时是译文标题，否则是默认标题。看 locale 可知是哪种。",
           },
           content: {
             type: "string",
+            description: "命中译文时是译文正文，否则是默认正文。",
           },
           is_pinned: {
             type: "boolean",
@@ -8300,6 +8717,27 @@ export const openApiDocument: OpenApiDocument = {
           },
           author: {
             type: ["string", "null"],
+          },
+          min_comparable_version: {
+            type: ["string", "null"],
+            description: "可见版本范围下界（含），null 表示该端不限。",
+          },
+          max_comparable_version: {
+            type: ["string", "null"],
+            description: "可见版本范围上界（含），null 表示该端不限。",
+          },
+          locale: {
+            type: ["string", "null"],
+            description:
+              "本次返回的 title / content 实际是哪个语言的译文；null 表示返回的是默认内容 （没提语言偏好、语言未注册，或该公告没有这个语言的译文）。",
+          },
+          translations: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/AnnouncementTranslationDto",
+            },
+            description:
+              "该公告的全部译文，仅管理接口返回。公开接口不带这个字段， 以免把客户端没请求的语言一并推下去。",
           },
           published_at: {
             type: "integer",
@@ -8322,6 +8760,9 @@ export const openApiDocument: OpenApiDocument = {
           is_hidden: false,
           platforms: ["windows", "web"],
           author: "运维团队",
+          min_comparable_version: "2.0.0",
+          max_comparable_version: null,
+          locale: null,
           published_at: 1760000000,
           created_at: 1760000000,
           updated_at: 1760000000,

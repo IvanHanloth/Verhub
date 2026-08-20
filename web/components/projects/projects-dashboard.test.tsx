@@ -8,6 +8,7 @@ import { ApiError } from "@/lib/api-client"
 import {
   createProject,
   getGithubWebhookSettings,
+  listProjectLocales,
   listProjects,
   previewProjectFromGithubRepo,
   updateProject,
@@ -36,6 +37,10 @@ vi.mock("@/lib/projects-api", () => ({
   // 编辑弹窗还嵌了别名面板，打开弹窗会拉一次别名列表。
   listProjectAliases: vi.fn().mockResolvedValue({ data: [] }),
   deleteProjectAlias: vi.fn(),
+  // 编辑弹窗里的语言注册面板同样在打开时拉一次。
+  listProjectLocales: vi.fn().mockResolvedValue({ data: [] }),
+  createProjectLocale: vi.fn(),
+  deleteProjectLocale: vi.fn(),
 }))
 
 vi.mock("@/lib/github-app-api", () => ({
@@ -336,6 +341,60 @@ describe("ProjectsDashboard", () => {
         expect.objectContaining({
           optional_update_min_comparable_version: null,
           optional_update_max_comparable_version: null,
+        }),
+      )
+    })
+  })
+
+  it("编辑弹窗按注册语言列出页签，并把项目译文一并提交", async () => {
+    const user = userEvent.setup()
+    window.localStorage.setItem("verhub-admin-token", "valid-token")
+    const project = {
+      id: "project-1",
+      project_key: "verhub",
+      name: "Verhub",
+      repo_url: null,
+      description: "默认描述",
+      author: null,
+      author_homepage_url: null,
+      icon_url: null,
+      website_url: null,
+      docs_url: null,
+      optional_update_min_comparable_version: null,
+      optional_update_max_comparable_version: null,
+      published_at: null,
+      locale: null,
+      translations: [{ locale: "en", name: null, description: "English description" }],
+      created_at: 1774076400,
+      updated_at: 1774076400,
+    }
+    mockedListProjects.mockResolvedValue({ total: 1, data: [project] } as never)
+    mockedUpdateProject.mockResolvedValue(project as never)
+    vi.mocked(listProjectLocales).mockResolvedValue({
+      data: [{ locale: "en", aliases: ["en-US"], label: "English", created_at: 1 }],
+    })
+
+    render(React.createElement(ProjectsDashboard))
+
+    await screen.findByText("Verhub")
+    await user.click(screen.getByRole("button", { name: "编辑" }))
+
+    const dialog = screen.getByRole("dialog")
+    await user.click(await within(dialog).findByRole("tab", { name: "English（en）" }))
+
+    // 已有译文回填：描述有值，名称留空（回落项目自身的名称）
+    expect(within(dialog).getByLabelText("项目描述（en）")).toHaveValue("English description")
+    expect(within(dialog).getByLabelText("项目名称（en）")).toHaveValue("")
+
+    await user.type(within(dialog).getByLabelText("项目名称（en）"), "Verhub EN")
+    await user.click(within(dialog).getByRole("button", { name: "保存修改" }))
+
+    await waitFor(() => {
+      expect(mockedUpdateProject).toHaveBeenCalledWith(
+        "valid-token",
+        "verhub",
+        expect.objectContaining({
+          translations: [{ locale: "en", name: "Verhub EN", description: "English description" }],
         }),
       )
     })

@@ -1,8 +1,9 @@
-import { Controller, Get, Param } from "@nestjs/common"
+import { Controller, Get, Param, Query } from "@nestjs/common"
 import { PublicEndpoint } from "@prisma/client"
 
 import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 
+import { QueryPublicProjectDto } from "./dto/query-public-project.dto"
 import { ProjectsService } from "./projects.service"
 
 @Controller("public")
@@ -11,7 +12,10 @@ export class ProjectsPublicController {
 
   @Get(":projectKey")
   @TrackEndpoint(PublicEndpoint.PROJECT_DETAIL)
-  async findOneByProjectKey(@Param("projectKey") projectKey: string) {
-    return this.projectsService.findOneByProjectKey(projectKey)
+  async findOneByProjectKey(
+    @Param("projectKey") projectKey: string,
+    @Query() query: QueryPublicProjectDto,
+  ) {
+    return this.projectsService.findOneByProjectKey(projectKey, query.locale)
   }
 }

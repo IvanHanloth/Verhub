@@ -31,6 +31,9 @@ import type {
   LogStatistics,
   PageOptions,
   ProjectAliasListResponse,
+  ProjectLocaleItem,
+  ProjectLocaleListResponse,
+  CreateProjectLocaleInput,
   ProjectGithubIntegration,
   ProjectItem,
   ProjectListResponse,
@@ -140,6 +143,40 @@ export class AdminApi {
   deleteProjectAlias(alias: string): Promise<DeleteSuccessResponse> {
     return this.http.request("DELETE", "/admin/projects/{projectKey}/aliases/{alias}", {
       pathParams: { projectKey: this.http.requireProjectKey(), alias },
+      auth: true,
+    })
+  }
+
+  /**
+   * 列出绑定项目注册的语言。只有注册过的语言能存公告译文，也只有它们的偏好
+   * 会被公开接口认账——公开端收到未注册的语言偏好时返回公告的默认内容。
+   */
+  listProjectLocales(): Promise<ProjectLocaleListResponse> {
+    return this.http.request("GET", "/admin/projects/{projectKey}/locales", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      auth: true,
+    })
+  }
+
+  /**
+   * 注册一个语言。已注册（大小写不敏感）时只更新展示名，不会新建第二行。
+   */
+  createProjectLocale(input: CreateProjectLocaleInput): Promise<ProjectLocaleItem> {
+    return this.http.request("POST", "/admin/projects/{projectKey}/locales", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: input,
+      auth: true,
+    })
+  }
+
+  /**
+   * 注销一个语言。已录入的公告译文不会被删除，只是暂时不可达，重新注册即恢复。
+   *
+   * @param locale 要注销的语言标签，匹配大小写不敏感
+   */
+  deleteProjectLocale(locale: string): Promise<DeleteSuccessResponse> {
+    return this.http.request("DELETE", "/admin/projects/{projectKey}/locales/{locale}", {
+      pathParams: { projectKey: this.http.requireProjectKey(), locale },
       auth: true,
     })
   }

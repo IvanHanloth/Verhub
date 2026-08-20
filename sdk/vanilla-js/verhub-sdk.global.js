@@ -622,9 +622,15 @@ class PublicApi {
     this.http = http
   }
 
-  getProject() {
+  /**
+   * @param {{locale?: string}} [options] 语言偏好。命中项目注册的语言且该语言译文填了
+   *   对应字段时，`name` / `description` 返回译文，返回体的 `locale` 标出实际语言；
+   *   否则回落项目自身的值。
+   */
+  getProject(options = {}) {
     return this.http.request("GET", "/public/{projectKey}", {
       pathParams: { projectKey: this.http.requireProjectKey() },
+      query: { locale: options.locale },
     })
   }
 
@@ -679,22 +685,35 @@ class PublicApi {
   }
 
   /**
-   * @param {{limit?: number, offset?: number, platform?: string}} [options] 分页与平台筛选
+   * @param {{limit?: number, offset?: number, platform?: string, version?: string, locale?: string}} [options]
+   *   分页、平台、客户端版本号与语言偏好。
+   *   `version` 不传时，所有设了可见版本范围的公告都不会返回；
+   *   `locale` 未注册或该公告无译文时回落到默认内容（返回项的 `locale` 为 null）。
    */
   listAnnouncements(options = {}) {
     return this.http.request("GET", "/public/{projectKey}/announcements", {
       pathParams: { projectKey: this.http.requireProjectKey() },
-      query: { limit: options.limit, offset: options.offset, platform: options.platform },
+      query: {
+        limit: options.limit,
+        offset: options.offset,
+        platform: options.platform,
+        version: options.version,
+        locale: options.locale,
+      },
     })
   }
 
   /**
-   * @param {{platform?: string}} [options] 平台筛选
+   * @param {{platform?: string, version?: string, locale?: string}} [options] 平台、客户端版本号与语言偏好
    */
   getLatestAnnouncement(options = {}) {
     return this.http.request("GET", "/public/{projectKey}/announcements/latest", {
       pathParams: { projectKey: this.http.requireProjectKey() },
-      query: { platform: options.platform },
+      query: {
+        platform: options.platform,
+        version: options.version,
+        locale: options.locale,
+      },
     })
   }
 
@@ -841,6 +860,44 @@ class AdminApi {
     })
   }
 
+  /**
+   * 列出绑定项目注册的语言。只有注册过的语言能存公告译文，也只有它们的偏好
+   * 会被公开接口认账——公开端收到未注册的语言偏好时返回公告的默认内容。
+   */
+  listProjectLocales() {
+    return this.http.request("GET", "/admin/projects/{projectKey}/locales", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      auth: true,
+    })
+  }
+
+  /**
+   * 注册一个语言。已注册（大小写不敏感）时只更新展示名，不会新建第二行。
+   *
+   * @param {{locale: string, aliases?: string[], label?: string}} input
+   *   语言标签、同义标签与展示名。同义标签让多个写法指向同一份译文
+   *   （主标签 en 列出 en-US、en-GB）；与本项目其它语言相撞会 400。
+   */
+  createProjectLocale(input) {
+    return this.http.request("POST", "/admin/projects/{projectKey}/locales", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact(Object.assign({}, input)),
+      auth: true,
+    })
+  }
+
+  /**
+   * 注销一个语言。已录入的公告译文不会被删除，只是暂时不可达，重新注册即恢复。
+   *
+   * @param {string} locale 要注销的语言标签，匹配大小写不敏感
+   */
+  deleteProjectLocale(locale) {
+    return this.http.request("DELETE", "/admin/projects/{projectKey}/locales/{locale}", {
+      pathParams: { projectKey: this.http.requireProjectKey(), locale },
+      auth: true,
+    })
+  }
+
   /** @returns 项目总数 */
   getProjectStatistics() {
     return this.http.request("GET", "/admin/projects/statistics", { auth: true })
@@ -980,7 +1037,9 @@ class AdminApi {
   }
 
   /**
-   * @param {{title: string, content: string, is_pinned?: boolean, is_hidden?: boolean, platforms?: string[], author?: string, published_at?: number}} input 公告字段
+   * @param {{title: string, content: string, is_pinned?: boolean, is_hidden?: boolean, platforms?: string[], author?: string, min_comparable_version?: string|null, max_comparable_version?: string|null, translations?: Array<{locale: string, title: string, content: string}>, published_at?: number}} input
+   *   公告字段。`min/max_comparable_version` 是可见版本范围（闭区间，留空即该端不限）；
+   *   `translations` 传了即整体替换全部译文，语言必须先在项目里注册。
    */
   createAnnouncement(input) {
     return this.http.request("POST", "/admin/projects/{projectKey}/announcements", {

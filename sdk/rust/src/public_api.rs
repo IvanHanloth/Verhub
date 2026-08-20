@@ -15,13 +15,17 @@ pub struct PublicApi<'a> {
 
 impl PublicApi<'_> {
     /// 取项目公开信息。
-    pub async fn get_project(&self) -> Result<ProjectItem> {
+    ///
+    /// `locale` 命中项目注册的语言（主标签或同义标签，大小写不敏感）且该语言译文
+    /// 填了对应字段时，`name` / `description` 返回译文，返回体的 `locale` 标出实际
+    /// 语言；否则回落项目自身的值。
+    pub async fn get_project(&self, locale: Option<&str>) -> Result<ProjectItem> {
         let key = self.inner.require_project_key()?;
         self.inner
             .request::<_, ()>(
                 Method::GET,
                 &format!("/public/{}", segment(&key)),
-                &[],
+                &[("locale", locale.map(str::to_string))],
                 None,
                 false,
             )
@@ -123,6 +127,8 @@ impl PublicApi<'_> {
                     ("limit", options.limit.map(|v| v.to_string())),
                     ("offset", options.offset.map(|v| v.to_string())),
                     ("platform", options.platform.map(|v| v.as_str().to_string())),
+                    ("version", options.version.clone()),
+                    ("locale", options.locale.clone()),
                 ],
                 None,
                 false,
@@ -133,14 +139,18 @@ impl PublicApi<'_> {
     /// 取最新公告。
     pub async fn get_latest_announcement(
         &self,
-        platform: Option<Platform>,
+        options: &LatestAnnouncementOptions,
     ) -> Result<AnnouncementItem> {
         let key = self.inner.require_project_key()?;
         self.inner
             .request::<_, ()>(
                 Method::GET,
                 &format!("/public/{}/announcements/latest", segment(&key)),
-                &[("platform", platform.map(|v| v.as_str().to_string()))],
+                &[
+                    ("platform", options.platform.map(|v| v.as_str().to_string())),
+                    ("version", options.version.clone()),
+                    ("locale", options.locale.clone()),
+                ],
                 None,
                 false,
             )

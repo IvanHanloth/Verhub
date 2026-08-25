@@ -31,14 +31,6 @@ export type LogsStats = {
   error_count: number
 }
 
-export type ActionsStats = {
-  count: number
-}
-
-export type ActionRecordsStats = {
-  count: number
-}
-
 export async function getProjectsStats(token: string): Promise<ProjectsStats> {
   return requestJson<ProjectsStats>("/admin/projects/statistics", { token })
 }
@@ -57,12 +49,4 @@ export async function getFeedbacksStats(token: string): Promise<FeedbacksStats> 
 
 export async function getLogsStats(token: string): Promise<LogsStats> {
   return requestJson<LogsStats>("/admin/logs/statistics", { token })
-}
-
-export async function getActionsStats(token: string): Promise<ActionsStats> {
-  return requestJson<ActionsStats>("/admin/actions/statistics", { token })
-}
-
-export async function getActionRecordsStats(token: string): Promise<ActionRecordsStats> {
-  return requestJson<ActionRecordsStats>("/admin/actions/record/statistics", { token })
 }

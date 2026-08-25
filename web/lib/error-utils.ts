@@ -4,7 +4,7 @@ import { ApiError } from "@/lib/api-client"
  * Extract a user-friendly error message from an unknown error.
  * Shared across all dashboard components to avoid duplication.
  */
-export function getErrorMessage(error: unknown): string {
+export function getErrorMessage(error: unknown, fallback = "请求失败，请稍后再试。"): string {
   if (error instanceof ApiError) {
     return `${error.message} (HTTP ${error.status})`
   }
@@ -13,5 +13,5 @@ export function getErrorMessage(error: unknown): string {
     return error.message
   }
 
-  return "请求失败，请稍后再试。"
+  return fallback
 }

@@ -32,12 +32,15 @@ export type TrendSeries = TimeseriesSeries
 type TrendChartProps = {
   points: TrendPoint[]
   granularity: Granularity
+  /** 度量名，进 tooltip 与图例。请求统计与事件统计画的不是同一件东西。 */
+  measureLabel?: string
   className?: string
 }
 
 export function TrendLineChart({
   points,
   granularity,
+  measureLabel = "请求数",
   className = "aspect-[16/7] w-full",
 }: TrendChartProps) {
   const data = React.useMemo(
@@ -50,7 +53,7 @@ export function TrendLineChart({
     [points, granularity],
   )
 
-  const config: ChartConfig = { count: { label: "请求数", color: "var(--series-1)" } }
+  const config: ChartConfig = { count: { label: measureLabel, color: "var(--series-1)" } }
 
   return (
     <ChartContainer config={config} className={className}>

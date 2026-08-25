@@ -3,10 +3,10 @@ import { ConfigModule } from "@nestjs/config"
 import { ScheduleModule } from "@nestjs/schedule"
 import { ThrottlerModule } from "@nestjs/throttler"
 
-import { ActionsModule } from "./actions/actions.module"
 import { AnnouncementsModule } from "./announcements/announcements.module"
 import { AuthModule } from "./auth/auth.module"
 import { DatabaseModule } from "./database/database.module"
+import { EventsModule } from "./events/events.module"
 import { FeedbacksModule } from "./feedbacks/feedbacks.module"
 import { GeoModule } from "./geo/geo.module"
 import { GithubAppModule } from "./github-app/github-app.module"
@@ -49,7 +49,7 @@ function publicRateLimit(): number {
     AnnouncementsModule,
     FeedbacksModule,
     LogsModule,
-    ActionsModule,
+    EventsModule,
     StatsModule,
     WebhooksModule,
     GithubAppModule,

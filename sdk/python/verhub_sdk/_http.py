@@ -11,6 +11,7 @@ from urllib.parse import quote, urlencode
 
 import httpx
 
+from ._analytics import AsyncEventQueue, EventQueue, analytics_namespace
 from ._unset import UNSET, UnsetType
 from ._version import VERHUB_SDK_VERSION
 from .errors import VerhubApiError, VerhubAuthError, VerhubConnectionError, VerhubError
@@ -23,15 +24,14 @@ logger = logging.getLogger("verhub_sdk")
 #: 传 ``httpx.Timeout`` 做精细控制，传 ``None`` 则不限时。
 Timeout = Union[float, Tuple[float, float], httpx.Timeout, None]
 
-#: 默认重试次数。只作用于连接建立失败与幂等方法（GET 等），POST 不自动重试。
+#: 默认重试次数。
 DEFAULT_RETRIES = 2
 
-#: 会触发重试的服务端状态码，均为可安全重试的临时性错误。
+#: 会触发重试的服务端状态码。
 RETRY_STATUS = (502, 503, 504)
 
-#: 按状态码重试时允许重放的方法。与 ``urllib3.Retry`` 的默认白名单一致——重放这些
-#: 方法不会产生副作用，而 POST 会。
-RETRY_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE", "TRACE"})
+#: 会自动重试的幂等方法；其余方法一律不重试。四个语言的 SDK 集合相同。
+RETRY_METHODS = frozenset({"GET", "HEAD"})
 
 #: 重试退避基数（秒）：第 n 次重试等 ``BACKOFF_FACTOR * 2 ** (n - 1)``，首次不等。
 BACKOFF_FACTOR = 0.3
@@ -42,28 +42,22 @@ PLATFORM_HEADER = "x-verhub-platform"
 #: 客户端系统版本明细头，如 ``11`` / ``ubuntu 24.04``；超过 32 字符会被服务端丢弃。
 PLATFORM_VERSION_HEADER = "x-verhub-platform-version"
 
-#: 系统版本明细的长度上限，与服务端一致，超出直接截断。
+#: 系统版本明细的长度上限，与服务端一致。
 MAX_PLATFORM_VERSION_LENGTH = 32
 
-#: 老 Windows 的 NT 内核号 → 市场版本号。Win10/11 都是 10.0，另按构建号区分。
+#: Windows NT 内核号 → 市场版本号。10.0 不在表内，另按构建号区分。
 WINDOWS_NT_TO_MARKET = {(6, 1): "7", (6, 2): "8", (6, 3): "8.1"}
 
 
 def sanitize_platform_version(value: str) -> str:
     """
-    把系统版本明细规整成能安全放进 HTTP 头的形式。
+    把系统版本明细规整成能进 HTTP 头的形式。
 
-    请求头只能承载 ASCII，而这个值未必干净：调用方用错编码读系统版本时拿到的
-    就是 ``Microsoft Windows [\\ufffd汾 10.0.26200.8875]`` 这种串。不清洗的话，
-    HTTP 客户端会在编码请求头这一步抛异常，整个请求跟着失败——一个纯统计用的头
-    不该有本事弄挂业务请求。
-
-    清洗规则：非可打印 ASCII 的字符一律当作空白（版本号本身是 ASCII，能完整
-    留下），折叠连续空白，再按 :data:`MAX_PLATFORM_VERSION_LENGTH` 截断。
-    四个语言的 SDK 用同一套规则。
+    非可打印 ASCII 一律替换成空格，折叠连续空白，按
+    :data:`MAX_PLATFORM_VERSION_LENGTH` 截断。四个语言的 SDK 规则相同。
 
     :param value: 原始版本明细
-    :return: 清洗后的版本明细；空串表示无从得知，此时不发这个头
+    :return: 清洗后的版本明细；空串表示无从得知
     """
     ascii_only = "".join(c if " " < c <= "~" else " " for c in value)
     return " ".join(ascii_only.split())[:MAX_PLATFORM_VERSION_LENGTH].rstrip()
@@ -71,10 +65,7 @@ def sanitize_platform_version(value: str) -> str:
 
 def _header_safe(value: Optional[str]) -> Optional[str]:
     """
-    清洗一个要进请求头的来源声明，洗完是空串就收敛成 ``None``（即不发这个头）。
-
-    平台声明同样走这一步：它在 Python 里是自由字符串，调用方塞进非 ASCII 一样
-    会让 HTTP 客户端抛异常，而 Rust / TS 那边平台是枚举，天然没这个口子。
+    清洗一个要进请求头的来源声明，洗完是空串则返回 ``None``。
 
     :param value: 原始声明
     :return: 可安全进头的值，或 ``None``
@@ -84,12 +75,28 @@ def _header_safe(value: Optional[str]) -> Optional[str]:
     return sanitize_platform_version(value) or None
 
 
+def _macos_marketing_version(product_version: str) -> str:
+    """
+    把 ``platform.mac_ver()`` 的产品版本号收敛成市场版本号。
+
+    ``15.3.1`` → ``15``，``10.15.7`` → ``10.15``。与其余三个语言的 SDK 一致。
+
+    :param product_version: 形如 ``15.3.1`` 的产品版本号
+    :return: 市场版本号；无法解析时为空串
+    """
+    parts = [p for p in product_version.strip().split(".") if p]
+    if not parts:
+        return ""
+    if parts[0] == "10":
+        return ".".join(parts[:2])
+    return parts[0]
+
+
 def detect_platform() -> str:
     """
-    猜测当前运行平台，用于填充 :data:`PLATFORM_HEADER`。
+    探测当前运行平台，用于填充 :data:`PLATFORM_HEADER`。
 
-    只区分契约里的七个取值；认不出时返回 ``others`` 而不是瞎猜，
-    服务端拿到 ``others`` 至少知道这是「说不清的平台」。
+    只区分契约里的七个取值，识别不出时返回 ``others``。
 
     :return: 平台标识
     """
@@ -105,11 +112,10 @@ def detect_platform() -> str:
 
 def detect_platform_version() -> str:
     """
-    从系统信息里提取系统版本明细，用于填充 :data:`PLATFORM_VERSION_HEADER`。
+    探测系统版本明细，用于填充 :data:`PLATFORM_VERSION_HEADER`。
 
-    Windows 按内核构建号还原市场版本号（11 / 10 …），macOS 取产品版本号，
-    Linux 读 os-release 拼成 ``发行版 版本号``。取不到就返回空串，交给服务端
-    从 User-Agent 兜底推断。
+    Windows 与 macOS 给市场版本号（``11`` / ``15`` / ``10.15``），Linux 读
+    os-release 拼成 ``发行版 版本号``。取不到时返回空串。
 
     :return: 系统版本明细；空串表示无从得知
     """
@@ -120,13 +126,12 @@ def detect_platform_version() -> str:
             # Win11 仍上报内核 10.0，只有构建号 >= 22000 能区分出来。
             if info.major == 10 and info.minor == 0:
                 return "11" if info.build >= 22000 else "10"
-            # 更老的 Windows 只能靠 NT 内核号还原市场版本号。
             return WINDOWS_NT_TO_MARKET.get((info.major, info.minor), "")
 
         if name == "darwin":
             import platform as _platform
 
-            return sanitize_platform_version(_platform.mac_ver()[0] or "")
+            return sanitize_platform_version(_macos_marketing_version(_platform.mac_ver()[0] or ""))
 
         if name.startswith("linux"):
             import platform as _platform
@@ -142,7 +147,7 @@ def detect_platform_version() -> str:
                     pass
             return ""
     except Exception:
-        # 版本探测纯属锦上添花，任何异常都不该阻断请求。
+        # 探测失败时不声明版本。
         return ""
 
     return ""
@@ -152,9 +157,6 @@ def compact(source: Mapping[str, Any]) -> Dict[str, Any]:
     """
     丢掉值为 :data:`~verhub_sdk._unset.UNSET` 的字段，保留显式的 ``None``。
 
-    ``None`` 会被序列化成 JSON null，是「把这个字段置空」的意思；只有
-    完全没提供的字段才该从请求里消失。
-
     :param source: 原始字段表
     :return: 过滤后的字段表
     """
@@ -163,10 +165,7 @@ def compact(source: Mapping[str, Any]) -> Dict[str, Any]:
 
 def _normalize_base_url(base_url: str) -> str:
     """
-    去掉首尾空白与末尾斜杠；base_url 不像带 ``/api/v`` 前缀时给一句温和提醒。
-
-    传错前缀（比如只给裸域名）时所有请求会静默 404，很难排查，这里主动 warn
-    一声而不是抛错——非标准挂载路径的部署仍能正常用。
+    去掉首尾空白与末尾斜杠；不含 ``/api/v`` 时 ``warnings.warn`` 一次，不抛错。
 
     :param base_url: 原始根地址
     :return: 规范化后的根地址
@@ -185,8 +184,7 @@ def _to_httpx_timeout(timeout: Timeout) -> httpx.Timeout:
     """
     把 SDK 的超时写法翻译成 ``httpx.Timeout``。
 
-    ``(connect, read)`` 元组里的读超时同时用于 write 与连接池等待——这两个阶段
-    对调用方而言与「读」同属「连上之后还要等多久」，分开配置没有实际意义。
+    ``(connect, read)`` 元组里的读超时同时用于 write 与连接池等待。
 
     :param timeout: 单值、``(connect, read)`` 元组、``httpx.Timeout`` 或 ``None``
     :return: httpx 超时配置
@@ -202,7 +200,7 @@ def _to_httpx_timeout(timeout: Timeout) -> httpx.Timeout:
 def _describe(exc: BaseException) -> str:
     """
     :param exc: 底层异常
-    :return: 可读的错误描述；httpx 的超时类异常 ``str()`` 常为空串，退回类名
+    :return: 可读的错误描述；``str()`` 为空串时退回类名
     """
     return str(exc) or exc.__class__.__name__
 
@@ -222,8 +220,7 @@ class BaseHttpClient:
 
     这一层不碰传输，真正发请求的是 :class:`SyncHttpClient` 与
     :class:`AsyncHttpClient`。两者的 ``request`` 同名同签名，业务层
-    （``PublicApi`` / ``AdminApi``）因此只需写一份方法体：绑到同步客户端上返回
-    结果，绑到异步客户端上返回协程。
+    （``PublicApi`` / ``AdminApi``）因此只需写一份方法体。
     """
 
     def __init__(
@@ -238,6 +235,7 @@ class BaseHttpClient:
         retries: int = DEFAULT_RETRIES,
         user_agent: Optional[str] = None,
         app_identifier: Optional[str] = None,
+        analytics: Optional[Mapping[str, Any]] = None,
     ) -> None:
         """
         :param base_url: API 根地址，须包含 ``/api/v1`` 前缀
@@ -248,9 +246,12 @@ class BaseHttpClient:
         :param platform_version: 系统版本明细；省略则自动探测（平台被显式关成
             ``None`` 时除外），传 ``None`` 则不声明
         :param timeout: 单次请求超时（秒）
-        :param retries: 连接失败与幂等请求（GET 等）的自动重试次数
+        :param retries: GET / HEAD 在连接失败与 502/503/504 时的自动重试次数
         :param user_agent: 覆盖默认 User-Agent
         :param app_identifier: 追加到默认 User-Agent 之后的应用标识
+        :param analytics: 事件采集配置，见 :mod:`verhub_sdk._analytics`。省略即启用
+            默认行为（设备级匿名标识 + 本地待发队列）；面向欧盟用户的接入方应当
+            设置 ``require_consent=True``
         """
         self.base_url = _normalize_base_url(base_url)
         self.project_key = project_key
@@ -265,10 +266,6 @@ class BaseHttpClient:
             if app_identifier:
                 self.user_agent = f"{self.user_agent} {app_identifier.strip()}"
 
-        # 两个维度各管各的：显式给了就用给的，没给就自己探测。显式指定平台不再
-        # 连带禁掉版本探测——那样会让「声明了平台」的调用方彻底报不上系统版本，
-        # 而这正是绝大多数客户端的用法。唯一的例外是显式传 platform=None：那是
-        # 明确的退出声明，版本一并不报。
         self.platform = _header_safe(
             detect_platform() if isinstance(platform, UnsetType) else platform
         )
@@ -279,6 +276,48 @@ class BaseHttpClient:
             self.platform_version = platform_version
         self.platform_version = _header_safe(self.platform_version)
 
+        self.analytics_options = dict(analytics or {})
+        self._analytics: Any = None
+
+    def _analytics_namespace(self) -> str:
+        """本地状态的命名空间。显式配置优先，否则由实例地址与项目算出。"""
+        explicit = self.analytics_options.get("namespace")
+        if explicit:
+            return str(explicit)
+        return analytics_namespace(self.base_url, self.project_key)
+
+    @property
+    def analytics(self) -> Any:
+        """
+        事件队列，首次访问时才建，命名空间变化时丢弃重建。
+
+        旧命名空间攒下的事件留在它自己的文件里，下次绑定回去时补发。
+        """
+        namespace = self._analytics_namespace()
+        if self._analytics is not None and self._analytics.namespace != namespace:
+            logger.debug("verhub: 绑定项目已变，按新命名空间重建事件队列")
+            self._analytics = None
+        if self._analytics is None:
+            self._analytics = self._create_analytics(namespace)
+        return self._analytics
+
+    def _queue_options(self) -> Dict[str, Any]:
+        """队列构造参数。``namespace`` 是命名空间的来源而不是队列的字段，要摘出去。"""
+        return {k: v for k, v in self.analytics_options.items() if k != "namespace"}
+
+    def _create_analytics(self, namespace: str) -> Any:
+        """由子类给出同步或异步的队列实现。"""
+        raise NotImplementedError
+
+    def _send_events(self, payload: Mapping[str, Any]) -> Any:
+        """队列的发送函数。同步下直接返回结果，异步下返回协程。"""
+        return self.request(
+            "POST",
+            "/public/{projectKey}/events",
+            path_params={"projectKey": self.require_project_key()},
+            body=payload,
+        )
+
     def set_token(self, token: str) -> None:
         """
         :param token: 管理员 JWT 或 API Key
@@ -286,7 +325,7 @@ class BaseHttpClient:
         self.token = token
 
     def clear_token(self) -> None:
-        """清除当前凭据，之后调用 admin 接口会直接抛错。"""
+        """清除当前凭据，之后调用 admin 接口会抛 :class:`VerhubAuthError`。"""
         self.token = ""
 
     def set_project_key(self, project_key: str) -> None:
@@ -305,7 +344,6 @@ class BaseHttpClient:
         """
         :param platform_version: 系统版本明细；传 ``None`` 则不再声明
         """
-        # 存进来就已清洗过，请求路径上拿到的一定是能进头的值。
         self.platform_version = _header_safe(platform_version)
 
     def require_project_key(self) -> str:
@@ -333,7 +371,7 @@ class BaseHttpClient:
         :param method: HTTP 方法
         :param path_template: 形如 ``/public/{projectKey}`` 的路径模板
         :param path_params: 路径参数，值会被 URL 编码
-        :param query: 查询参数，值为 ``None`` 的项会被丢弃
+        :param query: 查询参数，值为 ``None`` 或 UNSET 的项会被丢弃
         :param body: JSON 请求体
         :param auth: 是否附带 Bearer 凭据
         :return: 已解析的响应体
@@ -368,7 +406,6 @@ class BaseHttpClient:
 
         if auth:
             if not self.token:
-                # 请求还没发出去就在本地拦下，用专门的异常，别伪造一个假的 401。
                 raise VerhubAuthError("缺少凭据：请先设置 token")
             headers["Authorization"] = f"Bearer {self.token}"
 
@@ -390,9 +427,8 @@ class BaseHttpClient:
         """
         判定这次失败要不要重试，要的话等多久。
 
-        只重放两种情况：一是连接压根没建起来（请求没送到服务端，重放一定安全，
-        因此 POST 也放行）；二是幂等方法拿到 502/503/504 这类临时错误。读超时不
-        重试——请求可能已经在服务端生效了。
+        只对 :data:`RETRY_METHODS` 里的方法重试，且失败必须是连接建立失败或
+        :data:`RETRY_STATUS` 里的状态码。读超时不重试。
 
         :param method: HTTP 方法（已大写）
         :param attempt: 已经重试过的次数，从 0 开始
@@ -400,16 +436,16 @@ class BaseHttpClient:
         :param status: 响应状态码
         :return: 重试前的等待秒数；``None`` 表示不再重试
         """
-        if attempt >= self.retries:
+        if attempt >= self.retries or method not in RETRY_METHODS:
             return None
 
         if exc is not None:
             if not isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
                 return None
-        elif status not in RETRY_STATUS or method not in RETRY_METHODS:
+        elif status not in RETRY_STATUS:
             return None
 
-        # 与 urllib3 的退避一致：首次重试立刻重来，之后指数退避。
+        # 首次重试立刻重来，之后指数退避。
         return BACKOFF_FACTOR * (2**attempt) if attempt else 0.0
 
     def _connection_error(self, prepared: _Prepared, exc: BaseException) -> VerhubConnectionError:
@@ -527,6 +563,7 @@ class SyncHttpClient(BaseHttpClient):
         http_client: Optional[httpx.Client] = None,
         user_agent: Optional[str] = None,
         app_identifier: Optional[str] = None,
+        analytics: Optional[Mapping[str, Any]] = None,
     ) -> None:
         """
         :param http_client: 自定义 ``httpx.Client``，可用于配置代理、证书、连接池上限。
@@ -542,9 +579,13 @@ class SyncHttpClient(BaseHttpClient):
             retries=retries,
             user_agent=user_agent,
             app_identifier=app_identifier,
+            analytics=analytics,
         )
         self.owns_client = http_client is None
         self.client = http_client or httpx.Client(timeout=self.timeout)
+
+    def _create_analytics(self, namespace: str) -> EventQueue:
+        return EventQueue(namespace, self._send_events, **self._queue_options())
 
     def request(
         self,
@@ -612,6 +653,7 @@ class AsyncHttpClient(BaseHttpClient):
         http_client: Optional[httpx.AsyncClient] = None,
         user_agent: Optional[str] = None,
         app_identifier: Optional[str] = None,
+        analytics: Optional[Mapping[str, Any]] = None,
     ) -> None:
         """
         :param http_client: 自定义 ``httpx.AsyncClient``；传入后由调用方负责关闭
@@ -626,9 +668,13 @@ class AsyncHttpClient(BaseHttpClient):
             retries=retries,
             user_agent=user_agent,
             app_identifier=app_identifier,
+            analytics=analytics,
         )
         self.owns_client = http_client is None
         self.client = http_client or httpx.AsyncClient(timeout=self.timeout)
+
+    def _create_analytics(self, namespace: str) -> AsyncEventQueue:
+        return AsyncEventQueue(namespace, self._send_events, **self._queue_options())
 
     def request(
         self,
@@ -643,8 +689,7 @@ class AsyncHttpClient(BaseHttpClient):
         """
         备好请求并返回一个待 ``await`` 的协程。
 
-        刻意不写成 ``async def``：那样连「没设 token」这种本地校验都要等到 ``await``
-        才抛，与同步版的时机不一致。这里把校验放在调用当下，只把真正的 I/O 留给协程。
+        本地校验（缺 token 等）在调用当下抛出，与同步版的时机一致。
 
         :return: 协程，await 后得到已解析的响应体
         :raises VerhubAuthError: 需要凭据却没有

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 import httpx
 
@@ -17,9 +17,9 @@ class VerhubClient:
     """
     Verhub SDK 入口（同步）。
 
-    客户端绑定一个项目：构造时传入 ``project_key`` 后，项目作用域的方法都用它，
-    不必再逐次传项目参数。两个命名空间共用一份连接、凭据与来源声明：
-    ``client.public`` 不需要凭据，``client.admin`` 需要管理员 JWT 或 API Key。
+    构造时传入 ``project_key`` 后，项目作用域的方法都用它，不必再逐次传项目参数。
+    两个命名空间共用一份连接、凭据与来源声明：``client.public`` 不需要凭据，
+    ``client.admin`` 需要管理员 JWT 或 API Key。
 
     >>> client = VerhubClient("https://verhub.example.com/api/v1", "verhub")
     >>> latest = client.public.get_latest_version()
@@ -45,6 +45,7 @@ class VerhubClient:
         user_agent: Optional[str] = None,
         app_identifier: Optional[str] = None,
         background_workers: int = DEFAULT_MAX_WORKERS,
+        analytics: Optional[Mapping[str, Any]] = None,
     ) -> None:
         """
         :param base_url: API 根地址，须包含 ``/api/v1``，如
@@ -59,8 +60,8 @@ class VerhubClient:
             ``None`` 则不声明
         :param timeout: 单次请求超时（秒）；传 ``(connect, read)`` 元组可分别指定
             连接与读取超时，也可直接传 ``httpx.Timeout``，传 ``None`` 则不限时
-        :param retries: 连接失败与幂等请求的自动重试次数，默认 2；POST 不自动重试，
-            传 0 关闭
+        :param retries: GET / HEAD 在连接失败与 502/503/504 时的自动重试次数，
+            默认 2，传 0 关闭
         :param http_client: 自定义 ``httpx.Client``，可用于配置代理、自定义证书、
             连接池上限；传入后由调用方负责关闭，``close()`` 不动它
         :param user_agent: 覆盖默认 User-Agent，会连带丢掉 SDK 版本信息
@@ -68,6 +69,9 @@ class VerhubClient:
             ``MyApp/1.2``），保留 SDK 版本又便于服务端统计
         :param background_workers: :attr:`background` 线程池的大小；用不到后台调用
             时不会创建任何线程
+        :param analytics: 事件采集配置，见 :mod:`verhub_sdk._analytics`。省略即启用
+            默认行为（设备级匿名标识 + 本地待发队列）；面向欧盟用户的接入方应当
+            设置 ``{"require_consent": True}``，在取得同意前 SDK 不生成标识、不写盘
         """
         self._http = SyncHttpClient(
             base_url=base_url,
@@ -80,6 +84,7 @@ class VerhubClient:
             http_client=http_client,
             user_agent=user_agent,
             app_identifier=app_identifier,
+            analytics=analytics,
         )
         self.public = PublicApi(self._http)
         self.admin = AdminApi(self._http)
@@ -98,7 +103,7 @@ class VerhubClient:
         """
         后台线程池 + 回调调度器，给 PySide6 这类没有 asyncio 的 GUI 用。
 
-        第一次访问时才创建线程池，用不到就不会多出线程。典型用法（SDK 不 import Qt）：
+        第一次访问时才创建线程池。典型用法（SDK 不 import Qt）：
 
         >>> timer.timeout.connect(client.background.drain)   # 每 50ms 排空回调
         >>> timer.start(50)
@@ -127,7 +132,7 @@ class VerhubClient:
         self._http.set_token(token)
 
     def clear_token(self) -> None:
-        """清除当前凭据，之后调用 admin 接口会直接抛错。"""
+        """清除当前凭据，之后调用 admin 接口会抛 :class:`VerhubAuthError`。"""
         self._http.clear_token()
 
     def set_platform(self, platform: Optional[str]) -> None:
@@ -152,8 +157,11 @@ class VerhubClient:
         """
         关闭连接池与后台线程池，等在途请求收尾。
 
-        自定义 ``http_client`` 由调用方自己关。
+        会先把事件队列里剩下的发出去。自定义 ``http_client`` 由调用方自己关。
         """
+        # 队列是懒建的，没用过采集就不要把它建出来。
+        if self._http._analytics is not None:
+            self._http.analytics.close()
         if self._background is not None:
             self._background.close()
         self._http.close()
@@ -165,5 +173,5 @@ class VerhubClient:
         self.close()
 
 
-#: 兼容早期版本的旧名字。
+#: :class:`VerhubClient` 的别名。
 VerhubSDK = VerhubClient

@@ -50,6 +50,10 @@ type ProjectItem = {
   optional_update_min_comparable_version: string | null
   optional_update_max_comparable_version: string | null
   stats_retention_days: number
+  /// 事件采集总开关。关掉后采集端点空转，既有数据保留。
+  event_collection_enabled: boolean
+  /// 事件明细的保留期，独立于 stats_retention_days 且默认更短。
+  event_retention_days: number
   /// 该项目改名后保留的旧 Project Key，均可作为别名访问到本项目。新到旧排序。
   aliases: string[]
   /**
@@ -193,6 +197,8 @@ export class ProjectsService {
           optionalUpdateMinComparableVersion: optionalMin,
           optionalUpdateMaxComparableVersion: optionalMax,
           statsRetentionDays: dto.stats_retention_days,
+          eventCollectionEnabled: dto.event_collection_enabled,
+          eventRetentionDays: dto.event_retention_days,
         },
         include: PROJECT_WITH_ALIASES,
       })
@@ -251,6 +257,8 @@ export class ProjectsService {
           ? this.normalizeOptionalComparable(dto.optional_update_max_comparable_version)
           : undefined,
       statsRetentionDays: dto.stats_retention_days,
+      eventCollectionEnabled: dto.event_collection_enabled,
+      eventRetentionDays: dto.event_retention_days,
       updatedAt: nowSeconds(),
     }
 
@@ -614,6 +622,8 @@ export class ProjectsService {
       optionalUpdateMinComparableVersion: string | null
       optionalUpdateMaxComparableVersion: string | null
       statsRetentionDays: number
+      eventCollectionEnabled: boolean
+      eventRetentionDays: number
       aliases?: { alias: string }[]
       translations?: { locale: string; name: string | null; description: string | null }[]
       createdAt: number
@@ -642,6 +652,8 @@ export class ProjectsService {
       optional_update_min_comparable_version: project.optionalUpdateMinComparableVersion,
       optional_update_max_comparable_version: project.optionalUpdateMaxComparableVersion,
       stats_retention_days: project.statsRetentionDays,
+      event_collection_enabled: project.eventCollectionEnabled,
+      event_retention_days: project.eventRetentionDays,
       aliases: project.aliases?.map((item) => item.alias) ?? [],
       // 两个字段都留空的译文行对返回内容毫无贡献，报出去会让调用方以为拿到了译文。
       locale: name || description ? (translation?.locale ?? null) : null,

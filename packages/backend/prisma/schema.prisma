@@ -52,7 +52,7 @@ enum PublicEndpoint {
   ANNOUNCEMENT_LATEST
   FEEDBACK_SUBMIT
   LOG_UPLOAD
-  ACTION_RECORD
+  EVENT_INGEST
 }
 
 model User {
@@ -108,13 +108,23 @@ model Project {
   githubWebhookSecretUpdatedAt       Int?
   /// How long hourly request statistics are kept, in days. Capped at 365.
   statsRetentionDays                 Int                       @default(365)
+  /// 事件采集总开关。关掉后采集端点空转返回 202，既有数据保留。
+  /// 给运营者一个立即止血的手段：收到监管问询时不必改配置重启。
+  eventCollectionEnabled             Boolean                   @default(true)
+  /// 事件明细的保留期，独立于 statsRetentionDays 且默认更短。
+  /// 明细带 distinctId，是可关联到个人的高频数据，不该与纯计数用同一窗口。
+  eventRetentionDays                 Int                       @default(90)
   createdAt                          Int                       @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   updatedAt                          Int                       @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   versions                           Version[]
   announcements                      Announcement[]
   feedbacks                          Feedback[]
   logs                               Log[]
-  actions                            Action[]
+  eventDefinitions                   EventDefinition[]
+  eventRecords                       EventRecord[]
+  eventStats                         EventStat[]
+  eventActiveUsers                   EventActiveUser[]
+  eventDashboardCards                EventDashboardCard[]
   requestStats                       ApiRequestStat[]
   clientVersionStats                 ClientVersionStat[]
   platformVersionStats               PlatformVersionStat[]
@@ -381,28 +391,64 @@ model IpGeoCache {
   @@index([expiresAt])
 }
 
-model Action {
-  id          String         @id @default(cuid())
+/// 事件定义，由采集端自动发现而非管理员预先登记。
+///
+/// 上报不依赖本表存在：客户端直接报事件名，服务端第一次见到就建行。这是与旧
+/// Action 模型最关键的差别——旧模型要求先在后台建一条记录、把生成的 cuid 硬编码
+/// 进客户端代码，这道门槛让该功能从未被任何接入方使用过。管理员在这里做的只是
+/// 事后补充显示名与描述、或把停用的事件归档。
+model EventDefinition {
+  id          String  @id @default(cuid())
   projectKey  String
+  /// 归一化后的事件名（小写、去空白，上限 64），项目内唯一。
   name        String
-  description String
-  customData  Json?
-  createdAt   Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  updatedAt   Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
-  records     ActionRecord[]
+  /// 给管理端看的中文名；为空时界面回退到 name。
+  displayName String?
+  description String?
+  /// 归档后不出现在事件选择器里，历史数据不受影响。
+  archived    Boolean @default(false)
+  firstSeenAt Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  lastSeenAt  Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  createdAt   Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt   Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
-  @@index([projectKey, createdAt])
+  @@unique([projectKey, name])
+  @@index([projectKey, archived, lastSeenAt])
 }
 
-model ActionRecord {
-  id              String    @id @default(cuid())
-  actionId        String
-  http            Json?
-  customData      Json?
+/// 事件明细，漏斗 / 留存 / 路径分析的唯一数据源。
+///
+/// 小时汇总表（EventStat）丢掉了 distinctId 维度，任何需要「同一个人是否依次做了
+/// A 再做 B」的问题都只能回明细算，所以这张表不能像 ApiRequestStat 那样只留计数。
+///
+/// 与 Log / Feedback 的两处有意差异：
+/// - 没有 http 列。旧 ActionRecord 把整个请求头塞进 JSON，既是存储放大也是隐私
+///   负担，而 properties 已经覆盖了接入方真正需要的结构化内容。
+/// - ip 默认只存匿名化后的值（见 VERHUB_EVENT_IP_STORAGE）。事件量比日志大一个
+///   数量级，且用途是聚合分析而非逐条排障，留完整地址不成比例。
+/// - 没有 dedupHash。eventId 幂等键精确解决了重试补发的重复，而 60 秒内容指纹是
+///   模糊的：它会把「用户连点三次」折叠成一次，那恰恰是行为分析要看的信号。
+model EventRecord {
+  id         String  @id @default(cuid())
+  projectKey String
+  eventName  String
+  /// 客户端生成的匿名标识（随机 UUID，非设备指纹），用于串联同一使用者的事件序列。
+  distinctId String
+  /// 会话标识，默认 30 分钟无事件即换新；客户端未启用会话时为空。
+  sessionId  String?
+  /// 客户端上报的幂等键。离线队列重试补发时靠它去重，见 (projectKey, eventId) 唯一索引。
+  eventId    String
+  /// 客户端声明的发生时间。离线补发必须信任它，但服务端会做时钟偏移钳制。
+  occurredAt Int
+  /// 服务端接收时间，与 occurredAt 分开存以便发现时钟异常的客户端。
+  receivedAt Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  /// 接入方自定义的扁平属性。带 GIN 索引，支持按属性筛选与分组统计。
+  properties Json?
+
   /// Caller origin, captured at submit time. See the `Log` model for why these
-  /// are columns rather than keys inside `http`.
+  /// are columns rather than keys inside a JSON blob.
   ip              String?
   userAgent       String?
   countryCode     String?
@@ -410,16 +456,88 @@ model ActionRecord {
   regionName      String?
   city            String?
   platform        Platform?
-  /// 客户端上报或从 UA 解析出的系统版本明细，如 "11" / "ubuntu 24.04"；见 `Feedback.platformVersion`。
   platformVersion String?
-  /// Fingerprint for near-duplicate suppression; see `Log.dedupHash`.
-  dedupHash       String?
-  createdAt       Int       @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
-  action Action @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
-  @@index([actionId, createdAt])
-  @@index([dedupHash, createdAt])
+  @@unique([projectKey, eventId])
+  @@index([projectKey, eventName, occurredAt])
+  @@index([projectKey, distinctId, occurredAt])
+  @@index([projectKey, sessionId, occurredAt])
+  @@index([projectKey, occurredAt])
+  /// 属性筛选与分组走 JSONB 包含查询。jsonb_path_ops 比默认算子类小得多，
+  /// 代价是只支持 @>——而按属性等值筛选正是这里唯一需要的形状。
+  @@index([properties(ops: JsonbPathOps)], type: Gin)
+}
+
+/// 事件量的小时汇总，一行一个
+/// (project, eventName, hour, platform, region, regionCode, cityCode)。
+///
+/// 形状与哨兵值约定照搬 ApiRequestStat：维度列 NOT NULL 且用显式哨兵
+/// （UNKNOWN / LOCAL / 空串），因为 Postgres 的 unique 索引视 NULL 互异，
+/// 用 NULL 会静默破坏 upsert-increment。
+///
+/// 本表不含任何标识符，时间精度为自然小时，无法回溯到具体设备或还原访问序列，
+/// 因而不随数据主体的删除请求一并删除。
+model EventStat {
+  id         String   @id @default(cuid())
+  projectKey String
+  eventName  String
+  /// Unix seconds truncated to the start of the hour (UTC).
+  hourBucket Int
+  platform   Platform @default(OTHERS)
+  region     String   @default("UNKNOWN")
+  regionCode String   @default("")
+  cityCode   String   @default("")
+  count      Int      @default(0)
+  createdAt  Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt  Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
+
+  @@unique([projectKey, eventName, hourBucket, platform, region, regionCode, cityCode])
+  @@index([projectKey, hourBucket])
+  @@index([hourBucket])
+}
+
+/// 按自然日去重的活跃标识，供 DAU 与留存矩阵做人群交集。
+///
+/// 直接存去重行而不是 HyperLogLog：留存要算 day0 与 dayN 的人群**交集**，
+/// 近似基数结构做不了这件事。自部署量级下行数完全可控。
+model EventActiveUser {
+  id         String @id @default(cuid())
+  projectKey String
+  /// Unix seconds truncated to the start of the day (UTC).
+  dayBucket  Int
+  distinctId String
+
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
+
+  @@unique([projectKey, dayBucket, distinctId])
+  @@index([projectKey, dayBucket])
+  @@index([projectKey, distinctId])
+}
+
+/// 看板卡片，保存一份指标 DSL 查询定义。
+///
+/// 只存定义不存结果：结果随时间范围变化，缓存下来反而会给出过期数字。
+/// query 的结构与校验见 events/dsl/。
+model EventDashboardCard {
+  id          String  @id @default(cuid())
+  projectKey  String
+  title       String
+  description String?
+  /// 指标 DSL，执行时走受控编译路径，从不拼接 SQL。
+  query       Json
+  /// 前端网格布局（列宽、行高），纯展示用，后端不解析。
+  layout      Json?
+  sortOrder   Int     @default(0)
+  createdAt   Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt   Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+
+  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
+
+  @@index([projectKey, sortOrder])
 }
 
 model Version {

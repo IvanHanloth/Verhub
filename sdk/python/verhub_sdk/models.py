@@ -52,6 +52,10 @@ class _ProjectItemBase(TypedDict):
     optional_update_min_comparable_version: Optional[str]
     optional_update_max_comparable_version: Optional[str]
     stats_retention_days: int
+    #: 事件采集总开关。关掉后采集端点仍返回 202，但不入库、不计数。
+    event_collection_enabled: bool
+    #: 事件明细保留天数，默认 90。
+    event_retention_days: int
     # 改名后保留的旧 Project Key（别名），均可访问到本项目。新到旧排序。
     aliases: List[str]
     #: 本次返回的 name / description 实际来自哪个语言的译文；None 表示项目自身的值
@@ -136,7 +140,7 @@ class FeedbackItem(TypedDict):
     platform: Optional[Platform]
     platform_version: Optional[str]
     custom_data: Optional[Dict[str, Any]]
-    #: 是否已转成 GitHub Issue。转发失败的提交不会落库，所以拿到的记录都是成功的那些。
+    #: 是否已转成 GitHub Issue。转发失败的提交不落库，因此列表里的记录都是转发成功的。
     forwarded_to_github: bool
     #: 生成的 Issue 编号与链接；未转发时都是 None。
     github_issue_number: Optional[int]
@@ -167,21 +171,33 @@ class LogItem(TypedDict):
     created_at: int
 
 
-class ActionItem(TypedDict):
-    action_id: str
+class EventDefinitionItem(TypedDict):
+    """事件定义。由采集端自动发现，没有对应的创建接口。"""
+
+    event_definition_id: str
     project_key: str
+    #: 客户端上报时使用的键，归一化后的小写形式。不可修改。
     name: str
-    description: str
-    custom_data: Optional[Dict[str, Any]]
-    created_time: int
+    #: 给管理端看的名字；为空时界面回退到 name。
+    display_name: Optional[str]
+    description: Optional[str]
+    archived: bool
+    first_seen_time: int
+    last_seen_time: int
+    #: 查询区间内的上报量。
+    range_count: int
 
 
-class ActionRecordItem(TypedDict):
-    action_record_id: str
-    action_id: str
-    created_time: int
-    http: Optional[Dict[str, Any]]
-    custom_data: Optional[Dict[str, Any]]
+class EventSubjectRecord(TypedDict):
+    """数据主体导出里的一条事件明细。"""
+
+    event_name: str
+    event_id: str
+    session_id: Optional[str]
+    occurred_at: int
+    received_at: int
+    properties: Optional[Dict[str, Any]]
+    #: 默认为匿名化后的地址（IPv4 截末段、IPv6 截末 80 位）。
     ip: Optional[str]
     user_agent: Optional[str]
     country_code: Optional[str]
@@ -190,6 +206,12 @@ class ActionRecordItem(TypedDict):
     city: Optional[str]
     platform: Optional[Platform]
     platform_version: Optional[str]
+
+
+class EventSubjectExport(TypedDict):
+    distinct_id: str
+    total: int
+    data: List[EventSubjectRecord]
 
 
 class ProjectListResponse(TypedDict):
@@ -249,14 +271,9 @@ class LogListResponse(TypedDict):
     data: List[LogItem]
 
 
-class ActionListResponse(TypedDict):
+class EventDefinitionListResponse(TypedDict):
     total: int
-    data: List[ActionItem]
-
-
-class ActionRecordListResponse(TypedDict):
-    total: int
-    data: List[ActionRecordItem]
+    data: List[EventDefinitionItem]
 
 
 class CheckUpdateMilestone(TypedDict):
@@ -317,8 +334,13 @@ class LogStatistics(TypedDict):
     error_count: int
 
 
-class ActionStatistics(TypedDict):
-    count: int
+class IngestEventsResponse(TypedDict):
+    """采集接口的逐条回执。"""
+
+    accepted: int
+    skipped: int
+    #: true 表示本次采集被退出信号或项目开关拦下，此时 accepted 恒为 0。
+    suppressed: bool
 
 
 class GithubWebhookSettings(TypedDict):
@@ -452,3 +474,276 @@ class VersionImportResult(TypedDict):
     imported: int
     skipped: int
     scanned: int
+
+
+# ---- 事件分析 ----
+
+
+class EventFilter(TypedDict, total=False):
+    """属性筛选条件。``op`` 是闭集，值一律以参数进入服务端查询。"""
+
+    #: 属性名。只支持 properties 的第一层键。
+    property: str
+    op: str
+    value: Any
+
+
+class EventTimeseriesPoint(TypedDict):
+    bucket: int
+    count: float
+
+
+class EventSeries(TypedDict):
+    key: str
+    data: List[EventTimeseriesPoint]
+
+
+class EventOverviewResponse(TypedDict):
+    start_time: int
+    end_time: int
+    #: 事件总量。
+    total: int
+    #: 独立标识数。
+    unique_users: int
+    unique_sessions: int
+    event_types: int
+
+
+class EventTimeseriesResponse(TypedDict):
+    start_time: int
+    end_time: int
+    granularity: str
+    tz_offset_minutes: int
+    event_name: Optional[str]
+    group_by: Optional[str]
+    #: 总量序列，空桶补零。
+    data: List[EventTimeseriesPoint]
+    #: 按 group_by 拆开的序列；未指定 group_by 时为 None。
+    series: Optional[List[EventSeries]]
+
+
+class EventCountBucket(TypedDict):
+    key: str
+    label: str
+    count: int
+
+
+class EventBreakdownResponse(TypedDict):
+    start_time: int
+    end_time: int
+    dimension: str
+    property_key: Optional[str]
+    #: 全量总数，不是本页之和。
+    total: int
+    data: List[EventCountBucket]
+
+
+class EventHeatmapCell(TypedDict):
+    weekday: int
+    hour: int
+    count: int
+
+
+class EventHeatmapResponse(TypedDict):
+    start_time: int
+    end_time: int
+    tz_offset_minutes: int
+    #: 固定 168 格，含无数据的空格。
+    data: List[EventHeatmapCell]
+
+
+class FunnelStep(TypedDict, total=False):
+    event_name: str
+    filters: List[EventFilter]
+
+
+class FunnelStepResult(TypedDict):
+    step: int
+    event_name: str
+    users: int
+    #: 相对上一步的转化率，0 到 1；第一步恒为 1。
+    conversion_rate: float
+    total_conversion_rate: float
+    dropped: int
+
+
+class FunnelResponse(TypedDict):
+    start_time: int
+    end_time: int
+    window_seconds: int
+    data: List[FunnelStepResult]
+
+
+class RetentionCell(TypedDict):
+    period: int
+    users: int
+    rate: float
+
+
+class RetentionCohort(TypedDict):
+    cohort: int
+    size: int
+    #: 尚未走完的周期为 None，不是 0。
+    cells: List[Optional[RetentionCell]]
+
+
+class RetentionResponse(TypedDict):
+    start_time: int
+    end_time: int
+    period: str
+    periods: int
+    cohorts: List[RetentionCohort]
+
+
+class PathEdge(TypedDict):
+    step: int
+    from_event: str
+    to_event: str
+    count: int
+
+
+class PathsResponse(TypedDict):
+    start_time: int
+    end_time: int
+    scope: str
+    depth: int
+    #: 有分支被并入「（其他）」时为 True。
+    truncated: bool
+    data: List[PathEdge]
+
+
+class DslEvent(TypedDict, total=False):
+    name: str
+    #: 单个大写字母，公式里靠它引用。
+    alias: str
+    measure: str
+    filters: List[EventFilter]
+
+
+class DslGroupBy(TypedDict, total=False):
+    kind: str
+    #: kind 为 "property" 时必填。
+    key: str
+
+
+class EventQuery(TypedDict, total=False):
+    """指标 DSL：查询构建器产出的结构，也是看板卡片保存下来的内容。"""
+
+    type: str
+    events: List[DslEvent]
+    #: 作用于全部事件的公共条件，与各事件自己的 filters 取交集。
+    filters: List[EventFilter]
+    #: 跨事件运算，例如 "A / B * 100"。只认别名、数字与 + - * / ( )。
+    formula: str
+    group_by: DslGroupBy
+    granularity: str
+    limit: int
+    start_time: int
+    end_time: int
+    tz_offset_minutes: int
+
+
+class EventQueryResponse(TypedDict, total=False):
+    """形状随 query["type"] 变化。"""
+
+    start_time: int
+    end_time: int
+    type: str
+    series: List[EventSeries]
+    total: int
+    buckets: List[EventCountBucket]
+    values: Dict[str, float]
+    result: float
+
+
+class DashboardCardItem(TypedDict):
+    card_id: str
+    project_key: str
+    title: str
+    description: Optional[str]
+    query: EventQuery
+    layout: Optional[Dict[str, Any]]
+    sort_order: int
+    created_time: int
+    updated_time: int
+
+
+class DashboardCardListResponse(TypedDict):
+    total: int
+    data: List[DashboardCardItem]
+
+
+class EventSubjectDeleteResponse(TypedDict):
+    success: bool
+    #: 删除的事件明细条数。日活去重记录一并删除但不计入此数。
+    deleted: int
+
+
+#: 条款文档标识：``privacy-policy`` 隐私政策，``sdk-compliance`` SDK 合规性文档。
+TERMS_DOCUMENT_SLUGS = ("privacy-policy", "sdk-compliance")
+
+TermsDocumentSlug = str
+
+
+class TermsDocumentSummary(TypedDict):
+    """条款文档的标题与来源，不含正文。"""
+
+    slug: TermsDocumentSlug
+    title: str
+    #: 一句话说明，用于文档间导航。
+    summary: str
+    #: ``builtin`` 表示实例未自定义，返回的是内置正文。
+    source: str
+    #: 正文最后修订时间（Unix 秒）。
+    updated_at: int
+
+
+class TermsDocumentListResponse(TypedDict):
+    data: List[TermsDocumentSummary]
+
+
+class TermsDocumentView(TermsDocumentSummary):
+    """条款文档正文视图。"""
+
+    #: 生效的正文（Markdown）。
+    content: str
+
+
+class TermsPlaceholder(TypedDict):
+    """内置正文里待填的占位符。"""
+
+    #: 正文中的写法为 ``{{key}}``。
+    key: str
+    #: 填空表单的字段名。
+    label: str
+    #: 填写要求。
+    hint: str
+    #: 预填值。
+    example: str
+    #: ``False`` 表示留空也允许发布。
+    required: bool
+
+
+class TermsDocumentConfigView(TypedDict):
+    """条款文档的管理端视图，含生效正文、自定义草稿与内置原文。"""
+
+    slug: TermsDocumentSlug
+    title: str
+    summary: str
+    #: 关闭时前台展示内置正文，草稿仍留在库里。
+    custom: bool
+    #: 当前对外生效的正文。
+    content: str
+    #: 库里保存的自定义草稿；从未编辑过为 None。
+    custom_content: Optional[str]
+    custom_updated_at: Optional[int]
+    #: 内置正文原文。
+    builtin_content: str
+    builtin_updated_at: int
+    updated_at: Optional[int]
+    #: 内置正文里待填的占位符，按出现顺序。
+    placeholders: List[TermsPlaceholder]
+
+
+class TermsDocumentConfigListResponse(TypedDict):
+    data: List[TermsDocumentConfigView]

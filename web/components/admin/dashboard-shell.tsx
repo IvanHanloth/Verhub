@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import {
+  Activity,
   BarChart3,
   Bell,
   ClipboardList,
@@ -48,7 +49,7 @@ const navItems: NavItem[] = [
   { href: "/admin/projects", label: "项目管理", icon: FolderKanban },
   { href: "/admin/versions", label: "版本管理", icon: ClipboardList },
   { href: "/admin/announcements", label: "公告管理", icon: Bell },
-  { href: "/admin/actions", label: "行为管理", icon: ClipboardList },
+  { href: "/admin/events", label: "行为分析", icon: Activity },
   { href: "/admin/feedbacks", label: "反馈管理", icon: MessagesSquare },
   { href: "/admin/logs", label: "日志管理", icon: ClipboardList },
   { href: "/admin/tokens", label: "Token 管理", icon: KeyRound },
@@ -61,7 +62,13 @@ const adminPageTitles: Record<string, string> = {
   "/admin/projects": "项目管理",
   "/admin/versions": "版本管理",
   "/admin/announcements": "公告管理",
-  "/admin/actions": "行为管理",
+  "/admin/events": "行为分析",
+  "/admin/events/definitions": "事件清单",
+  "/admin/events/funnel": "漏斗分析",
+  "/admin/events/retention": "留存分析",
+  "/admin/events/paths": "路径分析",
+  "/admin/events/explore": "查询构建器",
+  "/admin/events/dashboard": "分析看板",
   "/admin/feedbacks": "反馈管理",
   "/admin/logs": "日志管理",
   "/admin/tokens": "Token 管理",

@@ -13,7 +13,7 @@ use crate::models::*;
 /// 写权限不隐含读权限。
 ///
 /// 项目作用域的方法用客户端绑定的 `project_key`，不再逐次收项目参数；跨项目的
-/// 方法（`list_projects`、各类统计、按 id 操作行为等）不涉及绑定项目。
+/// 方法（`list_projects`、各类统计、条款文档等）不涉及绑定项目。
 #[derive(Debug, Clone, Copy)]
 pub struct AdminApi<'a> {
     pub(crate) inner: &'a Inner,
@@ -31,7 +31,7 @@ impl AdminApi<'_> {
 
     /// 创建项目。`input.project_key` 是新项目标识，省略则用客户端绑定的那个。
     pub async fn create_project(&self, input: &CreateProjectInput) -> Result<ProjectItem> {
-        let mut body = serde_json::to_value(input).map_err(Error::Decode)?;
+        let mut body = serde_json::to_value(input).map_err(Error::Encode)?;
         if let Value::Object(map) = &mut body {
             if !map.contains_key("project_key") {
                 map.insert(
@@ -607,52 +607,59 @@ impl AdminApi<'_> {
             .await
     }
 
-    // ---- 行为 ----
+    // ---- 事件分析 ----
 
-    /// 取行为定义列表。
-    pub async fn list_actions(&self, options: &PageOptions) -> Result<ActionListResponse> {
+    /// 自动发现的事件清单。定义由采集端在第一次收到某个事件名时登记，没有创建接口。
+    pub async fn list_event_definitions(
+        &self,
+        options: &ListEventDefinitionsOptions,
+    ) -> Result<EventDefinitionListResponse> {
         let key = self.inner.require_project_key()?;
         self.inner
             .request::<_, ()>(
                 Method::GET,
-                &format!("/admin/projects/{}/actions", segment(&key)),
-                &page(options),
+                &format!("/admin/projects/{}/events/definitions", segment(&key)),
+                &[
+                    (
+                        "start_time",
+                        options.range.start_time.map(|v| v.to_string()),
+                    ),
+                    ("end_time", options.range.end_time.map(|v| v.to_string())),
+                    (
+                        "tz_offset_minutes",
+                        options.range.tz_offset_minutes.map(|v| v.to_string()),
+                    ),
+                    ("limit", options.limit.map(|v| v.to_string())),
+                    ("offset", options.offset.map(|v| v.to_string())),
+                    ("search", options.search.clone()),
+                    (
+                        "include_archived",
+                        options.include_archived.map(|v| v.to_string()),
+                    ),
+                ],
                 None,
                 true,
             )
             .await
     }
 
-    /// 在绑定项目下创建行为定义。
-    pub async fn create_action(&self, input: &CreateActionInput) -> Result<ActionItem> {
-        let mut body = serde_json::to_value(input).map_err(Error::Decode)?;
-        if let Value::Object(map) = &mut body {
-            map.insert(
-                "project_key".into(),
-                json!(self.inner.require_project_key()?),
-            );
-        }
-        self.inner
-            .request(
-                Method::POST,
-                "/admin/projects/actions",
-                &[],
-                Some(&body),
-                true,
-            )
-            .await
-    }
-
-    /// 编辑行为定义。
-    pub async fn update_action(
+    /// 补充显示名与描述，或把停用的事件归档。
+    ///
+    /// 事件名不在可改字段里——它是客户端上报时使用的键。
+    pub async fn update_event_definition(
         &self,
-        action_id: &str,
-        input: &UpdateActionInput,
-    ) -> Result<ActionItem> {
+        definition_id: &str,
+        input: &UpdateEventDefinitionInput,
+    ) -> Result<EventDefinitionItem> {
+        let key = self.inner.require_project_key()?;
         self.inner
             .request(
                 Method::PATCH,
-                &format!("/admin/actions/{}", segment(action_id)),
+                &format!(
+                    "/admin/projects/{}/events/definitions/{}",
+                    segment(&key),
+                    segment(definition_id)
+                ),
                 &[],
                 Some(input),
                 true,
@@ -660,12 +667,21 @@ impl AdminApi<'_> {
             .await
     }
 
-    /// 删除行为定义。
-    pub async fn delete_action(&self, action_id: &str) -> Result<DeleteSuccessResponse> {
+    /// 删除事件定义本身；明细与统计保留，下一次上报会把定义重新建回来。
+    /// 要停用某个事件请改用归档。
+    pub async fn delete_event_definition(
+        &self,
+        definition_id: &str,
+    ) -> Result<DeleteSuccessResponse> {
+        let key = self.inner.require_project_key()?;
         self.inner
             .request::<_, ()>(
                 Method::DELETE,
-                &format!("/admin/actions/{}", segment(action_id)),
+                &format!(
+                    "/admin/projects/{}/events/definitions/{}",
+                    segment(&key),
+                    segment(definition_id)
+                ),
                 &[],
                 None,
                 true,
@@ -673,29 +689,169 @@ impl AdminApi<'_> {
             .await
     }
 
-    /// 取某个行为定义下的行为记录。
-    pub async fn list_action_records(
+    /// 区间内的事件总量、独立标识数、活跃会话数与事件种类数。
+    pub async fn get_event_overview(
         &self,
-        action_id: &str,
-        options: &PageOptions,
-    ) -> Result<ActionRecordListResponse> {
+        options: &EventRangeOptions,
+    ) -> Result<EventOverviewResponse> {
+        let key = self.inner.require_project_key()?;
         self.inner
             .request::<_, ()>(
                 Method::GET,
-                &format!("/admin/actions/{}", segment(action_id)),
-                &page(options),
+                &format!("/admin/projects/{}/events/stats/overview", segment(&key)),
+                &range_query(options),
                 None,
                 true,
             )
             .await
     }
 
-    /// 取单条行为记录。
-    pub async fn get_action_record(&self, action_record_id: &str) -> Result<ActionRecordItem> {
+    /// 事件量趋势。
+    ///
+    /// `data` 是总量，永远返回；给了 `group_by` 时额外返回拆开的 `series`。
+    pub async fn get_event_timeseries(
+        &self,
+        options: &EventTimeseriesOptions,
+    ) -> Result<EventTimeseriesResponse> {
+        let key = self.inner.require_project_key()?;
+        let mut query = range_query(&options.range).to_vec();
+        query.push(("granularity", options.granularity.clone()));
+        query.push(("event_name", options.event_name.clone()));
+        query.push(("group_by", options.group_by.clone()));
+        query.push(("limit", options.limit.map(|v| v.to_string())));
+
         self.inner
             .request::<_, ()>(
                 Method::GET,
-                &format!("/admin/actions/record/{}", segment(action_record_id)),
+                &format!("/admin/projects/{}/events/stats/timeseries", segment(&key)),
+                &query,
+                None,
+                true,
+            )
+            .await
+    }
+
+    /// 事件分布。
+    ///
+    /// `total` 是全量而非本页之和。`dimension` 为 `property` 时必须给 `property_key`。
+    pub async fn get_event_breakdown(
+        &self,
+        options: &EventBreakdownOptions,
+    ) -> Result<EventBreakdownResponse> {
+        let key = self.inner.require_project_key()?;
+        let mut query = range_query(&options.range).to_vec();
+        query.push(("dimension", options.dimension.clone()));
+        query.push(("property_key", options.property_key.clone()));
+        query.push(("event_name", options.event_name.clone()));
+        query.push(("limit", options.limit.map(|v| v.to_string())));
+
+        self.inner
+            .request::<_, ()>(
+                Method::GET,
+                &format!("/admin/projects/{}/events/stats/breakdown", segment(&key)),
+                &query,
+                None,
+                true,
+            )
+            .await
+    }
+
+    /// 星期 × 小时活跃热力图，固定 168 格。
+    ///
+    /// 折叠按每条上报来源国家的代表时区进行；`tz_offset_minutes` 是无法定位的
+    /// 来源的回退值。
+    pub async fn get_event_heatmap(
+        &self,
+        options: &EventRangeOptions,
+        event_name: Option<&str>,
+    ) -> Result<EventHeatmapResponse> {
+        let key = self.inner.require_project_key()?;
+        let mut query = range_query(options).to_vec();
+        query.push(("event_name", event_name.map(str::to_string)));
+
+        self.inner
+            .request::<_, ()>(
+                Method::GET,
+                &format!("/admin/projects/{}/events/stats/heatmap", segment(&key)),
+                &query,
+                None,
+                true,
+            )
+            .await
+    }
+
+    /// 漏斗转化。
+    ///
+    /// 每一步取「上一步之后、且仍在转化窗口内」的最早一条命中，窗口锚定在第一步。
+    /// 只读接口，所需 scope 是 `events:read`。
+    pub async fn get_funnel(&self, input: &FunnelInput) -> Result<FunnelResponse> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request(
+                Method::POST,
+                &format!("/admin/projects/{}/events/analysis/funnel", segment(&key)),
+                &[],
+                Some(input),
+                true,
+            )
+            .await
+    }
+
+    /// 留存矩阵。尚未走完的周期返回 `None` 而不是 0。
+    pub async fn get_retention(&self, input: &RetentionInput) -> Result<RetentionResponse> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request(
+                Method::POST,
+                &format!(
+                    "/admin/projects/{}/events/analysis/retention",
+                    segment(&key)
+                ),
+                &[],
+                Some(input),
+                true,
+            )
+            .await
+    }
+
+    /// 路径分析（桑基图边集）。默认按会话串联。
+    pub async fn get_paths(&self, input: &PathsInput) -> Result<PathsResponse> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request(
+                Method::POST,
+                &format!("/admin/projects/{}/events/analysis/paths", segment(&key)),
+                &[],
+                Some(input),
+                true,
+            )
+            .await
+    }
+
+    /// 指标 DSL 求值。查询构建器与看板卡片共用这一个入口。
+    ///
+    /// `query` 的结构见 `verhub.openapi.yaml` 的 `EventQueryDto`；`formula` 支持
+    /// `"A / B * 100"` 形式的跨事件运算。
+    pub async fn run_event_query(&self, query: &JsonObject) -> Result<EventQueryResponse> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request(
+                Method::POST,
+                &format!("/admin/projects/{}/events/analysis/query", segment(&key)),
+                &[],
+                Some(query),
+                true,
+            )
+            .await
+    }
+
+    /// 该项目保存的分析卡片，按 `sort_order` 升序。
+    pub async fn list_dashboard_cards(&self) -> Result<DashboardCardListResponse> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request::<_, ()>(
+                Method::GET,
+                &format!("/admin/projects/{}/events/dashboards/cards", segment(&key)),
                 &[],
                 None,
                 true,
@@ -703,19 +859,79 @@ impl AdminApi<'_> {
             .await
     }
 
-    /// 取行为定义总数。
-    pub async fn get_action_statistics(&self) -> Result<ActionStatistics> {
+    /// 保存一份指标 DSL 查询定义。只存定义不存结果——结果随时间范围变化。
+    ///
+    /// `query` 在写入时就完整校验（含公式语法），不合法直接 400。
+    pub async fn create_dashboard_card(
+        &self,
+        input: &CreateDashboardCardInput,
+    ) -> Result<DashboardCardItem> {
+        let key = self.inner.require_project_key()?;
         self.inner
-            .request::<_, ()>(Method::GET, "/admin/actions/statistics", &[], None, true)
+            .request(
+                Method::POST,
+                &format!("/admin/projects/{}/events/dashboards/cards", segment(&key)),
+                &[],
+                Some(input),
+                true,
+            )
             .await
     }
 
-    /// 取行为记录总数。
-    pub async fn get_action_record_statistics(&self) -> Result<ActionStatistics> {
+    /// 更新看板卡片。
+    pub async fn update_dashboard_card(
+        &self,
+        card_id: &str,
+        input: &UpdateDashboardCardInput,
+    ) -> Result<DashboardCardItem> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request(
+                Method::PATCH,
+                &format!(
+                    "/admin/projects/{}/events/dashboards/cards/{}",
+                    segment(&key),
+                    segment(card_id)
+                ),
+                &[],
+                Some(input),
+                true,
+            )
+            .await
+    }
+
+    /// 删除看板卡片。
+    pub async fn delete_dashboard_card(&self, card_id: &str) -> Result<DeleteSuccessResponse> {
+        let key = self.inner.require_project_key()?;
         self.inner
             .request::<_, ()>(
-                Method::GET,
-                "/admin/actions/record/statistics",
+                Method::DELETE,
+                &format!(
+                    "/admin/projects/{}/events/dashboards/cards/{}",
+                    segment(&key),
+                    segment(card_id)
+                ),
+                &[],
+                None,
+                true,
+            )
+            .await
+    }
+
+    /// 代最终用户删除其全部事件明细（GDPR Art.17）。小时汇总不在删除范围内。
+    pub async fn delete_event_subject(
+        &self,
+        distinct_id: &str,
+    ) -> Result<EventSubjectDeleteResponse> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request::<_, ()>(
+                Method::DELETE,
+                &format!(
+                    "/admin/projects/{}/events/subjects/{}",
+                    segment(&key),
+                    segment(distinct_id)
+                ),
                 &[],
                 None,
                 true,
@@ -866,11 +1082,86 @@ impl AdminApi<'_> {
             )
             .await
     }
+
+    // ---- 条款文档 ----
+
+    /// 列出全部条款文档的设置视图（含生效正文、自定义草稿与内置原文）。
+    ///
+    /// 条款接口只接受管理员 JWT，API Key 会得到 401。不作用于绑定项目。
+    pub async fn list_terms_documents(&self) -> Result<TermsDocumentConfigListResponse> {
+        self.inner
+            .request::<_, ()>(Method::GET, "/admin/terms/documents", &[], None, true)
+            .await
+    }
+
+    /// 查单份条款文档的设置视图。
+    pub async fn get_terms_document(
+        &self,
+        slug: TermsDocumentSlug,
+    ) -> Result<TermsDocumentConfigView> {
+        self.inner
+            .request::<_, ()>(
+                Method::GET,
+                &format!("/admin/terms/documents/{}", segment(slug.as_str())),
+                &[],
+                None,
+                true,
+            )
+            .await
+    }
+
+    /// 部分更新条款文档，只修改传入的字段。
+    ///
+    /// `custom` 关闭时 `content` 仍会保存为草稿，重新打开即可继续编辑；
+    /// `content` 传空串表示清除草稿。
+    pub async fn update_terms_document(
+        &self,
+        slug: TermsDocumentSlug,
+        input: &UpdateTermsDocumentInput,
+    ) -> Result<TermsDocumentConfigView> {
+        self.inner
+            .request(
+                Method::PUT,
+                &format!("/admin/terms/documents/{}", segment(slug.as_str())),
+                &[],
+                Some(input),
+                true,
+            )
+            .await
+    }
+
+    /// 恢复内置条款正文：关闭自定义开关并丢弃草稿，前台随即回到内置正文。
+    pub async fn reset_terms_document(
+        &self,
+        slug: TermsDocumentSlug,
+    ) -> Result<TermsDocumentConfigView> {
+        self.inner
+            .request::<_, ()>(
+                Method::DELETE,
+                &format!("/admin/terms/documents/{}", segment(slug.as_str())),
+                &[],
+                None,
+                true,
+            )
+            .await
+    }
 }
 
 fn page(options: &PageOptions) -> [(&'static str, Option<String>); 2] {
     [
         ("limit", options.limit.map(|v| v.to_string())),
         ("offset", options.offset.map(|v| v.to_string())),
+    ]
+}
+
+/// 区间参数出现在每个统计方法上，抽出来免得逐个手写。
+fn range_query(options: &EventRangeOptions) -> [(&'static str, Option<String>); 3] {
+    [
+        ("start_time", options.start_time.map(|v| v.to_string())),
+        ("end_time", options.end_time.map(|v| v.to_string())),
+        (
+            "tz_offset_minutes",
+            options.tz_offset_minutes.map(|v| v.to_string()),
+        ),
     ]
 }

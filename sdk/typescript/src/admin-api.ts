@@ -1,14 +1,32 @@
 import { compact, type HttpClient } from "./http"
 import type {
-  ActionItem,
-  ActionListResponse,
-  ActionRecordItem,
-  ActionRecordListResponse,
-  ActionStatistics,
+  CreateDashboardCardInput,
+  DashboardCardItem,
+  DashboardCardListResponse,
+  EventBreakdownOptions,
+  EventBreakdownResponse,
+  EventDefinitionItem,
+  EventDefinitionListResponse,
+  EventHeatmapResponse,
+  EventOverviewResponse,
+  EventQuery,
+  EventQueryResponse,
+  EventRangeOptions,
+  EventSubjectDeleteResponse,
+  EventTimeseriesOptions,
+  EventTimeseriesResponse,
+  FunnelOptions,
+  FunnelResponse,
+  ListEventDefinitionsOptions,
+  PathsOptions,
+  PathsResponse,
+  RetentionOptions,
+  RetentionResponse,
+  UpdateDashboardCardInput,
+  UpdateEventDefinitionInput,
   AnnouncementItem,
   AnnouncementListResponse,
   AnnouncementStatistics,
-  CreateActionInput,
   CreateAnnouncementInput,
   CreateFeedbackInput,
   CreateLogInput,
@@ -38,12 +56,15 @@ import type {
   ProjectItem,
   ProjectListResponse,
   ProjectStatistics,
-  UpdateActionInput,
+  TermsDocumentConfigListResponse,
+  TermsDocumentConfigView,
+  TermsDocumentSlug,
   UpdateAnnouncementInput,
   UpdateFeedbackInput,
   UpdateGithubAppConfigInput,
   UpdateProjectGithubIntegrationInput,
   UpdateProjectInput,
+  UpdateTermsDocumentInput,
   UpdateVersionInput,
   UpsertVersionInput,
   VersionImportResult,
@@ -118,6 +139,9 @@ export class AdminApi {
     })
   }
 
+  /**
+   * @returns 删除结果
+   */
   deleteProject(): Promise<DeleteSuccessResponse> {
     return this.http.request("DELETE", "/admin/projects/{projectKey}", {
       pathParams: { projectKey: this.http.requireProjectKey() },
@@ -484,90 +508,236 @@ export class AdminApi {
     return this.http.request("GET", "/admin/logs/statistics", { auth: true })
   }
 
-  // ---- 行为 ----
+  // ---- 事件分析 ----
 
   /**
-   * @param options 分页参数
-   */
-  listActions(options: PageOptions = {}): Promise<ActionListResponse> {
-    return this.http.request("GET", "/admin/projects/{projectKey}/actions", {
-      pathParams: { projectKey: this.http.requireProjectKey() },
-      query: { limit: options.limit, offset: options.offset },
-      auth: true,
-    })
-  }
-
-  /**
-   * 在绑定项目下创建行为定义。
+   * 自动发现的事件清单。定义由采集端在第一次收到某个事件名时登记，没有创建接口。
    *
-   * @param input 行为定义字段
+   * @param options 区间、分页与搜索
    */
-  createAction(input: CreateActionInput): Promise<ActionItem> {
-    return this.http.request("POST", "/admin/projects/actions", {
-      body: compact({ ...input, project_key: this.http.requireProjectKey() }),
+  listEventDefinitions(
+    options: ListEventDefinitionsOptions = {},
+  ): Promise<EventDefinitionListResponse> {
+    return this.http.request("GET", "/admin/projects/{projectKey}/events/definitions", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      query: {
+        start_time: options.start_time,
+        end_time: options.end_time,
+        tz_offset_minutes: options.tz_offset_minutes,
+        limit: options.limit,
+        offset: options.offset,
+        search: options.search,
+        include_archived: options.include_archived,
+      },
       auth: true,
     })
   }
 
   /**
-   * @param actionId 行为定义 id
-   * @param input 要改的字段
+   * @param definitionId 事件定义 id
+   * @param input 显示名、描述或归档状态。事件名不可改——它是客户端上报时使用的键。
    */
-  updateAction(actionId: string, input: UpdateActionInput): Promise<ActionItem> {
-    return this.http.request("PATCH", "/admin/actions/{action_id}", {
-      pathParams: { action_id: actionId },
+  updateEventDefinition(
+    definitionId: string,
+    input: UpdateEventDefinitionInput,
+  ): Promise<EventDefinitionItem> {
+    return this.http.request(
+      "PATCH",
+      "/admin/projects/{projectKey}/events/definitions/{definitionId}",
+      {
+        pathParams: { projectKey: this.http.requireProjectKey(), definitionId },
+        body: compact({ ...input }),
+        auth: true,
+      },
+    )
+  }
+
+  /**
+   * 删除事件定义本身；明细与统计保留，下一次上报会把定义重新建回来。
+   * 要停用某个事件请改用归档。
+   *
+   * @param definitionId 事件定义 id
+   */
+  deleteEventDefinition(definitionId: string): Promise<DeleteSuccessResponse> {
+    return this.http.request(
+      "DELETE",
+      "/admin/projects/{projectKey}/events/definitions/{definitionId}",
+      {
+        pathParams: { projectKey: this.http.requireProjectKey(), definitionId },
+        auth: true,
+      },
+    )
+  }
+
+  /**
+   * @param options 统计区间
+   */
+  getEventOverview(options: EventRangeOptions = {}): Promise<EventOverviewResponse> {
+    return this.http.request("GET", "/admin/projects/{projectKey}/events/stats/overview", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      query: { ...options },
+      auth: true,
+    })
+  }
+
+  /**
+   * 事件量趋势。`data` 是总量，永远返回；给了 `group_by` 时额外返回拆开的 `series`。
+   *
+   * @param options 区间、粒度与拆分维度
+   */
+  getEventTimeseries(options: EventTimeseriesOptions = {}): Promise<EventTimeseriesResponse> {
+    return this.http.request("GET", "/admin/projects/{projectKey}/events/stats/timeseries", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      query: { ...options },
+      auth: true,
+    })
+  }
+
+  /**
+   * 事件分布。`total` 是全量而非本页之和。
+   *
+   * @param options 区间与分布维度；`dimension: "property"` 时必须给 `property_key`
+   */
+  getEventBreakdown(options: EventBreakdownOptions = {}): Promise<EventBreakdownResponse> {
+    return this.http.request("GET", "/admin/projects/{projectKey}/events/stats/breakdown", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      query: { ...options },
+      auth: true,
+    })
+  }
+
+  /**
+   * 星期 × 小时活跃热力图，固定 168 格。按每条上报**来源国家**的时区折叠。
+   *
+   * @param options 区间与可选的单事件筛选
+   */
+  getEventHeatmap(
+    options: EventRangeOptions & { event_name?: string } = {},
+  ): Promise<EventHeatmapResponse> {
+    return this.http.request("GET", "/admin/projects/{projectKey}/events/stats/heatmap", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      query: { ...options },
+      auth: true,
+    })
+  }
+
+  /**
+   * 漏斗转化。只读接口，所需 scope 是 events:read。
+   *
+   * @param options 步骤数组（2 到 8 步）与转化窗口
+   */
+  getFunnel(options: FunnelOptions): Promise<FunnelResponse> {
+    return this.http.request("POST", "/admin/projects/{projectKey}/events/analysis/funnel", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact({ ...options }),
+      auth: true,
+    })
+  }
+
+  /**
+   * 留存矩阵。尚未走完的周期返回 null 而不是 0。
+   *
+   * @param options 起始事件、回访事件与周期设置
+   */
+  getRetention(options: RetentionOptions): Promise<RetentionResponse> {
+    return this.http.request("POST", "/admin/projects/{projectKey}/events/analysis/retention", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact({ ...options }),
+      auth: true,
+    })
+  }
+
+  /**
+   * 路径分析（桑基图边集）。默认按会话串联。
+   *
+   * @param options 起点、深度与分支数
+   */
+  getPaths(options: PathsOptions = {}): Promise<PathsResponse> {
+    return this.http.request("POST", "/admin/projects/{projectKey}/events/analysis/paths", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact({ ...options }),
+      auth: true,
+    })
+  }
+
+  /**
+   * 指标 DSL 求值。查询构建器与看板卡片共用这一个入口。
+   *
+   * @param query 指标定义；`formula` 支持 `A / B * 100` 形式的跨事件运算
+   */
+  runEventQuery(query: EventQuery): Promise<EventQueryResponse> {
+    return this.http.request("POST", "/admin/projects/{projectKey}/events/analysis/query", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact({ ...query }),
+      auth: true,
+    })
+  }
+
+  /**
+   * @returns 该项目保存的分析卡片，按 `sort_order` 升序
+   */
+  listDashboardCards(): Promise<DashboardCardListResponse> {
+    return this.http.request("GET", "/admin/projects/{projectKey}/events/dashboards/cards", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      auth: true,
+    })
+  }
+
+  /**
+   * @param input 卡片标题与指标 DSL；查询定义在写入时就完整校验，不合法直接 400
+   */
+  createDashboardCard(input: CreateDashboardCardInput): Promise<DashboardCardItem> {
+    return this.http.request("POST", "/admin/projects/{projectKey}/events/dashboards/cards", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
       body: compact({ ...input }),
       auth: true,
     })
   }
 
   /**
-   * @param actionId 行为定义 id
+   * @param cardId 卡片 id
+   * @param input 要改的字段
    */
-  deleteAction(actionId: string): Promise<DeleteSuccessResponse> {
-    return this.http.request("DELETE", "/admin/actions/{action_id}", {
-      pathParams: { action_id: actionId },
-      auth: true,
-    })
+  updateDashboardCard(cardId: string, input: UpdateDashboardCardInput): Promise<DashboardCardItem> {
+    return this.http.request(
+      "PATCH",
+      "/admin/projects/{projectKey}/events/dashboards/cards/{cardId}",
+      {
+        pathParams: { projectKey: this.http.requireProjectKey(), cardId },
+        body: compact({ ...input }),
+        auth: true,
+      },
+    )
   }
 
   /**
-   * @param actionId 行为定义 id
-   * @param options 分页参数
+   * @param cardId 卡片 id
    */
-  listActionRecords(
-    actionId: string,
-    options: PageOptions = {},
-  ): Promise<ActionRecordListResponse> {
-    return this.http.request("GET", "/admin/actions/{action_id}", {
-      pathParams: { action_id: actionId },
-      query: { limit: options.limit, offset: options.offset },
-      auth: true,
-    })
+  deleteDashboardCard(cardId: string): Promise<DeleteSuccessResponse> {
+    return this.http.request(
+      "DELETE",
+      "/admin/projects/{projectKey}/events/dashboards/cards/{cardId}",
+      {
+        pathParams: { projectKey: this.http.requireProjectKey(), cardId },
+        auth: true,
+      },
+    )
   }
 
   /**
-   * @param actionRecordId 行为记录 id
+   * 代最终用户删除其全部事件明细（GDPR Art.17）。小时汇总不在删除范围内。
+   *
+   * @param distinctId 要删除的匿名标识
    */
-  getActionRecord(actionRecordId: string): Promise<ActionRecordItem> {
-    return this.http.request("GET", "/admin/actions/record/{action_record_id}", {
-      pathParams: { action_record_id: actionRecordId },
-      auth: true,
-    })
-  }
-
-  /**
-   * @returns 行为定义总数
-   */
-  getActionStatistics(): Promise<ActionStatistics> {
-    return this.http.request("GET", "/admin/actions/statistics", { auth: true })
-  }
-
-  /**
-   * @returns 行为记录总数
-   */
-  getActionRecordStatistics(): Promise<ActionStatistics> {
-    return this.http.request("GET", "/admin/actions/record/statistics", { auth: true })
+  deleteEventSubject(distinctId: string): Promise<EventSubjectDeleteResponse> {
+    return this.http.request(
+      "DELETE",
+      "/admin/projects/{projectKey}/events/subjects/{distinctId}",
+      {
+        pathParams: { projectKey: this.http.requireProjectKey(), distinctId },
+        auth: true,
+      },
+    )
   }
 
   // ---- GitHub Webhook ----
@@ -683,5 +853,59 @@ export class AdminApi {
         auth: true,
       },
     )
+  }
+
+  // ---- 条款文档 ----
+
+  /**
+   * 列出全部条款文档的设置视图（含生效正文、自定义草稿与内置原文）。
+   *
+   * 条款接口只接受管理员 JWT，API Key 会得到 401。不作用于绑定项目。
+   */
+  listTermsDocuments(): Promise<TermsDocumentConfigListResponse> {
+    return this.http.request("GET", "/admin/terms/documents", { auth: true })
+  }
+
+  /**
+   * @param slug 文档标识
+   * @returns 单份条款文档的设置视图
+   */
+  getTermsDocument(slug: TermsDocumentSlug): Promise<TermsDocumentConfigView> {
+    return this.http.request("GET", "/admin/terms/documents/{slug}", {
+      pathParams: { slug },
+      auth: true,
+    })
+  }
+
+  /**
+   * 部分更新条款文档，只修改传入的字段。
+   *
+   * `custom` 关闭时 `content` 仍会保存为草稿，重新打开即可继续编辑；
+   * `content` 传空串表示清除草稿。
+   *
+   * @param slug 文档标识
+   * @param input 自定义开关与正文
+   */
+  updateTermsDocument(
+    slug: TermsDocumentSlug,
+    input: UpdateTermsDocumentInput,
+  ): Promise<TermsDocumentConfigView> {
+    return this.http.request("PUT", "/admin/terms/documents/{slug}", {
+      pathParams: { slug },
+      body: compact({ ...input }),
+      auth: true,
+    })
+  }
+
+  /**
+   * 恢复内置条款正文：关闭自定义开关并丢弃草稿，前台随即回到内置正文。
+   *
+   * @param slug 文档标识
+   */
+  resetTermsDocument(slug: TermsDocumentSlug): Promise<TermsDocumentConfigView> {
+    return this.http.request("DELETE", "/admin/terms/documents/{slug}", {
+      pathParams: { slug },
+      auth: true,
+    })
   }
 }

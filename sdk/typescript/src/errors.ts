@@ -1,6 +1,4 @@
-/**
- * 所有 SDK 异常的基类，便于调用方一次性捕获。
- */
+/** 所有 SDK 异常的基类，可用于一次性捕获。 */
 export class VerhubError extends Error {
   constructor(message: string) {
     super(message)
@@ -9,11 +7,9 @@ export class VerhubError extends Error {
 }
 
 /**
- * 本地前置校验失败：调用 admin 接口但没有设置凭据，请求根本没发出去。
+ * 调用需要凭据的接口时未设置 token，请求未发出。
  *
- * 与 {@link VerhubApiError} 区分开——后者是「请求发出去了、服务端拒了」，这个
- * 是「你忘了设 token」。故意不继承 `VerhubApiError`，避免调用方用
- * `instanceof VerhubApiError` 把两种情况混为一谈。
+ * 不继承 {@link VerhubApiError}，`instanceof VerhubApiError` 不会命中本类。
  */
 export class VerhubAuthError extends VerhubError {
   constructor(message: string) {
@@ -22,9 +18,7 @@ export class VerhubAuthError extends VerhubError {
   }
 }
 
-/**
- * 服务端返回了非 2xx 响应。
- */
+/** 服务端返回了非 2xx 响应。 */
 export class VerhubApiError extends VerhubError {
   /** HTTP 状态码。 */
   readonly status: number
@@ -44,9 +38,7 @@ export class VerhubApiError extends VerhubError {
   }
 }
 
-/**
- * 请求没能到达服务端（超时、DNS、连接被拒等）。
- */
+/** 请求没能到达服务端（超时、DNS、连接被拒等）。 */
 export class VerhubConnectionError extends VerhubError {
   /** 底层异常。 */
   readonly cause: unknown

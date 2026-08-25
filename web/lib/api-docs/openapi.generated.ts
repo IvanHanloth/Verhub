@@ -40,7 +40,7 @@ export const openApiDocument: OpenApiDocument = {
       name: "Logs",
     },
     {
-      name: "Actions",
+      name: "Events",
     },
     {
       name: "Statistics",
@@ -4741,16 +4741,124 @@ export const openApiDocument: OpenApiDocument = {
         },
       },
     },
-    "/admin/projects/{projectKey}/actions": {
+    "/public/{projectKey}/events": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
+        {
+          $ref: "#/components/parameters/DoNotTrackHeader",
+        },
+      ],
+      post: {
+        tags: ["Events"],
+        summary: "批量上报事件",
+        description:
+          "客户端批量上报行为事件。**事件名无需预先在服务端登记**：服务端第一次收到某个 事件名时自动创建对应的事件定义。\n\n每条事件带一个客户端生成的 `event_id` 作为幂等键，离线队列重试补发时服务端靠它 去重，同一个 `event_id` 只会入库一次。`occurred_at` 是客户端声明的发生时间，落在 可信窗口（默认往前 7 天、往后 5 分钟）之外时回退到服务端接收时间。\n\n返回 202 而非 201：接受请求与实际落库不是同一件事。命中退出信号 （`x-verhub-do-not-track: 1`）或项目关闭了事件采集时，本接口照常返回 202， 但不入库、不计数、不解析地理位置，此时 `suppressed` 为 true。\n\n服务端另行记录调用方 IP、User-Agent、平台与解析出的地区。IP 默认以匿名化形式 存储（IPv4 截末段、IPv6 截末 80 位），由 VERHUB_EVENT_IP_STORAGE 控制； 归属地解析在匿名化之前用完整地址完成，精度不受影响。\n",
+        "x-verhub-doc": true,
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/IngestEventsDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "202": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/IngestEventsResponse",
+                },
+              },
+            },
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/public/{projectKey}/events/me": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          name: "distinct_id",
+          in: "query",
+          required: true,
+          schema: {
+            type: "string",
+            maxLength: 128,
+          },
+          description: "客户端持有的匿名标识。",
+          example: "9f1c2a7e-5b40-4a1d-9d3f-2c8e6b4a1f07",
+        },
+      ],
+      get: {
+        tags: ["Events"],
+        summary: "导出本人的事件数据",
+        description:
+          "供最终用户行使访问权与可携带权（GDPR Art.15 / Art.20），导出该匿名标识下的 全部事件明细。按来源 IP 限流，默认每小时 10 次。\n",
+        "x-verhub-doc": true,
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/EventSubjectExport",
+                },
+              },
+            },
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      delete: {
+        tags: ["Events"],
+        summary: "删除本人的事件数据",
+        description:
+          "供最终用户行使删除权（GDPR Art.17）。删除该匿名标识下的全部事件明细与日活 去重记录。\n\n小时汇总（事件量统计）不在删除范围内：它只保存计数，不含任何标识符，时间精度 为自然小时，无法回溯到具体设备或者还原访问序列，属于匿名信息。\n\n按来源 IP 限流，默认每小时 10 次。\n",
+        "x-verhub-doc": true,
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/EventSubjectDeleteResponse",
+                },
+              },
+            },
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/events/definitions": {
       parameters: [
         {
           $ref: "#/components/parameters/ProjectKeyByPath",
         },
       ],
       get: {
-        tags: ["Actions"],
-        summary: "查询行为定义",
-        description: "按项目获取行为定义列表，支持按名称与描述搜索。",
+        tags: ["Events"],
+        summary: "查询事件定义",
+        description:
+          "列出该项目已出现过的事件。定义由采集端自动发现，**没有对应的创建接口**—— 客户端上报什么事件名，这里就会出现什么。`range_count` 是查询区间内的上报量， 供选择器把常用事件排在前面。\n",
         "x-verhub-doc": true,
         security: [
           {
@@ -4761,6 +4869,12 @@ export const openApiDocument: OpenApiDocument = {
           },
         ],
         parameters: [
+          {
+            $ref: "#/components/parameters/StartTime",
+          },
+          {
+            $ref: "#/components/parameters/EndTime",
+          },
           {
             $ref: "#/components/parameters/Limit",
           },
@@ -4775,8 +4889,18 @@ export const openApiDocument: OpenApiDocument = {
               type: "string",
               maxLength: 128,
             },
-            description: "关键字，不区分大小写地匹配 name 与 description。",
-            example: "打开设置",
+            description: "关键字，不区分大小写地匹配事件名、显示名与描述。",
+            example: "checkout",
+          },
+          {
+            name: "include_archived",
+            in: "query",
+            required: false,
+            schema: {
+              type: "boolean",
+              default: false,
+            },
+            description: "是否包含已归档的事件。",
           },
         ],
         responses: {
@@ -4784,7 +4908,7 @@ export const openApiDocument: OpenApiDocument = {
             content: {
               "application/json": {
                 schema: {
-                  $ref: "#/components/schemas/ActionListResponse",
+                  $ref: "#/components/schemas/EventDefinitionListResponse",
                 },
               },
             },
@@ -4798,53 +4922,13 @@ export const openApiDocument: OpenApiDocument = {
         },
       },
     },
-    "/admin/projects/actions": {
-      post: {
-        tags: ["Actions"],
-        summary: "创建行为定义",
-        description: "新增行为埋点定义。",
-        "x-verhub-doc": true,
-        security: [
-          {
-            BearerAuth: [],
-          },
-          {
-            ApiKeyAuth: [],
-          },
-        ],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                $ref: "#/components/schemas/CreateActionDto",
-              },
-            },
-          },
-        },
-        responses: {
-          "201": {
-            content: {
-              "application/json": {
-                schema: {
-                  $ref: "#/components/schemas/ActionItem",
-                },
-              },
-            },
-          },
-          "401": {
-            $ref: "#/components/responses/Unauthorized",
-          },
-          "404": {
-            $ref: "#/components/responses/NotFound",
-          },
-        },
-      },
-    },
-    "/admin/actions/{action_id}": {
+    "/admin/projects/{projectKey}/events/definitions/{definitionId}": {
       parameters: [
         {
-          name: "action_id",
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          name: "definitionId",
           in: "path",
           required: true,
           schema: {
@@ -4852,47 +4936,11 @@ export const openApiDocument: OpenApiDocument = {
           },
         },
       ],
-      get: {
-        tags: ["Actions"],
-        summary: "获取行为分类下的行为记录",
-        security: [
-          {
-            BearerAuth: [],
-          },
-          {
-            ApiKeyAuth: [],
-          },
-        ],
-        parameters: [
-          {
-            $ref: "#/components/parameters/Limit",
-          },
-          {
-            $ref: "#/components/parameters/Offset",
-          },
-        ],
-        responses: {
-          "200": {
-            content: {
-              "application/json": {
-                schema: {
-                  $ref: "#/components/schemas/ActionRecordListResponse",
-                },
-              },
-            },
-          },
-          "401": {
-            $ref: "#/components/responses/Unauthorized",
-          },
-          "404": {
-            $ref: "#/components/responses/NotFound",
-          },
-        },
-      },
       patch: {
-        tags: ["Actions"],
-        summary: "编辑行为定义",
-        description: "更新行为定义名称、描述与扩展字段。",
+        tags: ["Events"],
+        summary: "编辑事件定义",
+        description:
+          "补充显示名与描述，或把停用的事件归档。事件名本身不可改——它是客户端上报时使用的键。",
         "x-verhub-doc": true,
         security: [
           {
@@ -4907,7 +4955,7 @@ export const openApiDocument: OpenApiDocument = {
           content: {
             "application/json": {
               schema: {
-                $ref: "#/components/schemas/UpdateActionDto",
+                $ref: "#/components/schemas/UpdateEventDefinitionDto",
               },
             },
           },
@@ -4917,7 +4965,7 @@ export const openApiDocument: OpenApiDocument = {
             content: {
               "application/json": {
                 schema: {
-                  $ref: "#/components/schemas/ActionItem",
+                  $ref: "#/components/schemas/EventDefinitionItem",
                 },
               },
             },
@@ -4931,9 +4979,10 @@ export const openApiDocument: OpenApiDocument = {
         },
       },
       delete: {
-        tags: ["Actions"],
-        summary: "删除行为定义",
-        description: "删除行为定义。",
+        tags: ["Events"],
+        summary: "删除事件定义",
+        description:
+          "只删定义本身，事件明细与统计保留；下一次上报会把定义重新建回来。要停用某个事件请改用归档。",
         "x-verhub-doc": true,
         security: [
           {
@@ -4962,20 +5011,18 @@ export const openApiDocument: OpenApiDocument = {
         },
       },
     },
-    "/admin/actions/record/{action_record_id}": {
+    "/admin/projects/{projectKey}/events/stats/overview": {
       parameters: [
         {
-          name: "action_record_id",
-          in: "path",
-          required: true,
-          schema: {
-            type: "string",
-          },
+          $ref: "#/components/parameters/ProjectKeyByPath",
         },
       ],
       get: {
-        tags: ["Actions"],
-        summary: "获取单条行为记录",
+        tags: ["Events"],
+        summary: "事件概览",
+        description:
+          "区间内的事件总量、独立标识数、活跃会话数与事件种类数。总量来自小时汇总，独立数来自明细。",
+        "x-verhub-doc": true,
         security: [
           {
             BearerAuth: [],
@@ -4984,12 +5031,20 @@ export const openApiDocument: OpenApiDocument = {
             ApiKeyAuth: [],
           },
         ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/StartTime",
+          },
+          {
+            $ref: "#/components/parameters/EndTime",
+          },
+        ],
         responses: {
           "200": {
             content: {
               "application/json": {
                 schema: {
-                  $ref: "#/components/schemas/ActionRecordItem",
+                  $ref: "#/components/schemas/EventOverviewResponse",
                 },
               },
             },
@@ -5003,98 +5058,513 @@ export const openApiDocument: OpenApiDocument = {
         },
       },
     },
-    "/admin/actions/statistics": {
-      get: {
-        tags: ["Actions"],
-        summary: "获取行为分类统计",
-        security: [
-          {
-            BearerAuth: [],
-          },
-          {
-            ApiKeyAuth: [],
-          },
-        ],
-        responses: {
-          "200": {
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["count"],
-                  properties: {
-                    count: {
-                      type: "integer",
-                    },
-                  },
-                },
-              },
-            },
-          },
-          "401": {
-            $ref: "#/components/responses/Unauthorized",
-          },
-        },
-      },
-    },
-    "/admin/actions/record/statistics": {
-      get: {
-        tags: ["Actions"],
-        summary: "获取行为记录统计",
-        security: [
-          {
-            BearerAuth: [],
-          },
-          {
-            ApiKeyAuth: [],
-          },
-        ],
-        responses: {
-          "200": {
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["count"],
-                  properties: {
-                    count: {
-                      type: "integer",
-                    },
-                  },
-                },
-              },
-            },
-          },
-          "401": {
-            $ref: "#/components/responses/Unauthorized",
-          },
-        },
-      },
-    },
-    "/public/{projectKey}/actions": {
+    "/admin/projects/{projectKey}/events/stats/timeseries": {
       parameters: [
         {
           $ref: "#/components/parameters/ProjectKeyByPath",
         },
-        {
-          $ref: "#/components/parameters/ClientPlatformHeader",
+      ],
+      get: {
+        tags: ["Events"],
+        summary: "事件量趋势",
+        description:
+          "事件量随时间的变化。`data` 是总量，永远返回；给了 `group_by` 时额外返回按维度 拆开的 `series`，供堆叠图使用。两者并列而不是二选一——堆叠图的包络线就是总量。\n\n空桶补零，日桶按 `tz_offset_minutes` 断在查看者的午夜而不是 UTC 的午夜。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/StartTime",
+          },
+          {
+            $ref: "#/components/parameters/EndTime",
+          },
+          {
+            $ref: "#/components/parameters/TzOffsetMinutes",
+          },
+          {
+            name: "granularity",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              enum: ["hour", "day"],
+              default: "day",
+            },
+          },
+          {
+            name: "event_name",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              maxLength: 64,
+            },
+            description: "只看某一个事件；不传则是全部事件的总量。",
+          },
+          {
+            name: "group_by",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              enum: ["event", "platform", "region"],
+            },
+            description: "额外按维度拆出多条序列。",
+          },
+          {
+            name: "limit",
+            in: "query",
+            required: false,
+            schema: {
+              type: "integer",
+              minimum: 1,
+              maximum: 20,
+              default: 8,
+            },
+            description: "拆分序列数上限。",
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/EventTimeseriesResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
         },
+      },
+    },
+    "/admin/projects/{projectKey}/events/stats/breakdown": {
+      parameters: [
         {
-          $ref: "#/components/parameters/ClientPlatformVersionHeader",
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Events"],
+        summary: "事件分布",
+        description:
+          "按事件、平台、地区或者自定义属性取值的分布。`total` 是全量而非分页后的和， 调用方据此计算的占比在 `limit` 截尾后仍然真实。\n\n`dimension=property` 时必须提供 `property_key`，这一维走事件明细 （汇总表按设计不含 properties），可用 `event_name` 限定到单个事件。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/StartTime",
+          },
+          {
+            $ref: "#/components/parameters/EndTime",
+          },
+          {
+            name: "dimension",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              enum: ["event", "platform", "region", "property"],
+              default: "event",
+            },
+          },
+          {
+            name: "property_key",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              maxLength: 128,
+            },
+            description: "dimension 为 property 时必填。",
+            example: "plan",
+          },
+          {
+            name: "event_name",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              maxLength: 64,
+            },
+          },
+          {
+            name: "limit",
+            in: "query",
+            required: false,
+            schema: {
+              type: "integer",
+              minimum: 1,
+              maximum: 200,
+              default: 20,
+            },
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/EventBreakdownResponse",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/events/stats/heatmap": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Events"],
+        summary: "事件活跃热力图",
+        description:
+          "事件量折到星期 × 小时的网格，固定 168 格（含无数据的空格）。\n\n折叠按每条上报**来源国家**的代表时区进行，回答的是「用户在当地几点活跃」； `tz_offset_minutes` 只是无法定位的来源的回退值。这与趋势图的口径不同—— 趋势图用统一的查询者时区画绝对时间轴。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        parameters: [
+          {
+            $ref: "#/components/parameters/StartTime",
+          },
+          {
+            $ref: "#/components/parameters/EndTime",
+          },
+          {
+            $ref: "#/components/parameters/TzOffsetMinutes",
+          },
+          {
+            name: "event_name",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              maxLength: 64,
+            },
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/EventHeatmapResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/events/analysis/funnel": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
         },
       ],
       post: {
-        tags: ["Actions"],
-        summary: "上报行为记录",
+        tags: ["Events"],
+        summary: "漏斗转化分析",
         description:
-          "客户端上报行为埋点记录。服务端会额外记录调用方 IP、User-Agent、平台与解析出的地区。短时间内（默认 60 秒，可用 VERHUB_DEDUP_WINDOW_SECONDS 调整）同一调用方上报同一 action 且 custom_data 完全相同会被判为重复上报，直接返回已存在的那条记录而不新建。",
+          "按步骤顺序统计同一标识的转化情况：每一步取「上一步之后、且仍在转化窗口内」 的最早一条命中。转化窗口锚定在第一步，因为业务上说的「7 天内完成下单」算的是 从进入漏斗起的总时长。\n\n这是只读接口，用 POST 只是因为步骤是带属性条件的结构化数组，塞进 query string 既超长又要自己发明一套编码。所需权限是 events:read。\n",
         "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
         requestBody: {
           required: true,
           content: {
             "application/json": {
               schema: {
-                $ref: "#/components/schemas/CreateActionRecordDto",
+                $ref: "#/components/schemas/QueryFunnelDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/FunnelResponse",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/events/analysis/retention": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      post: {
+        tags: ["Events"],
+        summary: "留存分析",
+        description:
+          "按「首次命中起始事件」的当地周期把用户分成队列，统计其后各周期的回访比例。 `return_event` 不传则任意事件都算回访。\n\n尚未走完的周期返回 `null` 而不是 0：把还没发生的时间显示成 0% 留存是不诚实的。\n\n只读接口，用 POST 的理由同漏斗；所需权限是 events:read。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/QueryRetentionDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/RetentionResponse",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/events/analysis/paths": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      post: {
+        tags: ["Events"],
+        summary: "路径分析",
+        description:
+          "事件序列的相邻转移，用于桑基图。默认按会话串联而不是按人——跨会话会把 「昨天看了详情页、今天下了单」连成一条边，显示出用户从来没有连续做过的动作序列。\n\n每一层只保留分支最多的前 `branch_limit` 条，其余并成一条「（其他）」边， 此时响应里的 `truncated` 为 true。\n\n只读接口，用 POST 的理由同漏斗；所需权限是 events:read。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/QueryPathsDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/PathsResponse",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/events/analysis/query": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      post: {
+        tags: ["Events"],
+        summary: "指标 DSL 求值",
+        description:
+          "查询构建器与看板卡片共用的执行入口。按结构化的指标定义计算趋势、分布或者单值， 支持按属性筛选、按维度分组，以及 `A / B * 100` 形式的跨事件公式。\n\n公式在服务端由一个只认「别名、数字、+ - * / ( )」的解析器求值，不使用 eval， 也不下推到 SQL；属性条件一律编译成参数化查询。\n\n只读接口，用 POST 的理由同漏斗；所需权限是 events:read。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/EventQueryDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/EventQueryResponse",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/events/dashboards/cards": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      get: {
+        tags: ["Events"],
+        summary: "查询看板卡片",
+        description: "列出该项目保存的分析卡片，按 sort_order 升序。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DashboardCardListResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      post: {
+        tags: ["Events"],
+        summary: "创建看板卡片",
+        description:
+          "保存一份指标 DSL 查询定义。只存定义不存结果——结果随时间范围变化， 缓存下来只会给出过期数字。\n\n`query` 在写入时就按指标 DSL 完整校验（含公式语法），不合法直接 400， 以免一张存坏的卡片在每次打开看板时炸一遍。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/CreateDashboardCardDto",
               },
             },
           },
@@ -5104,10 +5574,16 @@ export const openApiDocument: OpenApiDocument = {
             content: {
               "application/json": {
                 schema: {
-                  $ref: "#/components/schemas/ActionRecordItem",
+                  $ref: "#/components/schemas/DashboardCardItem",
                 },
               },
             },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
           },
           "404": {
             $ref: "#/components/responses/NotFound",
@@ -5115,10 +5591,147 @@ export const openApiDocument: OpenApiDocument = {
         },
       },
     },
-    "/actions/_status": {
+    "/admin/projects/{projectKey}/events/dashboards/cards/{cardId}": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          name: "cardId",
+          in: "path",
+          required: true,
+          schema: {
+            type: "string",
+          },
+        },
+      ],
+      patch: {
+        tags: ["Events"],
+        summary: "编辑看板卡片",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateDashboardCardDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DashboardCardItem",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+      delete: {
+        tags: ["Events"],
+        summary: "删除看板卡片",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/DeleteSuccessResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/events/subjects/{distinctId}": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+        {
+          name: "distinctId",
+          in: "path",
+          required: true,
+          schema: {
+            type: "string",
+            maxLength: 128,
+          },
+          description: "要删除的匿名标识。",
+        },
+      ],
+      delete: {
+        tags: ["Events"],
+        summary: "代最终用户删除事件数据",
+        description:
+          "接入方代最终用户行使删除权（GDPR Art.17）。删除范围与公开的自助端点一致： 事件明细与日活去重记录，不含小时汇总。\n\n需要它是因为用户往往通过客服而不是应用内按钮提出请求，而接入方手上只有 那个 distinct_id。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/EventSubjectDeleteResponse",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
+    "/events/_status": {
       get: {
-        tags: ["Actions"],
-        summary: "Actions 模块状态",
+        tags: ["Events"],
+        summary: "Events 模块状态",
         responses: {
           "200": {
             content: {
@@ -5147,7 +5760,7 @@ export const openApiDocument: OpenApiDocument = {
         in: "header",
         name: "x-api-key",
         description:
-          "传 API Key 的兼容别名，等价于把同一个 Key 放进 Authorization: Bearer； 新接入建议统一用 BearerAuth。API Key 按 scope 授权：读接口需要 <资源>:read， 写接口需要 <资源>:write，写权限不隐含读权限；资源为 projects / versions / announcements / feedbacks / logs / actions，另有 stats:read 用于请求统计接口。 scope 或项目范围不匹配返回 401。\n",
+          "传 API Key 的兼容别名，等价于把同一个 Key 放进 Authorization: Bearer； 新接入建议统一用 BearerAuth。API Key 按 scope 授权：读接口需要 <资源>:read， 写接口需要 <资源>:write，写权限不隐含读权限；资源为 projects / versions / announcements / feedbacks / logs / events，另有 stats:read 用于请求统计接口。 事件分析的只读接口里有几条用 POST（漏斗、留存、路径、指标 DSL），它们仍然 只需要 events:read——用 POST 只是因为入参是结构化数组，不是因为会写库。 scope 或项目范围不匹配返回 401。\n",
       },
       GithubSignatureAuth: {
         type: "apiKey",
@@ -5224,6 +5837,17 @@ export const openApiDocument: OpenApiDocument = {
         schema: {
           type: "string",
           maxLength: 32,
+        },
+      },
+      DoNotTrackHeader: {
+        name: "x-verhub-do-not-track",
+        in: "header",
+        required: false,
+        description:
+          "最终用户的退出信号。取 `1` / `true` / `yes` 之一即视为退出，此时事件采集端点\n照常返回 202，但不入库、不计数、也不解析地理位置（解析本身就是一次对外的\n数据传输，而用户已经表示不希望被采集）。\n\n其余取值、空值与缺失都视为未退出：把无法解析的值当成退出，会让一个写错的\n代理头静默关掉整个实例的采集。\n\n本头是给**直接对接 HTTP 的接入方**用的。用 SDK 的场景不需要它：SDK 在\n`optOut()` 之后根本不发请求，比发一个会被丢弃的请求更彻底，也不会在接口\n调用量统计里留下痕迹。\n",
+        example: "1",
+        schema: {
+          type: "string",
         },
       },
       ClientPlatformQuery: {
@@ -5906,6 +6530,20 @@ export const openApiDocument: OpenApiDocument = {
             default: 365,
             description: "接口请求统计保留时长（天），超出部分每日自动清理",
           },
+          event_collection_enabled: {
+            type: "boolean",
+            default: true,
+            description:
+              "事件采集总开关。关掉后采集端点照常返回 202 但不入库、不计数，既有数据保留。 给运营者一个立即止血的手段：收到监管问询时不必改配置重启。",
+          },
+          event_retention_days: {
+            type: "integer",
+            minimum: 1,
+            maximum: 365,
+            default: 90,
+            description:
+              "事件明细与日活跃记录的保留时长（天），独立于 stats_retention_days 且默认更短。 明细带匿名标识，是可关联到个人的高频数据，不该与纯计数用同一窗口。",
+          },
           translations: {
             type: "array",
             maxItems: 32,
@@ -5991,6 +6629,20 @@ export const openApiDocument: OpenApiDocument = {
             default: 365,
             description: "接口请求统计保留时长（天），超出部分每日自动清理",
           },
+          event_collection_enabled: {
+            type: "boolean",
+            default: true,
+            description:
+              "事件采集总开关。关掉后采集端点照常返回 202 但不入库、不计数，既有数据保留。 给运营者一个立即止血的手段：收到监管问询时不必改配置重启。",
+          },
+          event_retention_days: {
+            type: "integer",
+            minimum: 1,
+            maximum: 365,
+            default: 90,
+            description:
+              "事件明细与日活跃记录的保留时长（天），独立于 stats_retention_days 且默认更短。 明细带匿名标识，是可关联到个人的高频数据，不该与纯计数用同一窗口。",
+          },
           translations: {
             type: "array",
             maxItems: 32,
@@ -6026,6 +6678,8 @@ export const openApiDocument: OpenApiDocument = {
           "optional_update_min_comparable_version",
           "optional_update_max_comparable_version",
           "stats_retention_days",
+          "event_collection_enabled",
+          "event_retention_days",
           "aliases",
           "locale",
           "created_at",
@@ -6075,6 +6729,14 @@ export const openApiDocument: OpenApiDocument = {
           stats_retention_days: {
             type: "integer",
             description: "接口请求统计保留时长（天）",
+          },
+          event_collection_enabled: {
+            type: "boolean",
+            description: "事件采集总开关",
+          },
+          event_retention_days: {
+            type: "integer",
+            description: "事件明细的保留时长（天），独立于 stats_retention_days",
           },
           aliases: {
             type: "array",
@@ -7212,7 +7874,7 @@ export const openApiDocument: OpenApiDocument = {
           "ANNOUNCEMENT_LATEST",
           "FEEDBACK_SUBMIT",
           "LOG_UPLOAD",
-          "ACTION_RECORD",
+          "EVENT_INGEST",
         ],
       },
       StatPlatform: {
@@ -9251,182 +9913,228 @@ export const openApiDocument: OpenApiDocument = {
           },
         },
       },
-      CreateActionDto: {
+      EventFilter: {
         type: "object",
-        required: ["project_key", "name", "description"],
+        required: ["property", "op"],
+        description:
+          "属性筛选条件。`op` 是闭集，属性名与比较值一律以参数进入查询，不参与字符串拼接。\n\n比较一律按文本进行：properties 是 JSONB，同一个键在不同上报里可能是数字也可能是 字符串，按文本比较才不会漏掉一半数据。`gt` / `gte` / `lt` / `lte` 会在取出后转数值， 转不动的行自然落选。\n",
         properties: {
-          project_key: {
-            type: "string",
-            maxLength: 64,
-          },
-          name: {
+          property: {
             type: "string",
             maxLength: 128,
+            description: "属性名。只支持 properties 的第一层键。",
+            example: "plan",
           },
-          description: {
+          op: {
             type: "string",
-            maxLength: 512,
+            enum: [
+              "eq",
+              "neq",
+              "in",
+              "not_in",
+              "contains",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "exists",
+              "not_exists",
+            ],
           },
-          custom_data: {
-            type: "object",
-            additionalProperties: true,
-          },
-        },
-        example: {
-          project_key: "verhub",
-          name: "点击更新按钮",
-          description: "用户在更新弹窗点击立即更新。",
-          custom_data: {
-            category: "update",
-          },
-        },
-      },
-      UpdateActionDto: {
-        type: "object",
-        properties: {
-          name: {
-            type: "string",
-            maxLength: 128,
-          },
-          description: {
-            type: "string",
-            maxLength: 512,
-          },
-          custom_data: {
-            type: "object",
-            additionalProperties: true,
-          },
-        },
-        example: {
-          name: "点击更新按钮（新版）",
-          description: "用户在新版更新弹窗点击立即更新。",
-        },
-      },
-      ActionItem: {
-        type: "object",
-        required: [
-          "action_id",
-          "project_key",
-          "name",
-          "description",
-          "custom_data",
-          "created_time",
-        ],
-        properties: {
-          action_id: {
-            type: "string",
-          },
-          project_key: {
-            type: "string",
-          },
-          name: {
-            type: "string",
-          },
-          description: {
-            type: "string",
-          },
-          custom_data: {
+          value: {
+            description:
+              "比较值。exists / not_exists 不需要；in / not_in 接受数组或逗号分隔的字符串。",
             oneOf: [
               {
-                type: "object",
-                additionalProperties: true,
+                type: "string",
               },
               {
-                type: "null",
+                type: "number",
+              },
+              {
+                type: "boolean",
+              },
+              {
+                type: "array",
+                maxItems: 50,
+                items: {
+                  oneOf: [
+                    {
+                      type: "string",
+                    },
+                    {
+                      type: "number",
+                    },
+                    {
+                      type: "boolean",
+                    },
+                  ],
+                },
               },
             ],
           },
-          created_time: {
+        },
+        example: {
+          property: "plan",
+          op: "eq",
+          value: "pro",
+        },
+      },
+      EventTimeseriesPoint: {
+        type: "object",
+        required: ["bucket", "count"],
+        properties: {
+          bucket: {
             type: "integer",
+            description:
+              "时间桶起点（Unix 秒）。granularity=hour 时对齐到 UTC 整点； granularity=day 时为 tz_offset_minutes 所指时区当天零点对应的时刻。\n",
+          },
+          count: {
+            type: "number",
           },
         },
         example: {
-          action_id: "act-001",
-          project_key: "verhub",
-          name: "点击更新按钮",
-          description: "用户在更新弹窗点击立即更新。",
-          custom_data: {
-            category: "update",
-          },
-          created_time: 1760000000,
+          bucket: 1760000000,
+          count: 42,
         },
       },
-      ActionListResponse: {
+      EventSeries: {
         type: "object",
-        required: ["total", "data"],
+        required: ["key", "data"],
         properties: {
-          total: {
-            type: "integer",
-            example: 1,
+          key: {
+            type: "string",
+            description: "序列名。按 group_by 取事件名 / 平台 / 地区码，DSL 下取事件别名。",
           },
           data: {
             type: "array",
             items: {
-              $ref: "#/components/schemas/ActionItem",
+              $ref: "#/components/schemas/EventTimeseriesPoint",
             },
           },
         },
       },
-      CreateActionRecordDto: {
+      IngestEventItemDto: {
         type: "object",
-        required: ["action_id"],
+        required: ["event_id", "name"],
         properties: {
-          action_id: {
+          event_id: {
+            type: "string",
+            maxLength: 128,
+            description:
+              "客户端生成的幂等键（建议 UUIDv4）。离线队列重试补发时服务端靠它去重， 同一个 event_id 在同一项目下只会入库一次。\n",
+            example: "3f7a1c9e-2d84-4f60-b1a2-7c5e9d0b4a63",
+          },
+          name: {
             type: "string",
             maxLength: 64,
+            description:
+              "事件名。无需预先登记。服务端归一化为小写并去除首尾空白，只接受 字母、数字、下划线、点、连字符与冒号；不合法的条目会被跳过， 不影响同一批次里的其余事件。\n",
+            example: "checkout_clicked",
           },
-          custom_data: {
+          occurred_at: {
+            type: "integer",
+            minimum: 0,
+            description:
+              "客户端声明的发生时间（Unix 秒）。落在可信窗口 （默认往前 7 天、往后 5 分钟）之外时回退到服务端接收时间。\n",
+            example: 1760000000,
+          },
+          properties: {
             type: "object",
             additionalProperties: true,
-          },
-        },
-        example: {
-          action_id: "act-001",
-          custom_data: {
-            app_version: "1.2.0",
+            description: "接入方自定义的扁平属性。按属性统计只看第一层。",
+            example: {
+              plan: "pro",
+              amount: 199,
+            },
           },
         },
       },
-      ActionRecordItem: {
+      IngestEventsDto: {
         type: "object",
-        required: [
-          "action_record_id",
-          "action_id",
-          "created_time",
-          "http",
-          "custom_data",
-          "ip",
-          "user_agent",
-          "country_code",
-          "country_name",
-          "region_name",
-          "city",
-          "platform",
-          "platform_version",
-        ],
+        required: ["distinct_id", "events"],
         properties: {
-          action_record_id: {
+          distinct_id: {
+            type: "string",
+            maxLength: 128,
+            description: "客户端生成的匿名标识（随机 UUID，非设备指纹）。",
+            example: "9f1c2a7e-5b40-4a1d-9d3f-2c8e6b4a1f07",
+          },
+          session_id: {
+            type: "string",
+            maxLength: 128,
+            description: "会话标识，SDK 默认 30 分钟无事件即换新。",
+          },
+          events: {
+            type: "array",
+            minItems: 1,
+            maxItems: 50,
+            description: "单批上限由 VERHUB_EVENT_BATCH_MAX 控制，默认 50。",
+            items: {
+              $ref: "#/components/schemas/IngestEventItemDto",
+            },
+          },
+          platform: {
+            type: "string",
+            description: "也可通过 x-verhub-platform 请求头声明，优先级见平台判定规则。",
+          },
+          platform_version: {
             type: "string",
           },
-          action_id: {
-            type: "string",
-          },
-          created_time: {
+        },
+      },
+      IngestEventsResponse: {
+        type: "object",
+        required: ["accepted", "skipped", "suppressed"],
+        properties: {
+          accepted: {
             type: "integer",
+            description: "实际入库的条数。",
           },
-          http: {
+          skipped: {
+            type: "integer",
+            description:
+              "未入库的条数，含事件名不合法与幂等键撞上的重复。两者对客户端是同一件事——不必再发了。",
+          },
+          suppressed: {
+            type: "boolean",
+            description:
+              "true 表示本次采集被关闭：命中了 x-verhub-do-not-track 退出信号， 或者该项目的事件采集总开关处于关闭状态。此时 accepted 恒为 0， 且服务端不入库、不计数、不解析地理位置。\n",
+          },
+        },
+        example: {
+          accepted: 3,
+          skipped: 0,
+          suppressed: false,
+        },
+      },
+      EventSubjectRecord: {
+        type: "object",
+        required: ["event_name", "event_id", "occurred_at", "received_at"],
+        properties: {
+          event_name: {
+            type: "string",
+          },
+          event_id: {
+            type: "string",
+          },
+          session_id: {
             oneOf: [
               {
-                type: "object",
-                additionalProperties: true,
+                type: "string",
               },
               {
                 type: "null",
               },
             ],
-            description: "原始请求快照（方法、完整请求头、请求体）。常用字段已提升为下方独立列。",
           },
-          custom_data: {
+          occurred_at: {
+            type: "integer",
+          },
+          received_at: {
+            type: "integer",
+          },
+          properties: {
             oneOf: [
               {
                 type: "object",
@@ -9438,76 +10146,1053 @@ export const openApiDocument: OpenApiDocument = {
             ],
           },
           ip: {
-            type: ["string", "null"],
-            description: "服务端观测到的调用方地址；提交时采集，历史数据为 null。",
-          },
-          user_agent: {
-            type: ["string", "null"],
-          },
-          country_code: {
-            type: ["string", "null"],
-            description: "ISO-3166 alpha-2；私有网段为 LOCAL，无法定位时为 null。",
-          },
-          country_name: {
-            type: ["string", "null"],
-          },
-          region_name: {
-            type: ["string", "null"],
-            description: "省/州级区域，取决于解析服务返回的粒度。",
-          },
-          city: {
-            type: ["string", "null"],
-          },
-          platform: {
             oneOf: [
               {
-                $ref: "#/components/schemas/Platform",
+                type: "string",
               },
               {
                 type: "null",
               },
             ],
-            description: "由 SDK 声明或 User-Agent 推断。",
+            description: "默认为匿名化后的地址（IPv4 截末段、IPv6 截末 80 位）。",
+          },
+          user_agent: {
+            oneOf: [
+              {
+                type: "string",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          country_code: {
+            oneOf: [
+              {
+                type: "string",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          country_name: {
+            oneOf: [
+              {
+                type: "string",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          region_name: {
+            oneOf: [
+              {
+                type: "string",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          city: {
+            oneOf: [
+              {
+                type: "string",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          platform: {
+            oneOf: [
+              {
+                type: "string",
+              },
+              {
+                type: "null",
+              },
+            ],
           },
           platform_version: {
-            type: ["string", "null"],
-            description:
-              "具体系统版本，如 `11`、`ubuntu 24.04`；客户端未提交且无法从 User-Agent 解析时为 null。",
+            oneOf: [
+              {
+                type: "string",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+        },
+      },
+      EventSubjectExport: {
+        type: "object",
+        required: ["distinct_id", "total", "data"],
+        properties: {
+          distinct_id: {
+            type: "string",
+          },
+          total: {
+            type: "integer",
+          },
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/EventSubjectRecord",
+            },
+          },
+        },
+      },
+      EventSubjectDeleteResponse: {
+        type: "object",
+        required: ["success", "deleted"],
+        properties: {
+          success: {
+            type: "boolean",
+          },
+          deleted: {
+            type: "integer",
+            description: "删除的事件明细条数。日活去重记录一并删除但不计入此数。",
           },
         },
         example: {
-          action_record_id: "rec-001",
-          action_id: "act-001",
-          created_time: 1760000000,
-          http: {
-            method: "POST",
-            ip: "203.0.113.7",
-            ua: "Verhub-SDK/1.2.0",
-          },
-          custom_data: {
-            app_version: "1.2.0",
-          },
-          ip: "203.0.113.7",
-          user_agent: "Verhub-SDK/1.2.0",
-          country_code: "CN",
-          country_name: "中国",
-          region_name: "广东省",
-          city: "深圳",
-          platform: "windows",
+          success: true,
+          deleted: 128,
         },
       },
-      ActionRecordListResponse: {
+      EventDefinitionItem: {
+        type: "object",
+        required: [
+          "event_definition_id",
+          "project_key",
+          "name",
+          "archived",
+          "first_seen_time",
+          "last_seen_time",
+          "range_count",
+        ],
+        properties: {
+          event_definition_id: {
+            type: "string",
+          },
+          project_key: {
+            type: "string",
+          },
+          name: {
+            type: "string",
+            description: "客户端上报时使用的键，归一化后的小写形式。不可修改。",
+          },
+          display_name: {
+            oneOf: [
+              {
+                type: "string",
+              },
+              {
+                type: "null",
+              },
+            ],
+            description: "给管理端看的名字；为空时界面回退到 name。",
+          },
+          description: {
+            oneOf: [
+              {
+                type: "string",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          archived: {
+            type: "boolean",
+          },
+          first_seen_time: {
+            type: "integer",
+          },
+          last_seen_time: {
+            type: "integer",
+          },
+          range_count: {
+            type: "integer",
+            description: "查询区间内的上报量。",
+          },
+        },
+        example: {
+          event_definition_id: "clx7f2k9v0000abcd",
+          project_key: "demo",
+          name: "checkout_clicked",
+          display_name: "点击结算",
+          description: "用户在购物车页点击结算按钮",
+          archived: false,
+          first_seen_time: 1759000000,
+          last_seen_time: 1760000000,
+          range_count: 1284,
+        },
+      },
+      EventDefinitionListResponse: {
         type: "object",
         required: ["total", "data"],
         properties: {
           total: {
             type: "integer",
-            example: 1,
           },
           data: {
             type: "array",
             items: {
-              $ref: "#/components/schemas/ActionRecordItem",
+              $ref: "#/components/schemas/EventDefinitionItem",
+            },
+          },
+        },
+      },
+      UpdateEventDefinitionDto: {
+        type: "object",
+        description: "事件名不在可改字段里——它是客户端上报时使用的键。",
+        properties: {
+          display_name: {
+            type: "string",
+            maxLength: 128,
+          },
+          description: {
+            type: "string",
+            maxLength: 512,
+          },
+          archived: {
+            type: "boolean",
+          },
+        },
+      },
+      EventOverviewResponse: {
+        type: "object",
+        required: [
+          "start_time",
+          "end_time",
+          "total",
+          "unique_users",
+          "unique_sessions",
+          "event_types",
+        ],
+        properties: {
+          start_time: {
+            type: "integer",
+          },
+          end_time: {
+            type: "integer",
+          },
+          total: {
+            type: "integer",
+            description: "事件总量，来自小时汇总。",
+          },
+          unique_users: {
+            type: "integer",
+            description: "独立标识数，来自明细——汇总表按设计不含这一维。",
+          },
+          unique_sessions: {
+            type: "integer",
+          },
+          event_types: {
+            type: "integer",
+            description: "区间内有过上报的事件种类数。",
+          },
+        },
+        example: {
+          start_time: 1759000000,
+          end_time: 1760000000,
+          total: 48213,
+          unique_users: 1904,
+          unique_sessions: 3311,
+          event_types: 17,
+        },
+      },
+      EventTimeseriesResponse: {
+        type: "object",
+        required: ["start_time", "end_time", "granularity", "tz_offset_minutes", "data", "series"],
+        properties: {
+          start_time: {
+            type: "integer",
+          },
+          end_time: {
+            type: "integer",
+          },
+          granularity: {
+            type: "string",
+            enum: ["hour", "day"],
+          },
+          tz_offset_minutes: {
+            type: "integer",
+          },
+          event_name: {
+            oneOf: [
+              {
+                type: "string",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          group_by: {
+            oneOf: [
+              {
+                type: "string",
+                enum: ["event", "platform", "region", null],
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          data: {
+            type: "array",
+            description: "总量序列，空桶补零。",
+            items: {
+              $ref: "#/components/schemas/EventTimeseriesPoint",
+            },
+          },
+          series: {
+            oneOf: [
+              {
+                type: "array",
+                items: {
+                  $ref: "#/components/schemas/EventSeries",
+                },
+              },
+              {
+                type: "null",
+              },
+            ],
+            description: "按 group_by 拆开的序列；未指定 group_by 时为 null。",
+          },
+        },
+      },
+      EventCountBucket: {
+        type: "object",
+        required: ["key", "label", "count"],
+        properties: {
+          key: {
+            type: "string",
+            description: "原始值。属性分布中空串表示该上报里没有这个属性。",
+          },
+          label: {
+            type: "string",
+            description: "展示用文案。地区码会换成中文省名，缺失的属性显示为「（未上报）」。",
+          },
+          count: {
+            type: "integer",
+          },
+        },
+      },
+      EventBreakdownResponse: {
+        type: "object",
+        required: ["start_time", "end_time", "dimension", "total", "data"],
+        properties: {
+          start_time: {
+            type: "integer",
+          },
+          end_time: {
+            type: "integer",
+          },
+          dimension: {
+            type: "string",
+            enum: ["event", "platform", "region", "property"],
+          },
+          property_key: {
+            oneOf: [
+              {
+                type: "string",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          total: {
+            type: "integer",
+            description: "全量总数而非本页之和，据此算出的占比在 limit 截尾后仍然真实。",
+          },
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/EventCountBucket",
+            },
+          },
+        },
+      },
+      EventHeatmapCell: {
+        type: "object",
+        required: ["weekday", "hour", "count"],
+        properties: {
+          weekday: {
+            type: "integer",
+            minimum: 0,
+            maximum: 6,
+            description: "0 是周日。",
+          },
+          hour: {
+            type: "integer",
+            minimum: 0,
+            maximum: 23,
+          },
+          count: {
+            type: "integer",
+          },
+        },
+      },
+      EventHeatmapResponse: {
+        type: "object",
+        required: ["start_time", "end_time", "tz_offset_minutes", "data"],
+        properties: {
+          start_time: {
+            type: "integer",
+          },
+          end_time: {
+            type: "integer",
+          },
+          tz_offset_minutes: {
+            type: "integer",
+          },
+          data: {
+            type: "array",
+            minItems: 168,
+            maxItems: 168,
+            items: {
+              $ref: "#/components/schemas/EventHeatmapCell",
+            },
+          },
+        },
+      },
+      FunnelStepDto: {
+        type: "object",
+        required: ["event_name"],
+        properties: {
+          event_name: {
+            type: "string",
+            maxLength: 64,
+          },
+          filters: {
+            type: "array",
+            maxItems: 10,
+            description: "该步骤额外的属性条件，例如「plan = pro 的下单」。",
+            items: {
+              $ref: "#/components/schemas/EventFilter",
+            },
+          },
+        },
+      },
+      QueryFunnelDto: {
+        type: "object",
+        required: ["steps"],
+        properties: {
+          start_time: {
+            type: "integer",
+            minimum: 0,
+          },
+          end_time: {
+            type: "integer",
+            minimum: 0,
+          },
+          tz_offset_minutes: {
+            type: "integer",
+            minimum: -840,
+            maximum: 900,
+            default: 0,
+          },
+          steps: {
+            type: "array",
+            minItems: 2,
+            maxItems: 8,
+            description: "步数上限 8——每一步多一次连接，放开会让查询规模失控。",
+            items: {
+              $ref: "#/components/schemas/FunnelStepDto",
+            },
+          },
+          window_seconds: {
+            type: "integer",
+            minimum: 60,
+            maximum: 2592000,
+            default: 604800,
+            description: "从**第一步**算起的转化窗口，不是相邻两步之间。",
+          },
+        },
+        example: {
+          steps: [
+            {
+              event_name: "app_opened",
+            },
+            {
+              event_name: "cart_viewed",
+            },
+            {
+              event_name: "checkout_clicked",
+              filters: [
+                {
+                  property: "plan",
+                  op: "eq",
+                  value: "pro",
+                },
+              ],
+            },
+          ],
+          window_seconds: 604800,
+        },
+      },
+      FunnelStepResult: {
+        type: "object",
+        required: [
+          "step",
+          "event_name",
+          "users",
+          "conversion_rate",
+          "total_conversion_rate",
+          "dropped",
+        ],
+        properties: {
+          step: {
+            type: "integer",
+            description: "从 1 开始。",
+          },
+          event_name: {
+            type: "string",
+          },
+          users: {
+            type: "integer",
+            description: "走到这一步的独立标识数。",
+          },
+          conversion_rate: {
+            type: "number",
+            description: "相对上一步的转化率，0 到 1；第一步恒为 1。",
+          },
+          total_conversion_rate: {
+            type: "number",
+            description: "相对第一步的累计转化率。",
+          },
+          dropped: {
+            type: "integer",
+          },
+        },
+      },
+      FunnelResponse: {
+        type: "object",
+        required: ["start_time", "end_time", "window_seconds", "data"],
+        properties: {
+          start_time: {
+            type: "integer",
+          },
+          end_time: {
+            type: "integer",
+          },
+          window_seconds: {
+            type: "integer",
+          },
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/FunnelStepResult",
+            },
+          },
+        },
+      },
+      QueryRetentionDto: {
+        type: "object",
+        required: ["start_event"],
+        properties: {
+          start_time: {
+            type: "integer",
+            minimum: 0,
+          },
+          end_time: {
+            type: "integer",
+            minimum: 0,
+          },
+          tz_offset_minutes: {
+            type: "integer",
+            minimum: -840,
+            maximum: 900,
+            default: 0,
+          },
+          start_event: {
+            type: "string",
+            maxLength: 64,
+            description: "把人纳入队列的起始事件，例如首次启动。",
+          },
+          return_event: {
+            type: "string",
+            maxLength: 64,
+            description: "判定「回来了」的事件；不传则任意事件都算回访。",
+          },
+          period: {
+            type: "string",
+            enum: ["day", "week"],
+            default: "day",
+          },
+          periods: {
+            type: "integer",
+            minimum: 2,
+            maximum: 30,
+            default: 14,
+          },
+        },
+        example: {
+          start_event: "app_installed",
+          return_event: "app_opened",
+          period: "day",
+          periods: 14,
+        },
+      },
+      RetentionCell: {
+        type: "object",
+        required: ["period", "users", "rate"],
+        properties: {
+          period: {
+            type: "integer",
+            description: "距离起始周期的周期数，0 是当期。",
+          },
+          users: {
+            type: "integer",
+          },
+          rate: {
+            type: "number",
+            description: "0 到 1。",
+          },
+        },
+      },
+      RetentionCohort: {
+        type: "object",
+        required: ["cohort", "size", "cells"],
+        properties: {
+          cohort: {
+            type: "integer",
+            description: "队列起始时刻（Unix 秒），已按 tz_offset_minutes 折算到当地周期起点。",
+          },
+          size: {
+            type: "integer",
+          },
+          cells: {
+            type: "array",
+            description:
+              "每个周期一格。**尚未走完的周期为 null**，不是 0——把还没发生的时间 显示成 0% 留存是不诚实的。\n",
+            items: {
+              oneOf: [
+                {
+                  $ref: "#/components/schemas/RetentionCell",
+                },
+                {
+                  type: "null",
+                },
+              ],
+            },
+          },
+        },
+      },
+      RetentionResponse: {
+        type: "object",
+        required: ["start_time", "end_time", "period", "periods", "cohorts"],
+        properties: {
+          start_time: {
+            type: "integer",
+          },
+          end_time: {
+            type: "integer",
+          },
+          period: {
+            type: "string",
+            enum: ["day", "week"],
+          },
+          periods: {
+            type: "integer",
+          },
+          cohorts: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/RetentionCohort",
+            },
+          },
+        },
+      },
+      QueryPathsDto: {
+        type: "object",
+        properties: {
+          start_time: {
+            type: "integer",
+            minimum: 0,
+          },
+          end_time: {
+            type: "integer",
+            minimum: 0,
+          },
+          tz_offset_minutes: {
+            type: "integer",
+            minimum: -840,
+            maximum: 900,
+            default: 0,
+          },
+          start_event: {
+            type: "string",
+            maxLength: 64,
+            description: "路径起点；不传则从每条序列的第一个事件开始。",
+          },
+          depth: {
+            type: "integer",
+            minimum: 2,
+            maximum: 6,
+            default: 4,
+          },
+          branch_limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 20,
+            default: 5,
+            description: "每一层保留的分支数，其余并入「（其他）」。",
+          },
+          scope: {
+            type: "string",
+            enum: ["session", "user"],
+            default: "session",
+            description:
+              "按会话还是按人串联。默认按会话——跨会话会把「昨天看了详情页、今天下了单」 连成一条边，显示出用户从来没有连续做过的动作序列。没有会话标识的上报 回退到按人串联。\n",
+          },
+        },
+        example: {
+          start_event: "app_opened",
+          depth: 4,
+          scope: "session",
+        },
+      },
+      PathEdge: {
+        type: "object",
+        required: ["step", "from_event", "to_event", "count"],
+        properties: {
+          step: {
+            type: "integer",
+            description: "从 1 开始的层号。",
+          },
+          from_event: {
+            type: "string",
+          },
+          to_event: {
+            type: "string",
+          },
+          count: {
+            type: "integer",
+          },
+        },
+      },
+      PathsResponse: {
+        type: "object",
+        required: ["start_time", "end_time", "scope", "depth", "truncated", "data"],
+        properties: {
+          start_time: {
+            type: "integer",
+          },
+          end_time: {
+            type: "integer",
+          },
+          scope: {
+            type: "string",
+            enum: ["session", "user"],
+          },
+          depth: {
+            type: "integer",
+          },
+          truncated: {
+            type: "boolean",
+            description: "有分支被并入「（其他）」时为 true，提醒看图的人这不是全部路径。",
+          },
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/PathEdge",
+            },
+          },
+        },
+      },
+      DslEventDto: {
+        type: "object",
+        required: ["name", "alias"],
+        properties: {
+          name: {
+            type: "string",
+            maxLength: 64,
+          },
+          alias: {
+            type: "string",
+            pattern: "^[A-Z]$",
+            description: "单个大写字母，公式里靠它引用。",
+          },
+          measure: {
+            type: "string",
+            enum: ["count", "unique_users", "count_per_user"],
+            default: "count",
+            description:
+              "count_per_user 的分母是整个区间的独立标识数而不是每个时间桶的—— 按桶取分母会让「人均次数」在冷清的时段被放大成失真的尖峰。\n",
+          },
+          filters: {
+            type: "array",
+            maxItems: 10,
+            items: {
+              $ref: "#/components/schemas/EventFilter",
+            },
+          },
+        },
+      },
+      DslGroupByDto: {
+        type: "object",
+        required: ["kind"],
+        properties: {
+          kind: {
+            type: "string",
+            enum: ["property", "platform", "region", "event"],
+          },
+          key: {
+            type: "string",
+            maxLength: 128,
+            description: "kind 为 property 时必填。",
+          },
+        },
+      },
+      EventQueryDto: {
+        type: "object",
+        required: ["type", "events"],
+        description:
+          "指标 DSL：查询构建器产出的结构，也是看板卡片保存下来的内容。\n\n只覆盖 timeseries / breakdown / value 三种类型。漏斗、留存、路径各有自己的 参数形状与专用端点，硬塞进同一个 DSL 会让每个字段都变成「只在某一种 type 下 有意义」，前端也没法给出像样的表单。\n",
+        properties: {
+          type: {
+            type: "string",
+            enum: ["timeseries", "breakdown", "value"],
+          },
+          start_time: {
+            type: "integer",
+            minimum: 0,
+          },
+          end_time: {
+            type: "integer",
+            minimum: 0,
+          },
+          tz_offset_minutes: {
+            type: "integer",
+            minimum: -840,
+            maximum: 900,
+            default: 0,
+          },
+          events: {
+            type: "array",
+            minItems: 1,
+            maxItems: 6,
+            items: {
+              $ref: "#/components/schemas/DslEventDto",
+            },
+          },
+          filters: {
+            type: "array",
+            maxItems: 10,
+            description: "作用于全部事件的公共条件，与各事件自己的 filters 取交集。",
+            items: {
+              $ref: "#/components/schemas/EventFilter",
+            },
+          },
+          formula: {
+            type: "string",
+            maxLength: 256,
+            description:
+              '跨事件运算，例如 "A / B * 100"。只认别名、数字与 + - * / ( )， 由服务端的递归下降解析器求值，不使用 eval，也不下推到 SQL。\n\n给了公式就只返回一条合成序列，各事件的原始序列不再单独返回—— 两者同时出现只会让图例难以解释。除零结果为 0，因为转化率类公式的分母 天然会在没有数据的时间桶上为零。\n',
+            example: "A / B * 100",
+          },
+          group_by: {
+            $ref: "#/components/schemas/DslGroupByDto",
+          },
+          granularity: {
+            type: "string",
+            enum: ["hour", "day"],
+            default: "day",
+          },
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 50,
+            default: 20,
+          },
+        },
+        example: {
+          type: "value",
+          events: [
+            {
+              name: "checkout_completed",
+              alias: "A",
+              measure: "unique_users",
+            },
+            {
+              name: "cart_viewed",
+              alias: "B",
+              measure: "unique_users",
+            },
+          ],
+          formula: "A / B * 100",
+        },
+      },
+      EventQueryResponse: {
+        type: "object",
+        required: ["start_time", "end_time", "type"],
+        description:
+          "形状随 type 变化：timeseries 返回 series，breakdown 返回 total 与 buckets，value 返回 values 与 result。",
+        properties: {
+          start_time: {
+            type: "integer",
+          },
+          end_time: {
+            type: "integer",
+          },
+          type: {
+            type: "string",
+            enum: ["timeseries", "breakdown", "value"],
+          },
+          series: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/EventSeries",
+            },
+          },
+          total: {
+            type: "integer",
+          },
+          buckets: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/EventCountBucket",
+            },
+          },
+          values: {
+            type: "object",
+            additionalProperties: {
+              type: "number",
+            },
+            description: "各别名的度量值。",
+          },
+          result: {
+            type: "number",
+            description: "公式求值结果；没有公式时取第一个事件的度量值。",
+          },
+        },
+      },
+      CreateDashboardCardDto: {
+        type: "object",
+        required: ["title", "query"],
+        properties: {
+          title: {
+            type: "string",
+            maxLength: 128,
+          },
+          description: {
+            type: "string",
+            maxLength: 512,
+          },
+          query: {
+            $ref: "#/components/schemas/EventQueryDto",
+          },
+          layout: {
+            type: "object",
+            additionalProperties: true,
+            description: "前端网格布局，服务端只存不解析。",
+          },
+          sort_order: {
+            type: "integer",
+            minimum: 0,
+            default: 0,
+          },
+        },
+      },
+      UpdateDashboardCardDto: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            maxLength: 128,
+          },
+          description: {
+            type: "string",
+            maxLength: 512,
+          },
+          query: {
+            $ref: "#/components/schemas/EventQueryDto",
+          },
+          layout: {
+            type: "object",
+            additionalProperties: true,
+          },
+          sort_order: {
+            type: "integer",
+            minimum: 0,
+          },
+        },
+      },
+      DashboardCardItem: {
+        type: "object",
+        required: [
+          "card_id",
+          "project_key",
+          "title",
+          "query",
+          "sort_order",
+          "created_time",
+          "updated_time",
+        ],
+        properties: {
+          card_id: {
+            type: "string",
+          },
+          project_key: {
+            type: "string",
+          },
+          title: {
+            type: "string",
+          },
+          description: {
+            oneOf: [
+              {
+                type: "string",
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          query: {
+            $ref: "#/components/schemas/EventQueryDto",
+          },
+          layout: {
+            oneOf: [
+              {
+                type: "object",
+                additionalProperties: true,
+              },
+              {
+                type: "null",
+              },
+            ],
+          },
+          sort_order: {
+            type: "integer",
+          },
+          created_time: {
+            type: "integer",
+          },
+          updated_time: {
+            type: "integer",
+          },
+        },
+      },
+      DashboardCardListResponse: {
+        type: "object",
+        required: ["total", "data"],
+        properties: {
+          total: {
+            type: "integer",
+          },
+          data: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/DashboardCardItem",
             },
           },
         },

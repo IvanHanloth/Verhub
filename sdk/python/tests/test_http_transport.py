@@ -140,6 +140,27 @@ class TransportTest(unittest.TestCase):
 
         self.assertTrue(str(caught.exception).endswith("ReadTimeout"))
 
+    def test_terms_endpoints_are_instance_scoped(self) -> None:
+        """条款是实例级的，路径里不带 project_key，也不要求绑定项目。"""
+        seen: List[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(200, json={"data": []})
+
+        http_client = _mock_client(handler)
+        self.addCleanup(http_client.close)
+        client = VerhubClient(BASE_URL, http_client=http_client, retries=0)
+        self.addCleanup(client.close)
+
+        client.public.list_terms()
+        client.public.get_terms("privacy-policy")
+
+        self.assertEqual(
+            [str(request.url) for request in seen],
+            [f"{BASE_URL}/public/terms", f"{BASE_URL}/public/terms/privacy-policy"],
+        )
+
 
 class RetryTest(unittest.TestCase):
     def _counting(
@@ -179,16 +200,27 @@ class RetryTest(unittest.TestCase):
             client.public.check_update(current_version="1.0.0")
         self.assertEqual(calls[0], 1)
 
-    def test_retries_connect_failure_even_for_post(self) -> None:
-        """连接没建起来意味着请求没送到，重放一定安全。"""
+    def test_does_not_retry_connect_failure_for_post(self) -> None:
+        """POST 不在幂等方法集合里，连接失败也不重放。四个语言的 SDK 一致。"""
+
+        def outcome(index: int) -> httpx.Response:
+            raise httpx.ConnectError("连不上")
+
+        client, calls = self._counting(outcome, retries=2)
+        with self.assertRaises(VerhubConnectionError):
+            client.public.check_update(current_version="1.0.0")
+        self.assertEqual(calls[0], 1)
+
+    def test_retries_connect_failure_for_get(self) -> None:
+        """GET 是幂等方法，连接没建起来时可以重放。"""
 
         def outcome(index: int) -> httpx.Response:
             if index == 0:
                 raise httpx.ConnectError("连不上")
-            return httpx.Response(200, json={"should_update": False})
+            return httpx.Response(200, json={"project_key": "verhub"})
 
         client, calls = self._counting(outcome, retries=1)
-        client.public.check_update(current_version="1.0.0")
+        client.public.get_project()
         self.assertEqual(calls[0], 2)
 
     def test_does_not_retry_read_timeout(self) -> None:

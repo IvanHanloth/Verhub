@@ -1,21 +1,25 @@
 import { VerhubError } from "./errors"
 import { compact, type HttpClient } from "./http"
+import { analyticsNamespace, EventQueue, type AnalyticsOptions } from "./analytics"
 import type {
-  ActionRecordItem,
   AnnouncementItem,
   AnnouncementListResponse,
   CheckUpdateOptions,
   CheckUpdateResponse,
-  CreateActionRecordInput,
   CreateFeedbackInput,
+  EventSubjectDeleteResponse,
+  EventSubjectExport,
   FeedbackItem,
+  IngestEventsResponse,
   LatestAnnouncementOptions,
   ListAnnouncementsOptions,
   LogItem,
   PageOptions,
-  Platform,
   ProjectItem,
   PublicFeedbackOptions,
+  TermsDocumentListResponse,
+  TermsDocumentSlug,
+  TermsDocumentView,
   UploadLogInput,
   VersionItem,
   VersionListResponse,
@@ -24,14 +28,19 @@ import type {
 /**
  * 公开接口，不需要凭据。
  *
- * 这些是客户端 App 会直接调用的那一组：查版本、查公告、报日志和行为。全部作用于
- * 客户端绑定的项目（构造时传入的 `projectKey`），因此方法不再逐次收项目参数。
+ * 项目作用域的方法用客户端绑定的 `projectKey`，不再逐次收项目参数。
  */
 export class PublicApi {
+  private queue: EventQueue | null = null
+
   /**
    * @param http 底层 HTTP 客户端
+   * @param analytics 事件采集配置；省略则用默认值（设备级持久化 + 本地队列）
    */
-  constructor(private readonly http: HttpClient) {}
+  constructor(
+    private readonly http: HttpClient,
+    private readonly analytics: AnalyticsOptions = {},
+  ) {}
 
   /**
    * @param options 语言偏好。命中项目注册的语言且该语言译文填了对应字段时，
@@ -54,6 +63,9 @@ export class PublicApi {
     })
   }
 
+  /**
+   * @returns 最新正式版本
+   */
   getLatestVersion(): Promise<VersionItem> {
     return this.http.request("GET", "/public/{projectKey}/versions/latest", {
       pathParams: { projectKey: this.http.requireProjectKey() },
@@ -125,7 +137,7 @@ export class PublicApi {
   }
 
   /**
-   * 反馈提交选项。客户端据此决定要不要显示「转发到 GitHub Issue」的勾选框。
+   * 取反馈提交选项，据此决定要不要显示「转发到 GitHub Issue」的勾选框。
    *
    * @returns 本项目是否开放转发，以及转发时联系方式是否必填
    */
@@ -138,9 +150,8 @@ export class PublicApi {
   /**
    * 提交用户反馈。
    *
-   * `forward_to_github` 为 true 时联系方式必填，这条本地就会拒绝（抛
-   * {@link VerhubError}），不必往服务端跑一趟；项目是否开放转发只有服务端知道，
-   * 未开放时提交会拿到 400，Issue 建失败则整条反馈不会被记录（503）。
+   * `forward_to_github` 为 true 时联系方式必填，本地即拒绝；项目未开放转发时
+   * 服务端返回 400，Issue 建失败时整条反馈不会被记录（503）。
    *
    * @param input 反馈内容与可选的评分、联系方式、平台、自定义数据
    * @throws {VerhubError} 选了转发却没填 contact
@@ -165,13 +176,203 @@ export class PublicApi {
     })
   }
 
+  // ---- 条款文档 ----
+
   /**
-   * @param input 行为定义 ID 与自定义数据
+   * 列出全部条款文档的标题与最后更新时间，不含正文。
+   *
+   * 不作用于绑定项目，条款是实例级的。
    */
-  createActionRecord(input: CreateActionRecordInput): Promise<ActionRecordItem> {
-    return this.http.request("POST", "/public/{projectKey}/actions", {
+  listTerms(): Promise<TermsDocumentListResponse> {
+    return this.http.request("GET", "/public/terms")
+  }
+
+  /**
+   * 取条款文档正文（Markdown）。实例未自定义时返回内置正文。
+   *
+   * @param slug 文档标识
+   */
+  getTerms(slug: TermsDocumentSlug): Promise<TermsDocumentView> {
+    return this.http.request("GET", "/public/terms/{slug}", { pathParams: { slug } })
+  }
+
+  // ---- 事件采集 ----
+
+  /**
+   * 记录一次用户行为，入队即返回，不发起网络请求。
+   *
+   * 事件名无需预先登记，服务端第一次收到就自动建立定义。建议用小写下划线形式
+   * （`checkout_clicked`）；服务端归一化为小写，只接受字母、数字、下划线、
+   * 点、连字符与冒号。
+   *
+   * 队列满 `batchSize` 条或每 `flushIntervalMs` 毫秒发送一次；发送失败按指数
+   * 退避重试，每条事件带幂等键。未同意、已退出、命中 GPC/DNT 或采集被关闭时
+   * 本调用是空操作。
+   *
+   * @param name 事件名
+   * @param properties 自定义属性，按属性统计只看第一层
+   */
+  track(name: string, properties?: Record<string, unknown>): void {
+    this.events().track(name, properties)
+  }
+
+  /** 立即发送队列里的所有事件。退出前调用可以避免丢掉最后一批。 */
+  flush(): Promise<void> {
+    return this.events().flush()
+  }
+
+  /** 停止采集、丢弃待发队列、删除本地匿名标识，并把退出标记写入本地。 */
+  optOut(): void {
+    this.events().optOut()
+  }
+
+  /** 撤销退出，并生成一个新的匿名标识。 */
+  optIn(): void {
+    this.events().optIn()
+  }
+
+  /** 当前是否处于退出状态。 */
+  hasOptedOut(): boolean {
+    return this.events().hasOptedOut()
+  }
+
+  /**
+   * `requireConsent` 模式下开闸。在此之前 SDK 不采集、不写盘，含匿名标识的生成。
+   */
+  grantConsent(): void {
+    this.events().grantConsent()
+  }
+
+  /** 撤回同意，等价于 optOut() 并回到未同意状态。 */
+  revokeConsent(): void {
+    this.events().revokeConsent()
+  }
+
+  /** 换一个新的匿名标识，切断与既往事件序列的关联。保持采集开启。 */
+  resetIdentity(): void {
+    this.events().resetIdentity()
+  }
+
+  /** 当前的匿名标识；未采集状态下为 null。 */
+  get distinctId(): string | null {
+    return this.events().currentDistinctId()
+  }
+
+  /**
+   * 导出本机匿名标识下的全部事件明细（GDPR Art.15 / Art.20）。
+   *
+   * @param distinctId 省略则用当前标识
+   * @throws {VerhubError} 没有可用的匿名标识（未采集或已退出）
+   */
+  exportMyData(distinctId?: string): Promise<EventSubjectExport> {
+    return this.http.request("GET", "/public/{projectKey}/events/me", {
       pathParams: { projectKey: this.http.requireProjectKey() },
-      body: compact({ ...input }),
+      query: { distinct_id: this.requireDistinctId(distinctId) },
     })
+  }
+
+  /**
+   * 删除本机匿名标识下的全部事件明细（GDPR Art.17）。小时汇总不在删除范围内。
+   *
+   * @param distinctId 省略则用当前标识
+   * @throws {VerhubError} 没有可用的匿名标识（未采集或已退出）
+   */
+  deleteMyData(distinctId?: string): Promise<EventSubjectDeleteResponse> {
+    return this.http.request("DELETE", "/public/{projectKey}/events/me", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      query: { distinct_id: this.requireDistinctId(distinctId) },
+    })
+  }
+
+  /**
+   * 直接发一批事件，绕过本地队列。常规入口是 {@link PublicApi.track}。
+   *
+   * @param payload 匿名标识、可选会话与事件数组（单批上限 50）
+   */
+  ingestEvents(payload: {
+    distinct_id: string
+    session_id?: string
+    events: Array<{
+      event_id: string
+      name: string
+      occurred_at?: number
+      properties?: Record<string, unknown>
+    }>
+  }): Promise<IngestEventsResponse> {
+    return this.http.request("POST", "/public/{projectKey}/events", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact({ ...payload }),
+    })
+  }
+
+  /**
+   * 首次访问时才建队列，命名空间变化时丢弃重建。
+   *
+   * 旧命名空间攒下的事件留在它自己的存储位置，下次绑定回去时补发。
+   */
+  private events(): EventQueue {
+    const namespace =
+      this.analytics?.namespace ??
+      analyticsNamespace(this.http.getBaseUrl(), this.http.getProjectKey())
+
+    if (this.queue && this.queue.namespace !== namespace) {
+      this.queue = null
+    }
+    if (!this.queue) {
+      this.queue = new EventQueue(
+        namespace,
+        (payload) => this.ingestEvents(payload),
+        this.analytics,
+        (payload) => this.beaconEvents(payload),
+      )
+    }
+    return this.queue
+  }
+
+  /**
+   * 页面卸载时用 `navigator.sendBeacon` 把队列送出去，非浏览器环境返回 false。
+   *
+   * beacon 设不了请求头，平台与系统版本改走请求体。
+   */
+  private beaconEvents(payload: {
+    distinct_id: string
+    session_id?: string
+    events: unknown[]
+  }): boolean {
+    const nav = (
+      globalThis as {
+        navigator?: { sendBeacon?: (url: string, data: Blob) => boolean }
+      }
+    ).navigator
+    if (typeof nav?.sendBeacon !== "function" || typeof Blob !== "function") {
+      return false
+    }
+
+    const projectKey = this.http.getProjectKey()
+    if (!projectKey) {
+      return false
+    }
+
+    const body = compact({
+      ...payload,
+      platform: this.http.getPlatform() ?? undefined,
+      platform_version: this.http.getPlatformVersion() ?? undefined,
+    })
+
+    try {
+      const url = this.http.resolveUrl("/public/{projectKey}/events", { projectKey })
+      const blob = new Blob([JSON.stringify(body)], { type: "application/json" })
+      return nav.sendBeacon(url, blob)
+    } catch {
+      return false
+    }
+  }
+
+  private requireDistinctId(explicit?: string): string {
+    const id = explicit ?? this.events().currentDistinctId()
+    if (!id) {
+      throw new VerhubError("没有可用的匿名标识：事件采集未启用或已退出。可显式传入 distinctId。")
+    }
+    return id
   }
 }

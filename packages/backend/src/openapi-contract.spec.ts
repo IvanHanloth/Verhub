@@ -14,12 +14,13 @@ import { RequestMethod } from "@nestjs/common"
 import { METHOD_METADATA, PATH_METADATA } from "@nestjs/common/constants"
 import { parse } from "yaml"
 
-import { ActionsController } from "./actions/actions.controller"
 import { AnnouncementsCompatController } from "./announcements/announcements-compat.controller"
 import { AnnouncementsPublicController } from "./announcements/announcements-public.controller"
 import { AnnouncementsStatsController } from "./announcements/announcements-stats.controller"
 import { AnnouncementsController } from "./announcements/announcements.controller"
 import { AuthController } from "./auth/auth.controller"
+import { EventsAdminController } from "./events/events-admin.controller"
+import { EventsController } from "./events/events.controller"
 import { FeedbacksCompatController } from "./feedbacks/feedbacks-compat.controller"
 import { FeedbacksController } from "./feedbacks/feedbacks.controller"
 import { GithubAppConfigController } from "./github-app/github-app-config.controller"
@@ -41,13 +42,14 @@ import { GithubWebhookController } from "./webhooks/github-webhook.controller"
 import { GithubWebhookSecretController } from "./webhooks/github-webhook-secret.controller"
 
 const CONTROLLERS = [
-  ActionsController,
   ContentStatsController,
   AnnouncementsCompatController,
   AnnouncementsController,
   AnnouncementsPublicController,
   AnnouncementsStatsController,
   AuthController,
+  EventsAdminController,
+  EventsController,
   FeedbacksCompatController,
   FeedbacksController,
   GithubAppConfigController,

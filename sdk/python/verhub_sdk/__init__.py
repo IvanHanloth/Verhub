@@ -1,10 +1,21 @@
 """
 Verhub Python SDK。
 
-接口面与 TypeScript / Rust / 纯 JS 版一一对应，只是方法名按各语言习惯改写
-（Python 用 snake_case）。契约以仓库根目录的 ``verhub.openapi.yaml`` 为准。
+接口面与 TypeScript / Rust / 纯 JS 版一一对应，方法名按各语言习惯改写（Python
+用 snake_case）。契约以仓库根目录的 ``verhub.openapi.yaml`` 为准。
 """
 
+from ._analytics import (
+    analytics_namespace,
+    AsyncEventQueue,
+    EventQueue,
+    FileStorage,
+    fnv1a32_hex,
+    MemoryStorage,
+    NullStorage,
+    origin_of,
+    random_id,
+)
 from ._http import (
     PLATFORM_HEADER,
     PLATFORM_VERSION_HEADER,
@@ -41,6 +52,15 @@ __all__ = [
     "PublicApi",
     "AdminApi",
     "BackgroundWorker",
+    "EventQueue",
+    "AsyncEventQueue",
+    "MemoryStorage",
+    "NullStorage",
+    "FileStorage",
+    "random_id",
+    "analytics_namespace",
+    "origin_of",
+    "fnv1a32_hex",
     "VerhubError",
     "VerhubApiError",
     "VerhubAuthError",

@@ -14,6 +14,7 @@ import unittest
 from verhub_sdk._http import (
     MAX_PLATFORM_VERSION_LENGTH,
     BaseHttpClient,
+    _macos_marketing_version,
     detect_platform,
     detect_platform_version,
     sanitize_platform_version,
@@ -49,6 +50,13 @@ class SanitizeTest(unittest.TestCase):
         cleaned = sanitize_platform_version("11\r\nX-Injected: 1")
         self.assertNotIn("\r", cleaned)
         self.assertNotIn("\n", cleaned)
+
+    def test_macos_version_collapses_to_the_marketing_number(self) -> None:
+        """macOS 只报市场大版本；10.x 时代保留次版本号。四个语言的 SDK 一致。"""
+        self.assertEqual(_macos_marketing_version("15.3.1"), "15")
+        self.assertEqual(_macos_marketing_version("26"), "26")
+        self.assertEqual(_macos_marketing_version("10.15.7"), "10.15")
+        self.assertEqual(_macos_marketing_version(""), "")
 
 
 class DeclarationTest(unittest.TestCase):

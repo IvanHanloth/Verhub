@@ -47,6 +47,10 @@ export type ProjectItem = {
   optional_update_min_comparable_version: string | null
   optional_update_max_comparable_version: string | null
   stats_retention_days: number
+  /** 事件采集总开关。关掉后采集端点仍返回 202，但不入库、不计数。 */
+  event_collection_enabled: boolean
+  /** 事件明细保留天数，1..365，默认 90。 */
+  event_retention_days: number
   /** 改名后保留的旧 Project Key（别名），均可访问到本项目。新到旧排序。 */
   aliases: string[]
   /**
@@ -135,7 +139,7 @@ export type FeedbackItem = {
   platform: Platform | null
   platform_version: string | null
   custom_data: JsonObject | null
-  /** 是否已转成 GitHub Issue。转发失败的提交不会落库，所以拿到的记录一定是成功的那些。 */
+  /** 是否已转成 GitHub Issue。转发失败的提交不落库，因此列表里的记录都是转发成功的。 */
   forwarded_to_github: boolean
   /** 生成的 Issue 编号与链接；未转发时都是 null。 */
   github_issue_number: number | null
@@ -166,21 +170,31 @@ export type LogItem = {
   created_at: number
 }
 
-export type ActionItem = {
-  action_id: string
+/** 事件定义。由采集端自动发现，没有对应的创建接口。 */
+export type EventDefinitionItem = {
+  event_definition_id: string
   project_key: string
+  /** 客户端上报时使用的键，归一化后的小写形式。不可修改。 */
   name: string
-  description: string
-  custom_data: JsonObject | null
-  created_time: number
+  /** 给管理端看的名字；为空时界面回退到 name。 */
+  display_name: string | null
+  description: string | null
+  archived: boolean
+  first_seen_time: number
+  last_seen_time: number
+  /** 查询区间内的上报量。 */
+  range_count: number
 }
 
-export type ActionRecordItem = {
-  action_record_id: string
-  action_id: string
-  created_time: number
-  http: JsonObject | null
-  custom_data: JsonObject | null
+/** 数据主体导出里的一条事件明细。 */
+export type EventSubjectRecord = {
+  event_name: string
+  event_id: string
+  session_id: string | null
+  occurred_at: number
+  received_at: number
+  properties: JsonObject | null
+  /** 默认为匿名化后的地址（IPv4 截末段、IPv6 截末 80 位）。 */
   ip: string | null
   user_agent: string | null
   country_code: string | null
@@ -189,6 +203,94 @@ export type ActionRecordItem = {
   city: string | null
   platform: Platform | null
   platform_version: string | null
+}
+
+export type EventSubjectExport = {
+  distinct_id: string
+  total: number
+  data: EventSubjectRecord[]
+}
+
+/** 数据主体删除的结果。 */
+export type EventSubjectDeleteResponse = {
+  success: boolean
+  /** 删除的事件明细条数。 */
+  deleted: number
+}
+
+// ---- 条款文档 ----
+
+/** 条款文档标识：`privacy-policy` 隐私政策，`sdk-compliance` SDK 合规性文档。 */
+export type TermsDocumentSlug = "privacy-policy" | "sdk-compliance"
+
+/** 条款正文的来源：`builtin` 为内置正文，`custom` 为实例自定义正文。 */
+export type TermsDocumentSource = "builtin" | "custom"
+
+/** 条款文档的标题与来源，不含正文。 */
+export type TermsDocumentSummary = {
+  slug: TermsDocumentSlug
+  title: string
+  /** 一句话说明，用于文档间导航。 */
+  summary: string
+  source: TermsDocumentSource
+  /** 正文最后修订时间（Unix 秒）。 */
+  updated_at: number
+}
+
+export type TermsDocumentListResponse = {
+  data: TermsDocumentSummary[]
+}
+
+/** 条款文档正文视图。 */
+export type TermsDocumentView = TermsDocumentSummary & {
+  /** 生效的正文（Markdown）。 */
+  content: string
+}
+
+/** 内置正文里待填的占位符。 */
+export type TermsPlaceholder = {
+  /** 正文中的写法为 `{{key}}`。 */
+  key: string
+  /** 填空表单的字段名。 */
+  label: string
+  /** 填写要求。 */
+  hint: string
+  /** 预填值。 */
+  example: string
+  /** false 表示留空也允许发布。 */
+  required: boolean
+}
+
+/** 条款文档的管理端视图，含生效正文、自定义草稿与内置原文。 */
+export type TermsDocumentConfigView = {
+  slug: TermsDocumentSlug
+  title: string
+  summary: string
+  /** 关闭时前台展示内置正文，草稿仍留在库里。 */
+  custom: boolean
+  /** 当前对外生效的正文。 */
+  content: string
+  /** 库里保存的自定义草稿；从未编辑过为 null。 */
+  custom_content: string | null
+  custom_updated_at: number | null
+  /** 内置正文原文。 */
+  builtin_content: string
+  builtin_updated_at: number
+  updated_at: number | null
+  /** 内置正文里待填的占位符，按出现顺序。 */
+  placeholders: TermsPlaceholder[]
+}
+
+export type TermsDocumentConfigListResponse = {
+  data: TermsDocumentConfigView[]
+}
+
+/** 部分更新条款文档：只修改传入的字段。 */
+export type UpdateTermsDocumentInput = {
+  /** 是否启用自定义正文。 */
+  custom?: boolean
+  /** 自定义正文（Markdown），最长 65536；传空串清除草稿。 */
+  content?: string
 }
 
 export type ListResponse<T> = {
@@ -252,8 +354,7 @@ export type VersionListResponse = ListResponse<VersionItem>
 export type AnnouncementListResponse = ListResponse<AnnouncementItem>
 export type FeedbackListResponse = ListResponse<FeedbackItem>
 export type LogListResponse = ListResponse<LogItem>
-export type ActionListResponse = ListResponse<ActionItem>
-export type ActionRecordListResponse = ListResponse<ActionRecordItem>
+export type EventDefinitionListResponse = ListResponse<EventDefinitionItem>
 
 export type CheckUpdateResponse = {
   should_update: boolean
@@ -296,7 +397,12 @@ export type LogStatistics = {
   error_count: number
 }
 
-export type ActionStatistics = { count: number }
+/** 采集接口的逐条回执。`suppressed` 为 true 表示本次采集被退出信号或项目开关拦下。 */
+export type IngestEventsResponse = {
+  accepted: number
+  skipped: number
+  suppressed: boolean
+}
 
 export type GithubWebhookSettings = {
   enabled: boolean
@@ -549,10 +655,23 @@ export type CreateLogInput = UploadLogInput & {
   platform_version?: string
 }
 
-export type CreateActionRecordInput = {
-  /** 行为定义 ID，需先在后台创建。 */
-  action_id: string
-  custom_data?: JsonObject
+/** 属性筛选条件。`op` 是闭集，值一律以参数进入服务端查询。 */
+export type EventFilter = {
+  /** 属性名。只支持 properties 的第一层键。 */
+  property: string
+  op:
+    | "eq"
+    | "neq"
+    | "in"
+    | "not_in"
+    | "contains"
+    | "gt"
+    | "gte"
+    | "lt"
+    | "lte"
+    | "exists"
+    | "not_exists"
+  value?: string | number | boolean | Array<string | number | boolean>
 }
 
 export type CreateProjectInput = {
@@ -571,6 +690,10 @@ export type CreateProjectInput = {
   optional_update_max_comparable_version?: string
   /** 请求统计保留天数，1..365，默认 365。 */
   stats_retention_days?: number
+  /** 事件采集总开关，默认 true。关掉后采集端点仍返回 202，但不入库、不计数。 */
+  event_collection_enabled?: boolean
+  /** 事件明细保留天数，1..365，默认 90。 */
+  event_retention_days?: number
   /**
    * 项目名称与描述的译文。传了就整体替换全部译文，空数组即清空；不传则不动。
    * 语言必须先在项目里注册（同义标签同样算命中），否则整个请求 400。
@@ -637,11 +760,235 @@ export type ListLogsOptions = PageOptions & {
   end_time?: number
 }
 
-/** 行为定义在绑定项目下创建，`project_key` 由客户端注入，不在此结构里。 */
-export type CreateActionInput = {
-  name: string
-  description: string
-  custom_data?: JsonObject
+/** 事件定义只能补充展示信息或归档——事件名是客户端上报时使用的键，不可修改。 */
+export type UpdateEventDefinitionInput = {
+  display_name?: string
+  description?: string
+  archived?: boolean
 }
 
-export type UpdateActionInput = Partial<CreateActionInput>
+// ---- 事件分析 ----
+
+/** 统计查询的公共区间参数。省略时服务端默认最近 7 天。 */
+export type EventRangeOptions = {
+  start_time?: number
+  end_time?: number
+  /** 相对 UTC 的分钟偏移，即 `-new Date().getTimezoneOffset()`。 */
+  tz_offset_minutes?: number
+}
+
+export type ListEventDefinitionsOptions = EventRangeOptions &
+  PageOptions & {
+    search?: string
+    /** 默认不含已归档的事件。 */
+    include_archived?: boolean
+  }
+
+export type EventOverviewResponse = {
+  start_time: number
+  end_time: number
+  /** 事件总量。 */
+  total: number
+  /** 独立标识数。 */
+  unique_users: number
+  unique_sessions: number
+  event_types: number
+}
+
+export type EventTimeseriesPoint = { bucket: number; count: number }
+export type EventSeries = { key: string; data: EventTimeseriesPoint[] }
+
+export type EventTimeseriesOptions = EventRangeOptions & {
+  granularity?: "hour" | "day"
+  event_name?: string
+  group_by?: "event" | "platform" | "region"
+  limit?: number
+}
+
+export type EventTimeseriesResponse = {
+  start_time: number
+  end_time: number
+  granularity: "hour" | "day"
+  tz_offset_minutes: number
+  event_name: string | null
+  group_by: "event" | "platform" | "region" | null
+  /** 总量序列，空桶补零。 */
+  data: EventTimeseriesPoint[]
+  /** 按 group_by 拆开的序列；未指定 group_by 时为 null。 */
+  series: EventSeries[] | null
+}
+
+export type EventCountBucket = { key: string; label: string; count: number }
+
+export type EventBreakdownOptions = EventRangeOptions & {
+  dimension?: "event" | "platform" | "region" | "property"
+  /** dimension 为 property 时必填。 */
+  property_key?: string
+  event_name?: string
+  limit?: number
+}
+
+export type EventBreakdownResponse = {
+  start_time: number
+  end_time: number
+  dimension: "event" | "platform" | "region" | "property"
+  property_key: string | null
+  /** 全量总数，不是本页之和。 */
+  total: number
+  data: EventCountBucket[]
+}
+
+export type EventHeatmapCell = { weekday: number; hour: number; count: number }
+
+export type EventHeatmapResponse = {
+  start_time: number
+  end_time: number
+  tz_offset_minutes: number
+  /** 固定 168 格，含无数据的空格。 */
+  data: EventHeatmapCell[]
+}
+
+export type FunnelStep = {
+  event_name: string
+  filters?: EventFilter[]
+}
+
+export type FunnelOptions = EventRangeOptions & {
+  steps: FunnelStep[]
+  /** 从**第一步**算起的转化窗口（秒），不是相邻两步之间。默认 7 天。 */
+  window_seconds?: number
+}
+
+export type FunnelStepResult = {
+  step: number
+  event_name: string
+  users: number
+  /** 相对上一步的转化率，0 到 1；第一步恒为 1。 */
+  conversion_rate: number
+  total_conversion_rate: number
+  dropped: number
+}
+
+export type FunnelResponse = {
+  start_time: number
+  end_time: number
+  window_seconds: number
+  data: FunnelStepResult[]
+}
+
+export type RetentionOptions = EventRangeOptions & {
+  /** 把人纳入队列的起始事件。 */
+  start_event: string
+  /** 判定「回来了」的事件；省略则任意事件都算回访。 */
+  return_event?: string
+  period?: "day" | "week"
+  periods?: number
+}
+
+export type RetentionCell = { period: number; users: number; rate: number }
+
+export type RetentionCohort = {
+  cohort: number
+  size: number
+  /** 尚未走完的周期为 null，不是 0。 */
+  cells: Array<RetentionCell | null>
+}
+
+export type RetentionResponse = {
+  start_time: number
+  end_time: number
+  period: "day" | "week"
+  periods: number
+  cohorts: RetentionCohort[]
+}
+
+export type PathsOptions = EventRangeOptions & {
+  start_event?: string
+  depth?: number
+  branch_limit?: number
+  /** `session` 按会话串联（默认），`user` 跨会话按人串联。 */
+  scope?: "session" | "user"
+}
+
+export type PathEdge = {
+  step: number
+  from_event: string
+  to_event: string
+  count: number
+}
+
+export type PathsResponse = {
+  start_time: number
+  end_time: number
+  scope: "session" | "user"
+  depth: number
+  /** 有分支被并入「（其他）」时为 true。 */
+  truncated: boolean
+  data: PathEdge[]
+}
+
+export type EventMeasure = "count" | "unique_users" | "count_per_user"
+
+export type DslEvent = {
+  name: string
+  /** 单个大写字母，公式里靠它引用。 */
+  alias: string
+  measure?: EventMeasure
+  filters?: EventFilter[]
+}
+
+export type DslGroupBy = {
+  kind: "property" | "platform" | "region" | "event"
+  /** kind 为 property 时必填。 */
+  key?: string
+}
+
+/** 指标 DSL：查询构建器产出的结构，也是看板卡片保存下来的内容。 */
+export type EventQuery = EventRangeOptions & {
+  type: "timeseries" | "breakdown" | "value"
+  events: DslEvent[]
+  /** 作用于全部事件的公共条件，与各事件自己的 filters 取交集。 */
+  filters?: EventFilter[]
+  /** 跨事件运算，例如 "A / B * 100"。只认别名、数字与 + - * / ( )。 */
+  formula?: string
+  group_by?: DslGroupBy
+  granularity?: "hour" | "day"
+  limit?: number
+}
+
+/** 形状随 query.type 变化。 */
+export type EventQueryResponse = {
+  start_time: number
+  end_time: number
+  type: "timeseries" | "breakdown" | "value"
+  series?: EventSeries[]
+  total?: number
+  buckets?: EventCountBucket[]
+  values?: Record<string, number>
+  result?: number
+}
+
+export type DashboardCardItem = {
+  card_id: string
+  project_key: string
+  title: string
+  description: string | null
+  query: EventQuery
+  layout: JsonObject | null
+  sort_order: number
+  created_time: number
+  updated_time: number
+}
+
+export type DashboardCardListResponse = ListResponse<DashboardCardItem>
+
+export type CreateDashboardCardInput = {
+  title: string
+  description?: string
+  query: EventQuery
+  /** 前端网格布局，服务端只存不解析。 */
+  layout?: JsonObject
+  sort_order?: number
+}
+
+export type UpdateDashboardCardInput = Partial<CreateDashboardCardInput>

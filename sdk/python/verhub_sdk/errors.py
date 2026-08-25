@@ -8,11 +8,9 @@ class VerhubError(Exception):
 
 
 class VerhubAuthError(VerhubError):
-    """本地前置校验失败：调用 admin 接口但没有设置凭据，请求根本没发出去。
+    """调用需要凭据的接口时未设置 token，请求未发出。
 
-    与 :class:`VerhubApiError` 区分开——后者是「请求发出去了、服务端拒了」，
-    这个是「你忘了设 token」。故意不继承 ``VerhubApiError``，避免调用方用
-    ``except VerhubApiError`` 把两种情况混为一谈。
+    不继承 :class:`VerhubApiError`，``except VerhubApiError`` 不会捕获本类。
     """
 
 

@@ -3,8 +3,6 @@ import * as React from "react"
 import { listApiKeys } from "@/lib/auth-api"
 import { getSessionToken } from "@/lib/auth-session"
 import {
-  getActionRecordsStats,
-  getActionsStats,
   getAnnouncementsStats,
   getFeedbacksStats,
   getLogsStats,
@@ -27,8 +25,6 @@ export type DashboardStatsState = {
   logsInfo: number
   logsWarning: number
   logsError: number
-  actions: number
-  actionRecords: number
   loading: boolean
   error: string | null
 }
@@ -48,8 +44,6 @@ const initialState: DashboardStatsState = {
   logsInfo: 0,
   logsWarning: 0,
   logsError: 0,
-  actions: 0,
-  actionRecords: 0,
   loading: false,
   error: null,
 }
@@ -75,8 +69,6 @@ export function useDashboardStats(): DashboardStatsState {
           announcementsStatsResult,
           feedbacksStatsResult,
           logsStatsResult,
-          actionsStatsResult,
-          actionRecordsStatsResult,
           tokenResponseResult,
         ] = await Promise.allSettled([
           getProjectsStats(token),
@@ -84,8 +76,6 @@ export function useDashboardStats(): DashboardStatsState {
           getAnnouncementsStats(token),
           getFeedbacksStats(token),
           getLogsStats(token),
-          getActionsStats(token),
-          getActionRecordsStats(token),
           listApiKeys(),
         ])
 
@@ -139,16 +129,6 @@ export function useDashboardStats(): DashboardStatsState {
                 error_count: 0,
               })
 
-        const actions =
-          actionsStatsResult.status === "fulfilled"
-            ? actionsStatsResult.value.count
-            : (failedModules.push("行为分类统计"), 0)
-
-        const actionRecords =
-          actionRecordsStatsResult.status === "fulfilled"
-            ? actionRecordsStatsResult.value.count
-            : (failedModules.push("行为记录统计"), 0)
-
         const tokenResponse =
           tokenResponseResult.status === "fulfilled"
             ? tokenResponseResult.value
@@ -169,8 +149,6 @@ export function useDashboardStats(): DashboardStatsState {
           logsInfo: logs.info_count,
           logsWarning: logs.warning_count,
           logsError: logs.error_count,
-          actions,
-          actionRecords,
           loading: false,
           error: failedModules.length > 0 ? `部分统计加载失败：${failedModules.join("、")}` : null,
         })

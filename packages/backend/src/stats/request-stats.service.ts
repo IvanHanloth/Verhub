@@ -4,11 +4,30 @@ import { Platform, Prisma, PublicEndpoint } from "@prisma/client"
 import { PrismaService } from "../database/prisma.service"
 import { GeoLocationService } from "../geo/geo-location.service"
 import { normalizeProjectKey, nowSeconds } from "../common/utils"
+import {
+  bucketBoundaries,
+  bucketShift,
+  bucketStep,
+  floorTo,
+  toHourBucket,
+  type HeatmapCell,
+  type StatsRange,
+  type TimeseriesPoint,
+  type TimeseriesSeries,
+} from "./bucket-utils"
 import { provinceName } from "./province-names"
 import { resolveTzOffset } from "./region-timezone"
 
-export const HOUR_SECONDS = 3600
-export const DAY_SECONDS = 86400
+// 分桶原语搬到 bucket-utils 与事件统计共用；这里转出去，调用方的导入路径不变。
+export {
+  DAY_SECONDS,
+  HOUR_SECONDS,
+  toHourBucket,
+  type HeatmapCell,
+  type StatsRange,
+  type TimeseriesPoint,
+  type TimeseriesSeries,
+} from "./bucket-utils"
 
 /** Recorded when no IP was available or every geo provider failed. */
 export const UNKNOWN_REGION = "UNKNOWN"
@@ -48,11 +67,6 @@ export type RecordPlatformVersionInput = {
  */
 export const MAX_CLIENT_VERSION_LENGTH = 64
 
-export type StatsRange = {
-  startTime: number
-  endTime: number
-}
-
 export type EndpointBucket = { endpoint: PublicEndpoint; count: number }
 export type PlatformBucket = { platform: Platform; count: number }
 /** 系统版本分布桶。`platformVersion` 为空串表示该平台下未上报明细的那部分流量。 */
@@ -60,23 +74,9 @@ export type PlatformVersionBucket = { platform: Platform; platformVersion: strin
 export type RegionBucket = { region: string; count: number }
 /** 国内省份分布桶：省级码 + 标准中文省名 + 计数。 */
 export type ProvinceBucket = { code: string; name: string; count: number }
-export type TimeseriesPoint = { bucket: number; count: number }
-/** 一条命名序列，用于堆叠图。`key` 是端点名 / 平台名 / 版本号。 */
-export type TimeseriesSeries = { key: string; data: TimeseriesPoint[] }
 /** 趋势可拆分的维度。都是低基数的枚举列，不会拆出画不动的序列数。 */
 export type TimeseriesGroupBy = "endpoint" | "platform"
 export type ClientVersionBucket = { version: string; count: number }
-/**
- * `weekday` is 0=Sunday..6=Saturday and `hour` is 0..23, folded in each
- * request's *source* timezone (by country code); `tz_offset_minutes` is only the
- * fallback for sources that cannot be placed.
- */
-export type HeatmapCell = { weekday: number; hour: number; count: number }
-
-/** Truncate a Unix-seconds timestamp to the start of its UTC hour. */
-export function toHourBucket(timestamp: number): number {
-  return Math.floor(timestamp / HOUR_SECONDS) * HOUR_SECONDS
-}
 
 @Injectable()
 export class RequestStatsService {
@@ -321,11 +321,11 @@ export class RequestStatsService {
     endpoint?: PublicEndpoint,
     tzOffsetMinutes = 0,
   ): Promise<TimeseriesPoint[]> {
-    const step = granularity === "hour" ? HOUR_SECONDS : DAY_SECONDS
+    const step = bucketStep(granularity)
     // Daily buckets must break at the viewer's midnight, not UTC's, or a busy
     // evening in UTC+8 lands on the following day. Hourly buckets are already
     // aligned to the hour, which every real offset preserves closely enough.
-    const shift = granularity === "day" ? tzOffsetMinutes * 60 : 0
+    const shift = bucketShift(granularity, tzOffsetMinutes)
 
     const where: Prisma.ApiRequestStatWhereInput = this.rangeWhere(projectKey, range)
     if (endpoint) {
@@ -367,8 +367,8 @@ export class RequestStatsService {
     groupBy: TimeseriesGroupBy,
     tzOffsetMinutes = 0,
   ): Promise<TimeseriesSeries[]> {
-    const step = granularity === "hour" ? HOUR_SECONDS : DAY_SECONDS
-    const shift = granularity === "day" ? tzOffsetMinutes * 60 : 0
+    const step = bucketStep(granularity)
+    const shift = bucketShift(granularity, tzOffsetMinutes)
 
     const rows = await this.prisma.apiRequestStat.groupBy({
       by: ["hourBucket", groupBy],
@@ -414,8 +414,8 @@ export class RequestStatsService {
     limit: number,
     tzOffsetMinutes = 0,
   ): Promise<TimeseriesSeries[]> {
-    const step = granularity === "hour" ? HOUR_SECONDS : DAY_SECONDS
-    const shift = granularity === "day" ? tzOffsetMinutes * 60 : 0
+    const step = bucketStep(granularity)
+    const shift = bucketShift(granularity, tzOffsetMinutes)
 
     const rows = await this.prisma.clientVersionStat.groupBy({
       by: ["hourBucket", "version"],
@@ -453,12 +453,7 @@ export class RequestStatsService {
 
   /** 区间内全部桶的起点，含无流量的空桶。 */
   private bucketBoundaries(range: StatsRange, step: number, shift: number): number[] {
-    const boundaries: number[] = []
-    const last = this.floorTo(range.endTime, step, shift)
-    for (let bucket = this.floorTo(range.startTime, step, shift); bucket <= last; bucket += step) {
-      boundaries.push(bucket)
-    }
-    return boundaries
+    return bucketBoundaries(range, step, shift)
   }
 
   /**
@@ -468,7 +463,7 @@ export class RequestStatsService {
    * label the viewer expects.
    */
   private floorTo(timestamp: number, step: number, shift: number): number {
-    return Math.floor((timestamp + shift) / step) * step - shift
+    return floorTo(timestamp, step, shift)
   }
 
   /**

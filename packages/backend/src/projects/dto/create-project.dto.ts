@@ -2,6 +2,7 @@ import { Transform, Type } from "class-transformer"
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsInt,
   IsOptional,
   IsString,
@@ -16,7 +17,9 @@ import {
 
 import { LOCALE_PATTERN, MAX_LOCALE_LENGTH, NormalizeLocale } from "../../common/locale"
 import {
+  MAX_EVENT_RETENTION_DAYS,
   MAX_STATS_RETENTION_DAYS,
+  MIN_EVENT_RETENTION_DAYS,
   MIN_STATS_RETENTION_DAYS,
 } from "../../stats/stats-retention.service"
 
@@ -117,6 +120,30 @@ export class CreateProjectDto {
   @Min(MIN_STATS_RETENTION_DAYS)
   @Max(MAX_STATS_RETENTION_DAYS)
   stats_retention_days?: number
+
+  /**
+   * 事件采集总开关。关掉后采集端点空转返回 202，既有数据保留。
+   *
+   * 给运营者一个立即止血的手段：收到监管问询时不必改配置重启。
+   */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === undefined ? undefined : value === true || value === "true" || value === "1",
+  )
+  @IsBoolean()
+  event_collection_enabled?: boolean
+
+  /**
+   * 事件明细的保留期，独立于 stats_retention_days 且默认更短（90 天）。
+   *
+   * 明细带匿名标识，是可关联到个人的高频数据，不该与纯计数用同一窗口。
+   */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => (value === undefined ? undefined : Number(value)))
+  @IsInt()
+  @Min(MIN_EVENT_RETENTION_DAYS)
+  @Max(MAX_EVENT_RETENTION_DAYS)
+  event_retention_days?: number
 
   @NullableStringTransform()
   @ValidateIf((_object, value) => value !== null && value !== undefined)

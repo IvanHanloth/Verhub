@@ -7,8 +7,6 @@ import DashboardHomePage from "./page"
 import { listApiKeys } from "@/lib/auth-api"
 import { getSessionToken } from "@/lib/auth-session"
 import {
-  getActionRecordsStats,
-  getActionsStats,
   getAnnouncementsStats,
   getFeedbacksStats,
   getLogsStats,
@@ -30,8 +28,6 @@ vi.mock("@/lib/stats-api", () => ({
   getAnnouncementsStats: vi.fn(),
   getFeedbacksStats: vi.fn(),
   getLogsStats: vi.fn(),
-  getActionsStats: vi.fn(),
-  getActionRecordsStats: vi.fn(),
 }))
 
 const mockedGetSessionToken = vi.mocked(getSessionToken)
@@ -41,8 +37,6 @@ const mockedGetVersionsStats = vi.mocked(getVersionsStats)
 const mockedGetAnnouncementsStats = vi.mocked(getAnnouncementsStats)
 const mockedGetFeedbacksStats = vi.mocked(getFeedbacksStats)
 const mockedGetLogsStats = vi.mocked(getLogsStats)
-const mockedGetActionsStats = vi.mocked(getActionsStats)
-const mockedGetActionRecordsStats = vi.mocked(getActionRecordsStats)
 
 function mockStatsSuccess() {
   mockedGetProjectsStats.mockResolvedValue({ count: 0 })
@@ -62,8 +56,6 @@ function mockStatsSuccess() {
     warning_count: 0,
     error_count: 0,
   })
-  mockedGetActionsStats.mockResolvedValue({ count: 0 })
-  mockedGetActionRecordsStats.mockResolvedValue({ count: 0 })
   mockedListApiKeys.mockResolvedValue({ data: [] })
 }
 

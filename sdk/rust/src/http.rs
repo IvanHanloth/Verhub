@@ -1,4 +1,4 @@
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
@@ -8,6 +8,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::analytics::{analytics_namespace, AnalyticsOptions, EventQueue};
 use crate::error::{Error, Result};
 use crate::models::Platform;
 use crate::VERHUB_SDK_VERSION;
@@ -18,22 +19,16 @@ pub const PLATFORM_HEADER: &str = "x-verhub-platform";
 /// 客户端系统版本明细头，如 `11` / `ubuntu 24.04`；超过 32 字符会被服务端丢弃。
 pub const PLATFORM_VERSION_HEADER: &str = "x-verhub-platform-version";
 
-/// 系统版本明细的长度上限，与服务端一致，超出直接截断。
+/// 系统版本明细的长度上限，与服务端一致。
 const MAX_PLATFORM_VERSION_LENGTH: usize = 32;
 
-/// 老 Windows 的 NT 内核号 → 市场版本号。Win10/11 都是 10.0，另按构建号区分。
+/// Windows NT 内核号 → 市场版本号。10.0 不在表内，另按构建号区分。
 const WINDOWS_NT_TO_MARKET: [(&str, &str); 3] = [("6.1", "7"), ("6.2", "8"), ("6.3", "8.1")];
 
-/// 把系统版本明细规整成能安全放进 HTTP 头的形式。
+/// 把系统版本明细规整成能进 HTTP 头的形式。
 ///
-/// 请求头只能承载 ASCII，而这个值未必干净：调用方用错编码读系统版本时拿到的
-/// 就是 `Microsoft Windows [\u{FFFD}汾 10.0.26200.8875]` 这种串。不清洗的话，
-/// reqwest 会让 `HeaderValue::from_str` 失败、这个头被静默丢掉（数据无声消失），
-/// 而 Python 的 requests 与 JS 的 fetch 则会直接让整个请求失败。
-///
-/// 清洗规则：非可打印 ASCII 的字符一律当作空白（版本号本身是 ASCII，能完整留
-/// 下），折叠连续空白，再按 [`MAX_PLATFORM_VERSION_LENGTH`] 截断。返回空串表示
-/// 无从得知，此时不发这个头。四个语言的 SDK 用同一套规则。
+/// 非可打印 ASCII 一律替换成空格，折叠连续空白，按
+/// [`MAX_PLATFORM_VERSION_LENGTH`] 截断。四个语言的 SDK 规则相同。
 fn sanitize_platform_version(value: &str) -> String {
     value
         .chars()
@@ -49,23 +44,42 @@ fn sanitize_platform_version(value: &str) -> String {
         .to_string()
 }
 
-/// [`sanitize_platform_version`] 的 `Option` 版：洗完是空串就收敛成 `None`，
-/// 免得每个调用点各自判空。
+/// [`sanitize_platform_version`] 的 `Option` 版：洗完是空串则返回 `None`。
 fn clean_version(value: String) -> Option<String> {
     let cleaned = sanitize_platform_version(&value);
     (!cleaned.is_empty()).then_some(cleaned)
 }
 
-/// 默认重试次数。只作用于连接失败与幂等方法（GET），POST 不自动重试。
+/// 把 macOS 产品版本号收敛成市场版本号：`15.3.1` → `15`，`10.15.7` → `10.15`。
+///
+/// 与其余三个语言的 SDK 一致。
+fn macos_marketing_version(product_version: &str) -> String {
+    let parts: Vec<&str> = product_version
+        .trim()
+        .split('.')
+        .filter(|p| !p.is_empty())
+        .collect();
+    match parts.as_slice() {
+        [] => String::new(),
+        ["10", minor, ..] => format!("10.{minor}"),
+        [major, ..] => (*major).to_string(),
+    }
+}
+
+/// 默认重试次数。
 const DEFAULT_RETRIES: usize = 2;
 
-/// 会触发重试的服务端状态码，均为可安全重试的临时性错误。
+/// 会触发重试的服务端状态码。
 const RETRY_STATUS: [u16; 3] = [502, 503, 504];
 
-/// 猜测当前运行平台，用于填充 [`PLATFORM_HEADER`]。
+/// 会自动重试的幂等方法；其余方法一律不重试。四个语言的 SDK 集合相同。
+fn is_idempotent(method: &Method) -> bool {
+    *method == Method::GET || *method == Method::HEAD
+}
+
+/// 探测当前运行平台，用于填充 [`PLATFORM_HEADER`]。
 ///
-/// 按编译目标区分契约里的七个取值；认不出时返回 [`Platform::Others`] 而不是
-/// 瞎猜，服务端拿到 `others` 至少知道这是「说不清的平台」。
+/// 按编译目标区分契约里的七个取值，识别不出时返回 [`Platform::Others`]。
 pub fn detect_platform() -> Platform {
     if cfg!(target_os = "windows") {
         Platform::Windows
@@ -84,10 +98,10 @@ pub fn detect_platform() -> Platform {
     }
 }
 
-/// 从系统信息里提取系统版本明细，用于填充 [`PLATFORM_VERSION_HEADER`]。
+/// 探测系统版本明细，用于填充 [`PLATFORM_VERSION_HEADER`]。
 ///
-/// Windows 按内核构建号还原市场版本号（11 / 10），macOS 取产品版本号，Linux
-/// 拼成 `发行版 版本号`。取不到就返回空串，交给服务端从 User-Agent 兜底推断。
+/// Windows 与 macOS 给市场版本号（`11` / `15` / `10.15`），Linux 给
+/// `发行版 版本号`。取不到时返回空串。
 pub fn detect_platform_version() -> String {
     use os_info::{Type, Version};
 
@@ -95,11 +109,14 @@ pub fn detect_platform_version() -> String {
 
     if info.os_type() == Type::Windows {
         if let Version::Semantic(major, minor, build) = info.version() {
-            // Win11 内核仍是 10.0，只有构建号 >= 22000 能区分出来。
+            // Win11 仍上报内核 10.0，只有构建号 >= 22000 能区分出来。
             if *major == 10 && *minor == 0 {
-                return if *build >= 22000 { "11".into() } else { "10".into() };
+                return if *build >= 22000 {
+                    "11".into()
+                } else {
+                    "10".into()
+                };
             }
-            // 更老的 Windows 只能靠 NT 内核号还原市场版本号。
             let nt = format!("{major}.{minor}");
             if let Some((_, market)) = WINDOWS_NT_TO_MARKET.iter().find(|(key, _)| *key == nt) {
                 return (*market).to_string();
@@ -113,8 +130,9 @@ pub fn detect_platform_version() -> String {
     }
 
     let combined = match info.os_type() {
-        Type::Windows | Type::Macos => version,
-        // 发行版名单独成维，拼进版本明细以对齐 "ubuntu 24.04" 的风格。
+        Type::Windows => version,
+        Type::Macos => macos_marketing_version(&version),
+        // 发行版名单独成维，拼进版本明细以对齐 "ubuntu 24.04" 的写法。
         other => format!("{} {}", other.to_string().to_lowercase(), version),
     };
 
@@ -131,18 +149,49 @@ pub(crate) struct Inner {
     token: RwLock<String>,
     platform: RwLock<Option<Platform>>,
     platform_version: RwLock<Option<String>>,
+    /// 事件队列。首次访问时才建，命名空间变化时丢弃重建。
+    analytics: RwLock<Option<Arc<EventQueue>>>,
+    analytics_options: AnalyticsOptions,
 }
 
-/// 锁被毒化说明别处 panic 在持锁期间，值本身没坏，直接取回继续用。
+/// 锁被毒化时取回内部值继续用。
 fn read_lock<T>(lock: &RwLock<T>) -> std::sync::RwLockReadGuard<'_, T> {
     lock.read().unwrap_or_else(|e| e.into_inner())
 }
 
+/// 锁被毒化时取回内部值继续用。
 fn write_lock<T>(lock: &RwLock<T>) -> std::sync::RwLockWriteGuard<'_, T> {
     lock.write().unwrap_or_else(|e| e.into_inner())
 }
 
 impl Inner {
+    /// 事件队列，首次访问时才建，命名空间变化时丢弃重建。
+    ///
+    /// 旧命名空间攒下的事件留在它自己的状态文件里，下次绑定回去时补发。
+    pub(crate) fn analytics(&self) -> Arc<EventQueue> {
+        let namespace = match &self.analytics_options.namespace {
+            Some(explicit) => explicit.clone(),
+            None => analytics_namespace(&self.base_url, read_lock(&self.project_key).as_deref()),
+        };
+
+        if let Some(existing) = read_lock(&self.analytics).as_ref() {
+            if existing.namespace() == namespace {
+                return Arc::clone(existing);
+            }
+        }
+
+        let mut slot = write_lock(&self.analytics);
+        // 拿到写锁后再确认一次，别的线程可能已经建好了。
+        if let Some(existing) = slot.as_ref() {
+            if existing.namespace() == namespace {
+                return Arc::clone(existing);
+            }
+        }
+        let created = Arc::new(EventQueue::new(&namespace, self.analytics_options.clone()));
+        *slot = Some(Arc::clone(&created));
+        created
+    }
+
     pub(crate) fn set_token(&self, token: impl Into<String>) {
         *write_lock(&self.token) = token.into();
     }
@@ -168,7 +217,6 @@ impl Inner {
     }
 
     pub(crate) fn set_platform_version(&self, version: Option<String>) {
-        // 存进来就已清洗过，请求路径上拿到的一定是能进头的值。
         *write_lock(&self.platform_version) = version.and_then(clean_version);
     }
 
@@ -193,7 +241,6 @@ impl Inner {
     {
         let url = format!("{}{}", self.base_url, path);
 
-        // 缺凭据在本地一次性拦下，返回 MissingToken 而非发出去再等服务端拒。
         let bearer = if auth {
             let token = self.token();
             if token.is_empty() {
@@ -212,8 +259,7 @@ impl Inner {
             .filter_map(|(key, value)| value.as_ref().map(|v| (*key, v.clone())))
             .collect();
 
-        // 只对幂等的 GET 自动重试；POST（含 check-update）不重放。
-        let can_retry = method == Method::GET && self.retries > 0;
+        let can_retry = is_idempotent(&method) && self.retries > 0;
         let max_attempts = if can_retry { self.retries + 1 } else { 1 };
 
         let mut attempt = 1;
@@ -222,7 +268,6 @@ impl Inner {
             if let Some(platform) = platform {
                 builder = builder.header(PLATFORM_HEADER, platform.as_str());
             }
-            // 存的时候已清洗成可打印 ASCII，from_str 不会失败。
             if let Some(version) = &platform_version {
                 if let Ok(value) = HeaderValue::from_str(version) {
                     builder = builder.header(PLATFORM_VERSION_HEADER, value);
@@ -244,7 +289,6 @@ impl Inner {
                     let status = response.status();
                     log::debug!("verhub 响应 {method} {url} -> {}", status.as_u16());
 
-                    // 502/503/504 是临时性错误，幂等方法退避后重试。
                     if can_retry
                         && attempt < max_attempts
                         && RETRY_STATUS.contains(&status.as_u16())
@@ -265,12 +309,11 @@ impl Inner {
                         });
                     }
 
-                    // 204 之类的空响应体：让 `T` 自己决定能不能从 `null` 反序列化出来。
+                    // 204 之类的空响应体交给 `T` 自己决定能不能从 `null` 反序列化出来。
                     let text = if raw.is_empty() { "null" } else { raw.as_str() };
                     return serde_json::from_str(text).map_err(Error::Decode);
                 }
                 Err(err) => {
-                    // 连接阶段失败，请求没到服务端，幂等方法可安全重试。
                     if can_retry && attempt < max_attempts && (err.is_connect() || err.is_timeout())
                     {
                         log::debug!("verhub 请求 {method} {url} 连接失败，将重试：{err}");
@@ -328,6 +371,7 @@ pub struct VerhubClientBuilder {
     user_agent: Option<String>,
     app_identifier: Option<String>,
     headers: HeaderMap,
+    analytics: AnalyticsOptions,
 }
 
 impl VerhubClientBuilder {
@@ -343,6 +387,7 @@ impl VerhubClientBuilder {
             connect_timeout: None,
             retries: None,
             user_agent: None,
+            analytics: AnalyticsOptions::default(),
             app_identifier: None,
             headers: HeaderMap::new(),
         }
@@ -366,8 +411,8 @@ impl VerhubClientBuilder {
         self
     }
 
-    /// 完全不声明平台。这是明确的退出声明，系统版本明细也随之不再自动探测；
-    /// 仍想报版本的话显式调用 [`Self::platform_version`]。
+    /// 完全不声明平台，系统版本明细也随之不再自动探测；仍要报版本时显式调用
+    /// [`Self::platform_version`]。
     pub fn without_platform(mut self) -> Self {
         self.platform = Some(None);
         self
@@ -385,14 +430,13 @@ impl VerhubClientBuilder {
         self
     }
 
-    /// 单独设置连接阶段超时——更新检查常希望连接快速失败、读取宽松些。
-    /// 不设则由 [`Self::timeout`] 统管。
+    /// 单独设置连接阶段超时；不设则由 [`Self::timeout`] 统管。
     pub fn connect_timeout(mut self, connect_timeout: Duration) -> Self {
         self.connect_timeout = Some(connect_timeout);
         self
     }
 
-    /// 连接失败与幂等请求（GET）的自动重试次数，默认 2；POST 不重试，传 0 关闭。
+    /// GET / HEAD 在连接失败与 502/503/504 时的自动重试次数，默认 2；传 0 关闭。
     pub fn retries(mut self, retries: usize) -> Self {
         self.retries = Some(retries);
         self
@@ -417,12 +461,26 @@ impl VerhubClientBuilder {
         self
     }
 
+    /// 事件采集配置。
+    ///
+    /// 省略即启用默认行为：设备级匿名标识 + 本地待发队列。这是 SDK 里唯一会在
+    /// 设备上写入数据的能力。面向欧盟用户的接入方应当设置 `require_consent: true`。
+    pub fn analytics(mut self, options: AnalyticsOptions) -> Self {
+        self.analytics = options;
+        self
+    }
+
+    /// 完全关闭事件采集：不生成标识、不落盘、不发请求。
+    pub fn without_analytics(mut self) -> Self {
+        self.analytics.enabled = false;
+        self
+    }
+
     pub(crate) fn build_inner(self) -> Result<Inner> {
         let base_url = self.base_url.trim().trim_end_matches('/').to_string();
         if !base_url.starts_with("http://") && !base_url.starts_with("https://") {
             return Err(Error::InvalidBaseUrl(self.base_url));
         }
-        // 缺 /api/v 前缀多半是漏了，请求会静默 404，提醒一声但不拦。
         if !base_url.contains("/api/v") {
             log::warn!("verhub: base_url 通常应以 /api/v1 结尾，当前为 {base_url:?}；若非有意为之，请求可能全部 404");
         }
@@ -440,13 +498,11 @@ impl VerhubClientBuilder {
         });
         headers.insert(
             USER_AGENT,
-            HeaderValue::from_str(&user_agent).map_err(|_| Error::InvalidBaseUrl(user_agent))?,
+            HeaderValue::from_str(&user_agent).map_err(|_| Error::InvalidUserAgent(user_agent))?,
         );
 
-        // 两个维度各管各的：显式给了就用给的，没给就自己探测。显式指定平台
-        // 不再连带禁掉版本探测——那样会让「声明了平台」的调用方彻底报不上系统
-        // 版本，而这正是绝大多数客户端的用法。
-        // 唯一的例外是 without_platform()：那是明确的退出声明，版本一并不报。
+        // 两个维度各管各的：显式给了就用给的，没给就自己探测。
+        // without_platform() 例外，平台与版本一并不报。
         let platform = self.platform.unwrap_or_else(|| Some(detect_platform()));
         let platform_version = match self.platform_version {
             Some(version) => clean_version(version),
@@ -468,6 +524,8 @@ impl VerhubClientBuilder {
             retries: self.retries.unwrap_or(DEFAULT_RETRIES),
             project_key: RwLock::new(self.project_key),
             token: RwLock::new(self.token.unwrap_or_default()),
+            analytics: RwLock::new(None),
+            analytics_options: self.analytics,
             platform: RwLock::new(platform),
             platform_version: RwLock::new(platform_version),
         })
@@ -478,8 +536,7 @@ impl VerhubClientBuilder {
 mod tests {
     use super::*;
 
-    /// 用错编码读出来的系统版本：非 ASCII 部分必须被剔掉，ASCII 的版本号留下，
-    /// 且结果一定进得了 HTTP 头。
+    /// 混入非 ASCII 的系统版本：非 ASCII 部分被剔掉，ASCII 的版本号留下。
     #[test]
     fn sanitize_strips_mojibake_but_keeps_the_version_number() {
         let raw = "Microsoft Windows [\u{FFFD}汾 10.0.26200.8875]";
@@ -493,7 +550,10 @@ mod tests {
 
     #[test]
     fn sanitize_folds_whitespace_and_trims() {
-        assert_eq!(sanitize_platform_version("  ubuntu\t\n 24.04  "), "ubuntu 24.04");
+        assert_eq!(
+            sanitize_platform_version("  ubuntu\t\n 24.04  "),
+            "ubuntu 24.04"
+        );
         assert_eq!(sanitize_platform_version("11"), "11");
     }
 
@@ -511,15 +571,27 @@ mod tests {
         assert_eq!(clean_version("11".to_string()), Some("11".to_string()));
     }
 
-    /// 换行 / 回车若混进头值会构成响应头注入，必须一并清掉。
+    /// 换行 / 回车会构成响应头注入，必须一并清掉。
     #[test]
     fn sanitize_removes_control_characters() {
         let cleaned = sanitize_platform_version("11\r\nX-Injected: 1");
-        assert!(!cleaned.contains('\r') && !cleaned.contains('\n'), "{cleaned}");
+        assert!(
+            !cleaned.contains('\r') && !cleaned.contains('\n'),
+            "{cleaned}"
+        );
         assert!(HeaderValue::from_str(&cleaned).is_ok());
     }
 
-    /// 显式声明平台不该再连带禁掉版本探测。
+    /// macOS 只报市场大版本；10.x 时代保留次版本号。四个语言的 SDK 一致。
+    #[test]
+    fn macos_version_collapses_to_the_marketing_number() {
+        assert_eq!(macos_marketing_version("15.3.1"), "15");
+        assert_eq!(macos_marketing_version("26"), "26");
+        assert_eq!(macos_marketing_version("10.15.7"), "10.15");
+        assert_eq!(macos_marketing_version(""), "");
+    }
+
+    /// 显式声明平台不影响版本探测。
     #[test]
     fn explicit_platform_keeps_auto_detected_version() {
         let inner = VerhubClientBuilder::new("https://example.com/api/v1")
@@ -547,7 +619,7 @@ mod tests {
         );
     }
 
-    /// without_platform 是明确的退出声明，版本也一并不报。
+    /// without_platform 时平台与版本都不报。
     #[test]
     fn without_platform_reports_nothing() {
         let inner = VerhubClientBuilder::new("https://example.com/api/v1")
@@ -558,7 +630,7 @@ mod tests {
         assert_eq!(read_lock(&inner.platform_version).clone(), None);
     }
 
-    /// 但退出声明只针对自动探测：显式给的版本仍然照发。
+    /// without_platform 只针对自动探测，显式给的版本仍然照发。
     #[test]
     fn without_platform_still_honours_an_explicit_version() {
         let inner = VerhubClientBuilder::new("https://example.com/api/v1")
@@ -572,7 +644,7 @@ mod tests {
         );
     }
 
-    /// 探测值本身必须是干净的 ASCII——它会直接进请求头。
+    /// 探测值直接进请求头，必须是干净的 ASCII。
     #[test]
     fn detected_version_is_header_safe() {
         let detected = detect_platform_version();

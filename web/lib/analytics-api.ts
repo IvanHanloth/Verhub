@@ -13,7 +13,7 @@ export type PublicEndpoint =
   | "ANNOUNCEMENT_LATEST"
   | "FEEDBACK_SUBMIT"
   | "LOG_UPLOAD"
-  | "ACTION_RECORD"
+  | "EVENT_INGEST"
 
 export type { StatPlatform } from "@/lib/platform"
 
@@ -123,7 +123,7 @@ export const ENDPOINT_LABELS: Record<PublicEndpoint, string> = {
   ANNOUNCEMENT_LATEST: "最新公告",
   FEEDBACK_SUBMIT: "反馈提交",
   LOG_UPLOAD: "日志上报",
-  ACTION_RECORD: "行为记录",
+  EVENT_INGEST: "行为事件",
 }
 
 export { STAT_PLATFORM_LABELS as PLATFORM_LABELS } from "@/lib/platform"

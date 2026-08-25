@@ -1,8 +1,8 @@
 //! 请求与响应类型。
 //!
 //! 字段与 `verhub.openapi.yaml` 的 schema 一一对应，契约里标注 nullable 的在
-//! 这里是 `Option<T>`。输入结构体都实现了 [`Default`]，配合结构体更新语法只写
-//! 关心的字段：
+//! 这里是 `Option<T>`。除少数必填字段过多的入参外，输入结构体都实现了
+//! [`Default`]，配合结构体更新语法只写关心的字段：
 //!
 //! ```no_run
 //! # use verhub_sdk::models::CreateVersionInput;
@@ -19,6 +19,9 @@ use serde_json::{Map, Value};
 
 /// 任意 JSON 对象，用于 `custom_data` / `device_info` 这类自由字段。
 pub type JsonObject = Map<String, Value>;
+
+/// 任意 JSON 值，用于筛选条件的比较值这类不定形状的字段。
+pub type JsonValue = Value;
 
 /// 平台取值。提交时大小写不敏感，返回时统一小写；`Others` 是兜底。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -127,6 +130,10 @@ pub struct ProjectItem {
     pub optional_update_min_comparable_version: Option<String>,
     pub optional_update_max_comparable_version: Option<String>,
     pub stats_retention_days: i32,
+    /// 事件采集总开关。关掉后采集端点仍返回 202，但不入库、不计数。
+    pub event_collection_enabled: bool,
+    /// 事件明细保留天数，默认 90。
+    pub event_retention_days: i32,
     /// 改名后保留的旧 Project Key（别名），均可访问到本项目。新到旧排序。
     #[serde(default)]
     pub aliases: Vec<String>,
@@ -218,7 +225,7 @@ pub struct FeedbackItem {
     pub platform: Option<Platform>,
     pub platform_version: Option<String>,
     pub custom_data: Option<JsonObject>,
-    /// 是否已转成 GitHub Issue。转发失败的提交不会落库，所以拿到的记录都是成功的那些。
+    /// 是否已转成 GitHub Issue。转发失败的提交不落库，因此列表里的记录都是转发成功的。
     pub forwarded_to_github: bool,
     /// 生成的 Issue 编号与链接；未转发时都是 None。
     pub github_issue_number: Option<i64>,
@@ -250,23 +257,33 @@ pub struct LogItem {
     pub created_at: i64,
 }
 
+/// 事件定义。由采集端自动发现，没有对应的创建接口。
 #[derive(Debug, Clone, Deserialize)]
-pub struct ActionItem {
-    pub action_id: String,
+pub struct EventDefinitionItem {
+    pub event_definition_id: String,
     pub project_key: String,
+    /// 客户端上报时使用的键，归一化后的小写形式。不可修改。
     pub name: String,
-    pub description: String,
-    pub custom_data: Option<JsonObject>,
-    pub created_time: i64,
+    /// 给管理端看的名字；为空时界面回退到 `name`。
+    pub display_name: Option<String>,
+    pub description: Option<String>,
+    pub archived: bool,
+    pub first_seen_time: i64,
+    pub last_seen_time: i64,
+    /// 查询区间内的上报量。
+    pub range_count: i64,
 }
 
+/// 数据主体导出里的一条事件明细。
 #[derive(Debug, Clone, Deserialize)]
-pub struct ActionRecordItem {
-    pub action_record_id: String,
-    pub action_id: String,
-    pub created_time: i64,
-    pub http: Option<JsonObject>,
-    pub custom_data: Option<JsonObject>,
+pub struct EventSubjectRecord {
+    pub event_name: String,
+    pub event_id: String,
+    pub session_id: Option<String>,
+    pub occurred_at: i64,
+    pub received_at: i64,
+    pub properties: Option<JsonObject>,
+    /// 默认为匿名化后的地址（IPv4 截末段、IPv6 截末 80 位）。
     pub ip: Option<String>,
     pub user_agent: Option<String>,
     pub country_code: Option<String>,
@@ -275,6 +292,130 @@ pub struct ActionRecordItem {
     pub city: Option<String>,
     pub platform: Option<Platform>,
     pub platform_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventSubjectExport {
+    pub distinct_id: String,
+    pub total: i64,
+    pub data: Vec<EventSubjectRecord>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventSubjectDeleteResponse {
+    pub success: bool,
+    /// 删除的事件明细条数。日活去重记录一并删除但不计入此数。
+    pub deleted: i64,
+}
+
+// ---- 条款文档 ----
+
+/// 条款文档标识。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TermsDocumentSlug {
+    /// 隐私政策。
+    PrivacyPolicy,
+    /// SDK 合规性文档。
+    SdkCompliance,
+}
+
+impl TermsDocumentSlug {
+    /// 契约里的字符串形式，用于拼路径。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TermsDocumentSlug::PrivacyPolicy => "privacy-policy",
+            TermsDocumentSlug::SdkCompliance => "sdk-compliance",
+        }
+    }
+}
+
+impl std::fmt::Display for TermsDocumentSlug {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// 条款文档的标题与来源，不含正文。
+#[derive(Debug, Clone, Deserialize)]
+pub struct TermsDocumentSummary {
+    pub slug: TermsDocumentSlug,
+    pub title: String,
+    /// 一句话说明，用于文档间导航。
+    pub summary: String,
+    /// `builtin` 表示实例未自定义，返回的是内置正文。
+    pub source: String,
+    /// 正文最后修订时间（Unix 秒）。
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TermsDocumentListResponse {
+    pub data: Vec<TermsDocumentSummary>,
+}
+
+/// 条款文档正文视图。
+#[derive(Debug, Clone, Deserialize)]
+pub struct TermsDocumentView {
+    pub slug: TermsDocumentSlug,
+    pub title: String,
+    pub summary: String,
+    pub source: String,
+    pub updated_at: i64,
+    /// 生效的正文（Markdown）。
+    pub content: String,
+}
+
+/// 内置正文里待填的占位符。
+#[derive(Debug, Clone, Deserialize)]
+pub struct TermsPlaceholder {
+    /// 正文中的写法为 `{{key}}`。
+    pub key: String,
+    /// 填空表单的字段名。
+    pub label: String,
+    /// 填写要求。
+    pub hint: String,
+    /// 预填值。
+    pub example: String,
+    /// `false` 表示留空也允许发布。
+    pub required: bool,
+}
+
+/// 条款文档的管理端视图，含生效正文、自定义草稿与内置原文。
+#[derive(Debug, Clone, Deserialize)]
+pub struct TermsDocumentConfigView {
+    pub slug: TermsDocumentSlug,
+    pub title: String,
+    pub summary: String,
+    /// 关闭时前台展示内置正文，草稿仍留在库里。
+    pub custom: bool,
+    /// 当前对外生效的正文。
+    pub content: String,
+    /// 库里保存的自定义草稿；从未编辑过为 `None`。
+    pub custom_content: Option<String>,
+    pub custom_updated_at: Option<i64>,
+    /// 内置正文原文。
+    pub builtin_content: String,
+    pub builtin_updated_at: i64,
+    pub updated_at: Option<i64>,
+    /// 内置正文里待填的占位符，按出现顺序。
+    pub placeholders: Vec<TermsPlaceholder>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TermsDocumentConfigListResponse {
+    pub data: Vec<TermsDocumentConfigView>,
+}
+
+/// 部分更新条款文档：只修改传入的字段。
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct UpdateTermsDocumentInput {
+    /// 是否启用自定义正文。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub custom: Option<bool>,
+    /// 自定义正文（Markdown），最长 65536；传空串清除草稿。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
 }
 
 /// 分页响应的统一形状。
@@ -331,8 +472,7 @@ pub type VersionListResponse = ListResponse<VersionItem>;
 pub type AnnouncementListResponse = ListResponse<AnnouncementItem>;
 pub type FeedbackListResponse = ListResponse<FeedbackItem>;
 pub type LogListResponse = ListResponse<LogItem>;
-pub type ActionListResponse = ListResponse<ActionItem>;
-pub type ActionRecordListResponse = ListResponse<ActionRecordItem>;
+pub type EventDefinitionListResponse = ListResponse<EventDefinitionItem>;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CheckUpdateMilestone {
@@ -396,9 +536,14 @@ pub struct LogStatistics {
     pub error_count: i64,
 }
 
+/// 采集接口的逐条回执。
 #[derive(Debug, Clone, Deserialize)]
-pub struct ActionStatistics {
-    pub count: i64,
+pub struct IngestEventsResponse {
+    pub accepted: i64,
+    /// 未入库的条数，含事件名不合法与幂等键撞上的重复。
+    pub skipped: i64,
+    /// `true` 表示本次采集被退出信号或项目开关拦下，此时 `accepted` 恒为 0。
+    pub suppressed: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -490,10 +635,10 @@ pub struct FeedbackIssueRepoTemplatePreview {
     pub error: Option<String>,
 }
 
-/// 评论命令定义：/verhub-<name> <args> → workflow_dispatch。
+/// 评论命令定义：`/verhub-<命令名> <参数>` 触发 workflow_dispatch。
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GithubCommandDefinition {
-    /// 命令名，不含 /verhub- 前缀。
+    /// 命令名，不含 `/verhub-` 前缀。
     pub name: String,
     /// workflow 文件名（如 release.yml）或数字 ID。
     pub workflow: String,
@@ -758,14 +903,6 @@ pub struct CreateLogInput {
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
-pub struct CreateActionRecordInput {
-    /// 行为定义 ID，需先在后台创建。
-    pub action_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub custom_data: Option<JsonObject>,
-}
-
-#[derive(Debug, Clone, Default, Serialize)]
 pub struct CreateProjectInput {
     /// 新项目标识；`None` 则用客户端绑定的 project_key。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -794,6 +931,12 @@ pub struct CreateProjectInput {
     /// 请求统计保留天数，1..=365，默认 365。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stats_retention_days: Option<u32>,
+    /// 事件采集总开关，默认 true。关掉后采集端点仍返回 202，但不入库、不计数。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_collection_enabled: Option<bool>,
+    /// 事件明细保留天数，1..365，默认 90。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_retention_days: Option<u32>,
     /// 项目名称与描述的译文。传了就整体替换全部译文，空数组即清空；不传则不动。
     /// 语言必须先在项目里注册（同义标签同样算命中），否则整个请求 400。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -829,6 +972,12 @@ pub struct UpdateProjectInput {
     pub optional_update_max_comparable_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stats_retention_days: Option<u32>,
+    /// 事件采集总开关，默认 true。关掉后采集端点仍返回 202，但不入库、不计数。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_collection_enabled: Option<bool>,
+    /// 事件明细保留天数，1..365，默认 90。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event_retention_days: Option<u32>,
     /// 传了即整体替换全部译文，空数组即清空；不传则保持原样。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub translations: Option<Vec<ProjectTranslation>>,
@@ -1000,21 +1149,318 @@ pub struct CreateProjectLocaleInput {
     pub label: Option<String>,
 }
 
-/// 行为定义在绑定项目下创建，`project_key` 由客户端注入，不在此结构里。
+// ---- 事件分析 ----
+
+/// 属性筛选条件。`op` 是闭集，值一律以参数进入服务端查询。
 #[derive(Debug, Clone, Default, Serialize)]
-pub struct CreateActionInput {
-    pub name: String,
-    pub description: String,
+pub struct EventFilter {
+    /// 属性名。只支持 properties 的第一层键。
+    pub property: String,
+    /// `eq` / `neq` / `in` / `not_in` / `contains` / `gt` / `gte` / `lt` / `lte`
+    /// / `exists` / `not_exists`。
+    pub op: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub custom_data: Option<JsonObject>,
+    pub value: Option<JsonValue>,
+}
+
+/// 统计查询的公共区间参数。省略时服务端默认最近 7 天。
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct EventRangeOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_time: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_time: Option<i64>,
+    /// 相对 UTC 的分钟偏移。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tz_offset_minutes: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ListEventDefinitionsOptions {
+    pub range: EventRangeOptions,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+    pub search: Option<String>,
+    /// 默认不含已归档的事件。
+    pub include_archived: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
-pub struct UpdateActionInput {
+pub struct UpdateEventDefinitionInput {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
+    pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub custom_data: Option<JsonObject>,
+    pub archived: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventOverviewResponse {
+    pub start_time: i64,
+    pub end_time: i64,
+    /// 事件总量。
+    pub total: i64,
+    /// 独立标识数。
+    pub unique_users: i64,
+    pub unique_sessions: i64,
+    pub event_types: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventTimeseriesPoint {
+    pub bucket: i64,
+    pub count: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventSeries {
+    pub key: String,
+    pub data: Vec<EventTimeseriesPoint>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct EventTimeseriesOptions {
+    pub range: EventRangeOptions,
+    /// `hour` 或 `day`，默认按天。
+    pub granularity: Option<String>,
+    pub event_name: Option<String>,
+    /// `event` / `platform` / `region`。
+    pub group_by: Option<String>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventTimeseriesResponse {
+    pub start_time: i64,
+    pub end_time: i64,
+    pub granularity: String,
+    pub tz_offset_minutes: i64,
+    pub event_name: Option<String>,
+    pub group_by: Option<String>,
+    /// 总量序列，空桶补零。
+    pub data: Vec<EventTimeseriesPoint>,
+    /// 按 `group_by` 拆开的序列；未指定时为 `None`。
+    pub series: Option<Vec<EventSeries>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventCountBucket {
+    pub key: String,
+    pub label: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct EventBreakdownOptions {
+    pub range: EventRangeOptions,
+    /// `event` / `platform` / `region` / `property`。
+    pub dimension: Option<String>,
+    /// `dimension` 为 `property` 时必填。
+    pub property_key: Option<String>,
+    pub event_name: Option<String>,
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventBreakdownResponse {
+    pub start_time: i64,
+    pub end_time: i64,
+    pub dimension: String,
+    pub property_key: Option<String>,
+    /// 全量总数，不是本页之和。
+    pub total: i64,
+    pub data: Vec<EventCountBucket>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventHeatmapCell {
+    /// 0 是周日。
+    pub weekday: i64,
+    pub hour: i64,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventHeatmapResponse {
+    pub start_time: i64,
+    pub end_time: i64,
+    pub tz_offset_minutes: i64,
+    /// 固定 168 格，含无数据的空格。
+    pub data: Vec<EventHeatmapCell>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct FunnelStep {
+    pub event_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filters: Option<Vec<EventFilter>>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct FunnelInput {
+    /// 2 到 8 个步骤。
+    pub steps: Vec<FunnelStep>,
+    /// 从**第一步**算起的转化窗口（秒），不是相邻两步之间。默认 7 天。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_seconds: Option<i64>,
+    #[serde(flatten)]
+    pub range: EventRangeOptions,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FunnelStepResult {
+    pub step: i64,
+    pub event_name: String,
+    pub users: i64,
+    /// 相对上一步的转化率，0 到 1；第一步恒为 1。
+    pub conversion_rate: f64,
+    pub total_conversion_rate: f64,
+    pub dropped: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct FunnelResponse {
+    pub start_time: i64,
+    pub end_time: i64,
+    pub window_seconds: i64,
+    pub data: Vec<FunnelStepResult>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct RetentionInput {
+    /// 把人纳入队列的起始事件。
+    pub start_event: String,
+    /// 判定「回来了」的事件；`None` 则任意事件都算回访。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub return_event: Option<String>,
+    /// `day` 或 `week`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub period: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub periods: Option<i64>,
+    #[serde(flatten)]
+    pub range: EventRangeOptions,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RetentionCell {
+    pub period: i64,
+    pub users: i64,
+    /// 0 到 1。
+    pub rate: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RetentionCohort {
+    pub cohort: i64,
+    pub size: i64,
+    /// 尚未走完的周期为 `None`，不是 0。
+    pub cells: Vec<Option<RetentionCell>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RetentionResponse {
+    pub start_time: i64,
+    pub end_time: i64,
+    pub period: String,
+    pub periods: i64,
+    pub cohorts: Vec<RetentionCohort>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PathsInput {
+    /// 路径起点；`None` 则从每条序列的第一个事件开始。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_event: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub depth: Option<i64>,
+    /// 每一层保留的分支数，其余并入「（其他）」。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch_limit: Option<i64>,
+    /// `session`（默认）按会话串联，`user` 跨会话按人串联。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    #[serde(flatten)]
+    pub range: EventRangeOptions,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PathEdge {
+    pub step: i64,
+    pub from_event: String,
+    pub to_event: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PathsResponse {
+    pub start_time: i64,
+    pub end_time: i64,
+    pub scope: String,
+    pub depth: i64,
+    /// 有分支被并入「（其他）」时为 `true`。
+    pub truncated: bool,
+    pub data: Vec<PathEdge>,
+}
+
+/// 形状随 `type` 变化：timeseries 给 `series`，breakdown 给 `total` 与 `buckets`，
+/// value 给 `values` 与 `result`。
+#[derive(Debug, Clone, Deserialize)]
+pub struct EventQueryResponse {
+    pub start_time: i64,
+    pub end_time: i64,
+    #[serde(rename = "type")]
+    pub query_type: String,
+    pub series: Option<Vec<EventSeries>>,
+    pub total: Option<i64>,
+    pub buckets: Option<Vec<EventCountBucket>>,
+    /// 各别名的度量值。
+    pub values: Option<JsonObject>,
+    /// 公式求值结果；没有公式时取第一个事件的度量值。
+    pub result: Option<f64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DashboardCardItem {
+    pub card_id: String,
+    pub project_key: String,
+    pub title: String,
+    pub description: Option<String>,
+    /// 指标 DSL，结构见 `verhub.openapi.yaml` 的 `EventQueryDto`。
+    pub query: JsonObject,
+    pub layout: Option<JsonObject>,
+    pub sort_order: i64,
+    pub created_time: i64,
+    pub updated_time: i64,
+}
+
+pub type DashboardCardListResponse = ListResponse<DashboardCardItem>;
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CreateDashboardCardInput {
+    pub title: String,
+    /// 指标 DSL。写入时就完整校验（含公式语法），不合法直接 400。
+    pub query: JsonObject,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// 前端网格布局，服务端只存不解析。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layout: Option<JsonObject>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_order: Option<i64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct UpdateDashboardCardInput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query: Option<JsonObject>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layout: Option<JsonObject>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_order: Option<i64>,
 }

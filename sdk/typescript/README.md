@@ -58,6 +58,30 @@ await client.admin.upsertVersion("v1.2.0", {
 
 > 别把管理凭据打进浏览器产物。要在网页里用 SDK，只用 `client.public`。
 
+### 条款文档
+
+隐私政策与 SDK 合规性文档是**实例级**的，不作用于绑定项目，因此不需要
+`projectKey` 也能读：
+
+```ts
+for (const doc of (await client.public.listTerms()).data) {
+  console.log(doc.slug, doc.title, doc.updated_at)
+}
+
+const policy = await client.public.getTerms("privacy-policy")
+console.log(policy.content) // Markdown；实例未自定义时是内置正文
+```
+
+管理端可以改写正文，只接受管理员 JWT（API Key 会得到 401）：
+
+```ts
+await client.admin.updateTermsDocument("privacy-policy", {
+  custom: true,
+  content: "# 隐私政策\n...",
+})
+await client.admin.resetTermsDocument("privacy-policy") // 关掉自定义并丢弃草稿
+```
+
 ## 省略与置空
 
 输入对象里，`undefined` 与 `null` 含义不同：
@@ -120,8 +144,8 @@ try {
 
 ## 重试
 
-默认对**连接失败和幂等请求（GET/HEAD）自动重试 2 次**并指数退避；`checkUpdate`
-这类 POST 不会被重放。用 `retries` 调整，传 `0` 关闭。
+**GET / HEAD** 在连接失败与 502/503/504 时默认自动重试 2 次并指数退避；其余方法
+（含 `checkUpdate` 这类 POST）一律不重放。用 `retries` 调整，传 `0` 关闭。
 
 ```ts
 new VerhubClient({ baseUrl, projectKey, retries: 3 })
@@ -136,6 +160,153 @@ Node 等服务端运行时默认带 UA `verhub-sdk-js/<版本>`（浏览器禁�
 new VerhubClient({ baseUrl, projectKey, appIdentifier: "MyApp/1.2" })
 // UA: verhub-sdk-js/x.y.z MyApp/1.2
 ```
+
+## 事件采集
+
+`track()` 入队即返回，不发起网络请求，也不阻塞调用方——埋点写在 UI 事件处理里，
+任何一次网络等待都会被用户感知成卡顿。
+
+```ts
+client.public.track("checkout_clicked", { plan: "pro" })
+await client.public.flush() // 退出前手动催发，避免丢掉最后一批
+```
+
+**事件名无需预先在后台登记**：服务端第一次收到就自动建立定义。建议用小写下划线
+形式，服务端会归一化为小写，只接受字母、数字、下划线、点、连字符与冒号。
+
+### 攒批与发送时机
+
+| 选项               | 默认      | 说明                              |
+| ------------------ | --------- | --------------------------------- |
+| `flushIntervalMs`  | `5000`    | 攒批的时间上限                    |
+| `batchSize`        | `20`      | 攒够这么多条立即发送，**上限 50** |
+| `maxQueueSize`     | `500`     | 队列上限，超出丢最旧的            |
+| `sessionTimeoutMs` | `1800000` | 会话空闲多久换新                  |
+
+两个条件谁先到算谁。`batchSize` 会被钳到 50（服务端单批上限
+`VERHUB_EVENT_BATCH_MAX`），它同时也是每个请求的分片大小——`flush()` 会按这个尺寸
+把整个队列分几次发完。
+
+想让不常用的功能少上报几次，把间隔拉长即可：
+
+```ts
+new VerhubClient({
+  baseUrl,
+  projectKey: "demo",
+  analytics: { flushIntervalMs: 24 * 60 * 60 * 1000, maxQueueSize: 2000 },
+})
+```
+
+> 这里有个硬边界：**攒够 50 条一定会立即发**，`batchSize` 拦不住。所以「24 小时发
+> 一次」成立的前提是这段时间内不足 50 条事件。低频功能通常没问题，高频的仍会按量
+> 提前发出去。
+
+定时器只在进程活着时有效。进程提前退出不会丢数据——队列是落盘的，下次启动读回来
+并排一次发送；浏览器里关标签页还有 `visibilitychange` / `pagehide` +
+`navigator.sendBeacon` 兜底。所以拉长间隔的实际语义是「**最长** 24 小时」。
+
+### 本地存储
+
+这是整个 SDK 里**唯一**会在设备上写入数据的能力。其余能力（查询、检查更新、反馈、
+日志）仍然一个字节都不落盘。
+
+写入位置按运行环境选：
+
+| 环境    | 位置                                                                  |
+| ------- | --------------------------------------------------------------------- |
+| 浏览器  | `localStorage`                                                        |
+| Windows | `%LOCALAPPDATA%\verhub-sdk\<命名空间>.json`                           |
+| macOS   | `~/Library/Application Support/verhub-sdk/<命名空间>.json`            |
+| Linux   | `$XDG_STATE_HOME/verhub-sdk/<命名空间>.json`，未设则 `~/.local/state` |
+
+三个键，前缀是 `verhub.analytics.<命名空间>.`：
+
+| 键            | 内容                  |
+| ------------- | --------------------- |
+| `distinct_id` | 匿名标识，随机 UUIDv4 |
+| `queue`       | 待发送事件            |
+| `opt_out`     | 退出标记，值为 `"1"`  |
+
+**匿名标识是随机数，不含任何设备特征**，也不读取设备上的既有标识（序列号、MAC、
+广告 ID）。它存在的唯一理由是把同一使用者的事件串成序列——单条行为记录没有分析价值，
+漏斗与留存必须能组合才算得出来。
+
+#### 多实例、多项目怎么隔离
+
+本地状态按**服务实例地址 + 项目标识**隔离，命名空间是
+`<origin 哈希>-<小写 projectKey>`（origin 只看协议+主机+端口，路径忽略）。这一层是
+必须的：同一个 `projectKey` 在两套自部署实例上是两批毫不相干的用户，共用匿名标识会让
+统计串味，共用待发队列更会把事件投递到错误的实例。
+
+同一实例同一项目下的两个应用如需各自独立，显式给 `namespace`；四个语言的哈希实现逐位
+一致，同一实例在任何语言下都落到同一个命名空间。
+
+```ts
+new VerhubClient({ baseUrl, projectKey, analytics: { namespace: "my-app" } })
+```
+
+桌面端每个命名空间一个文件，写入是「先写临时文件再原子替换」，进程中途退出不会留下
+损坏的状态文件。同一命名空间下两个进程同时写仍是后写者赢——事件带幂等键，最坏结果是
+重发（服务端去重），不值得为此加跨进程文件锁。
+
+`setProjectKey()` 换绑项目后，队列会按新命名空间重建；旧项目攒下的事件留在它自己的
+文件里等下次补发，**不会**被错发进新项目。
+
+拿不到可写位置时（浏览器隐私模式配额为 0、目录不可写）静默退回内存：采集不该因为
+存不下标识就整个失效，但也不会假装数据落了盘。
+
+`persistence` 控制落盘程度：
+
+- `"device"`（默认）— 写入本地，重启后仍是同一个标识，留存曲线可跨天成立
+- `"session"` — 只在进程内存里，重启即换新，漏斗仍可用但跨天留存算不了
+- `"none"` — 完全不生成持久标识，也不落盘
+
+### 退出与同意
+
+```ts
+client.public.optOut() // 停止采集 + 清空队列 + 删除本地标识 + 落盘退出标记
+client.public.optIn() // 撤销退出，生成【新的】标识，不复用退出前那个
+client.public.hasOptedOut()
+client.public.resetIdentity() // 继续采集，但换新标识，切断与既往序列的关联
+```
+
+`optOut()` 会**删掉** `distinct_id` 与 `queue`，同时**写入** `opt_out`。退出标记本身
+必须落盘，否则重启即失效——存「用户已拒绝」这个事实是执行用户选择所必需的，不在
+需要同意的范围内。
+
+面向欧盟用户必须开 `requireConsent`：
+
+```ts
+new VerhubClient({ baseUrl, projectKey, analytics: { requireConsent: true } })
+
+client.public.grantConsent() // 取得同意后开闸
+client.public.revokeConsent() // 撤回，等价于 optOut 并回到未同意状态
+```
+
+开启后在 `grantConsent()` 之前**一个字节都不写、一条都不采**（含匿名标识的生成），
+事件直接丢弃而非在内存里暂存——暂存等于赌用户稍后会同意。ePrivacy Directive
+Art.5(3) 要求在设备上写入或读取信息**之前**取得同意，分析用途不适用「严格必要」
+例外。同意的取得与举证由接入方负责，SDK 无从判断某次调用是否已获授权。
+
+浏览器里还会自动尊重 `navigator.globalPrivacyControl` 与 `navigator.doNotTrack`，
+命中任一即等同退出，由 `respectDoNotTrack` 控制（默认 `true`）。
+
+服务端另有两道不依赖 SDK 的闸门：请求头 `x-verhub-do-not-track: 1`，以及项目级总
+开关 `event_collection_enabled`。命中任一都返回 202 但不入库、不计数、不解析归属地
+——这是正常的用户选择，不是错误，所以不返回 4xx。
+
+### 数据主体权利
+
+```ts
+await client.public.exportMyData() // 导出本机标识下的全部明细（Art.15 / Art.20）
+await client.public.deleteMyData() // 删除（Art.17）
+```
+
+两者都可显式传 `distinctId`。管理端可代为删除：`client.admin.deleteEventSubject(id)`
+——用户往往通过客服而不是应用内按钮提出请求。
+
+删除范围是事件明细与日活去重记录；**小时汇总不删**。它只保存计数、不含任何标识符、
+精度为自然小时，无法回溯到具体设备或还原访问序列，属于匿名数据。
 
 ## 其他选项
 

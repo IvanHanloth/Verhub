@@ -8,21 +8,17 @@ export const PLATFORM_HEADER = "x-verhub-platform"
 /** 客户端系统版本明细头，如 `11` / `ubuntu 24.04`；超过 32 字符会被服务端丢弃。 */
 export const PLATFORM_VERSION_HEADER = "x-verhub-platform-version"
 
-/** 系统版本明细的长度上限，与服务端一致，超出直接截断。 */
+/** 系统版本明细的长度上限，与服务端一致。 */
 const MAX_PLATFORM_VERSION_LENGTH = 32
 
 /**
- * 把系统版本明细规整成能安全放进 HTTP 头的形式。
+ * 把系统版本明细规整成能进 HTTP 头的形式。
  *
- * 请求头只能承载 ASCII，而这个值未必干净：调用方用错编码读系统版本时拿到的就是
- * `Microsoft Windows [�汾 10.0.26200.8875]` 这种串。不清洗的话 `fetch` 会
- * 直接抛 `TypeError`，整个请求跟着失败——一个纯统计用的头不该有本事弄挂业务请求。
- *
- * 清洗规则：非可打印 ASCII 的字符一律当作空白（版本号本身是 ASCII，能完整留下），
- * 折叠连续空白，再按 {@link MAX_PLATFORM_VERSION_LENGTH} 截断。返回空串表示无从
- * 得知，此时不发这个头。四个语言的 SDK 用同一套规则。
+ * 非可打印 ASCII 一律替换成空格，折叠连续空白，按
+ * {@link MAX_PLATFORM_VERSION_LENGTH} 截断。四个语言的 SDK 规则相同。
  *
  * @param value 原始声明
+ * @returns 清洗后的值；空串表示无从得知
  */
 export function sanitizePlatformVersion(value: string): string {
   return value
@@ -33,18 +29,18 @@ export function sanitizePlatformVersion(value: string): string {
     .trimEnd()
 }
 
-/** {@link sanitizePlatformVersion} 的 null 版：洗完是空串就收敛成 null（不发这个头）。 */
+/** {@link sanitizePlatformVersion} 的 null 版：洗完是空串则返回 null。 */
 function headerSafe(value: string | null): string | null {
   return value ? sanitizePlatformVersion(value) || null : null
 }
 
-/** 默认重试次数。只作用于连接失败与幂等方法（GET/HEAD），POST 不自动重试。 */
+/** 默认重试次数。 */
 const DEFAULT_RETRIES = 2
 
-/** 会触发重试的服务端状态码，均为可安全重试的临时性错误。 */
+/** 会触发重试的服务端状态码。 */
 const RETRY_STATUS = new Set([502, 503, 504])
 
-/** 可安全重试的幂等方法。 */
+/** 会自动重试的幂等方法；其余方法一律不重试。 */
 const IDEMPOTENT_METHODS = new Set(["GET", "HEAD"])
 
 /** 调试日志钩子收到的事件。 */
@@ -69,22 +65,19 @@ export type VerhubClientOptions = {
   projectKey?: string
   /** 管理员 JWT 或 API Key；只调 public 接口时不用给。 */
   token?: string
-  /** 平台声明；省略则按运行环境自动探测，传 null 则不声明。不影响下面的系统版本明细。 */
+  /** 平台声明；省略则按运行环境自动探测，传 null 则不声明。不影响系统版本明细。 */
   platform?: Platform | null
   /** 系统版本明细；省略则自动提取（`platform` 被显式关成 null 时除外），传 null 则不声明。 */
   platformVersion?: string | null
   /** 单次请求超时（毫秒），默认 15000；传 0 表示不超时。 */
   timeoutMs?: number
-  /** 连接失败与幂等请求（GET/HEAD）的自动重试次数，默认 2；POST 不重试，传 0 关闭。 */
+  /** GET / HEAD 在连接失败与 502/503/504 时的自动重试次数，默认 2；传 0 关闭。 */
   retries?: number
   /** 自定义 fetch 实现，可用于注入代理、埋点或测试桩。 */
   fetch?: typeof globalThis.fetch
   /** 附加到每个请求上的头。 */
   headers?: Record<string, string>
-  /**
-   * 追加到默认 User-Agent 之后的应用标识（如 `MyApp/1.2`），保留 SDK 版本又便于
-   * 服务端统计。浏览器禁止脚本改写 User-Agent，此项仅在服务端运行时生效。
-   */
+  /** 追加到默认 User-Agent 之后的应用标识（如 `MyApp/1.2`），仅服务端运行时生效。 */
   appIdentifier?: string
   /** 调试日志钩子；默认不打日志，传入后每次请求/响应回调一次。 */
   logger?: (event: VerhubLogEvent) => void
@@ -97,7 +90,7 @@ type NodeLikeProcess = {
 }
 type DenoGlobal = { build?: { os?: string } }
 
-/** 宿主系统名 → 契约平台值。认不出的一律 `others`，不瞎猜。 */
+/** 宿主系统名 → 契约平台值。表里没有的一律 `others`。 */
 const OS_TO_PLATFORM: Record<string, Platform> = {
   win32: "windows",
   windows: "windows",
@@ -106,7 +99,7 @@ const OS_TO_PLATFORM: Record<string, Platform> = {
   android: "android",
 }
 
-/** 老 Windows 的 NT 内核号 → 市场版本号。Win10/11 都是 10.0，另按构建号区分。 */
+/** Windows NT 内核号 → 市场版本号。10.0 不在表内，另按构建号区分。 */
 const WINDOWS_NT_TO_MARKET: Record<string, string> = {
   "6.1": "7",
   "6.2": "8",
@@ -127,7 +120,7 @@ const DARWIN_TO_MACOS: Record<string, string> = {
   "16": "10.12",
 }
 
-/** 运行在服务端 JS 运行时（Node / Bun / Deno）时返回宿主系统名。 */
+/** 运行在服务端 JS 运行时（Node / Bun / Deno）时返回宿主系统名，浏览器返回 undefined。 */
 function hostOsName(): string | undefined {
   const proc = (globalThis as { process?: NodeLikeProcess }).process
   if (proc?.versions?.node && proc.platform) {
@@ -137,12 +130,7 @@ function hostOsName(): string | undefined {
   return (globalThis as { Deno?: DenoGlobal }).Deno?.build?.os
 }
 
-/**
- * 同步取 Node 内建模块，不用 import 以免污染浏览器打包。
- *
- * `process.getBuiltinModule`（Node 20.16+/22+）在 CJS 与 ESM 下都能用；老 Node
- * 退回到全局 `require`（仅 CJS 有）。浏览器里两者都没有，返回 undefined。
- */
+/** 同步取 Node 内建模块；浏览器里取不到，返回 undefined。 */
 function loadNodeBuiltin(name: string): unknown {
   const proc = (globalThis as { process?: NodeLikeProcess }).process
   try {
@@ -150,7 +138,7 @@ function loadNodeBuiltin(name: string): unknown {
       return proc.getBuiltinModule(name)
     }
   } catch {
-    /* 忽略：拿不到就当没有 */
+    /* 取不到就当没有 */
   }
   try {
     const req = (globalThis as { require?: (id: string) => unknown }).require
@@ -158,16 +146,15 @@ function loadNodeBuiltin(name: string): unknown {
       return req(name)
     }
   } catch {
-    /* 忽略 */
+    /* 同上 */
   }
   return undefined
 }
 
 /**
- * 猜测当前运行平台，用于填充 {@link PLATFORM_HEADER}。
+ * 探测当前运行平台，用于填充 {@link PLATFORM_HEADER}。
  *
- * 浏览器与 Worker 一律记作 `web`——那里真正有意义的维度是浏览器而不是宿主
- * 系统，而 `navigator` 是两者都有、Node 里又已经被上一步排除掉的判据。
+ * 浏览器与 Worker 记作 `web`，识别不出的宿主系统记作 `others`。
  */
 export function detectPlatform(): Platform {
   const os = hostOsName()
@@ -196,10 +183,10 @@ function linuxDistroVersion(): string {
 }
 
 /**
- * 从系统信息里提取系统版本明细，用于填充 {@link PLATFORM_VERSION_HEADER}。
+ * 探测系统版本明细，用于填充 {@link PLATFORM_VERSION_HEADER}。
  *
- * Windows 按内核构建号还原市场版本号，macOS 由 Darwin 大版本映射，Linux 读
- * os-release。浏览器与取不到内建模块时返回空串，交给服务端从 User-Agent 兜底。
+ * Windows 与 macOS 给市场版本号（`11` / `15` / `10.15`），Linux 给
+ * `发行版 版本号`。浏览器与取不到系统信息时返回空串。
  */
 export function detectPlatformVersion(): string {
   const os = hostOsName()
@@ -230,7 +217,7 @@ export function detectPlatformVersion(): string {
       return linuxDistroVersion()
     }
   } catch {
-    /* 版本探测纯属锦上添花，任何异常都不该阻断请求 */
+    /* 探测失败时不声明版本 */
   }
 
   return ""
@@ -238,9 +225,6 @@ export function detectPlatformVersion(): string {
 
 /**
  * 丢掉值为 `undefined` 的字段，保留显式的 `null`。
- *
- * `null` 会被序列化成 JSON null，是「把这个字段置空」的意思；只有完全没提供
- * 的字段才该从请求里消失。
  *
  * @param input 原始字段表
  */
@@ -255,10 +239,7 @@ export function compact<T extends Record<string, unknown>>(input: T): Partial<T>
 }
 
 /**
- * 去掉首尾空白与末尾斜杠；baseUrl 不像带 `/api/v` 前缀时给一句温和提醒。
- *
- * 传错前缀（比如只给裸域名）时所有请求会静默 404，很难排查，这里主动 warn
- * 一声而不是抛错——非标准挂载路径的部署仍能正常用。
+ * 去掉首尾空白与末尾斜杠；不含 `/api/v` 时 `console.warn` 一次，不抛错。
  *
  * @param baseUrl 原始根地址
  */
@@ -305,16 +286,11 @@ export class HttpClient {
     this.extraHeaders = options.headers ?? {}
     this.logger = options.logger
 
-    // 浏览器改不了 User-Agent，appIdentifier 只对服务端运行时有意义。
     const appId = options.appIdentifier?.trim()
     this.userAgent = hostOsName()
       ? `verhub-sdk-js/${VERHUB_SDK_VERSION}${appId ? ` ${appId}` : ""}`
       : null
 
-    // 两个维度各管各的：显式给了就用给的，没给就自己探测。显式指定平台不再连带
-    // 禁掉版本探测——那样会让「声明了平台」的调用方彻底报不上系统版本，而这正是
-    // 绝大多数客户端的用法。唯一的例外是显式传 platform: null：那是明确的退出
-    // 声明，版本一并不报。
     this.platform = options.platform === undefined ? detectPlatform() : options.platform
 
     if (options.platformVersion === undefined) {
@@ -327,7 +303,7 @@ export class HttpClient {
     if (typeof fetcher !== "function") {
       throw new TypeError("当前环境没有全局 fetch，请通过 options.fetch 传入实现")
     }
-    // 解绑到 globalThis：某些实现（含 undici）要求 fetch 以全局对象为 this。
+    // 部分实现要求 fetch 以全局对象为 this。
     this.fetcher = fetcher.bind(globalThis)
   }
 
@@ -338,7 +314,7 @@ export class HttpClient {
     this.token = token
   }
 
-  /** 清除当前凭据，之后调用 admin 接口会直接抛错。 */
+  /** 清除当前凭据，之后调用 admin 接口会抛 {@link VerhubAuthError}。 */
   clearToken(): void {
     this.token = ""
   }
@@ -361,13 +337,37 @@ export class HttpClient {
    * @param platformVersion 系统版本明细；传 null 则不再声明
    */
   setPlatformVersion(platformVersion: string | null): void {
-    // 存进来就已清洗过，请求路径上拿到的一定是能进头的值。
     this.platformVersion = headerSafe(platformVersion)
   }
 
   /** 当前绑定的项目标识。 */
   getProjectKey(): string | undefined {
     return this.projectKey
+  }
+
+  /** 规范化后的根地址。 */
+  getBaseUrl(): string {
+    return this.baseUrl
+  }
+
+  /**
+   * 拼出可直接交给 `navigator.sendBeacon` 的请求地址。
+   *
+   * @param pathTemplate 形如 `/public/{projectKey}/events` 的路径模板
+   * @param pathParams 路径参数
+   */
+  resolveUrl(pathTemplate: string, pathParams?: Record<string, string>): string {
+    return `${this.baseUrl}${this.resolvePath(pathTemplate, pathParams)}`
+  }
+
+  /** 当前的平台声明；未声明时为 null。 */
+  getPlatform(): Platform | null {
+    return this.platform
+  }
+
+  /** 当前的系统版本明细；未声明时为 null。 */
+  getPlatformVersion(): string | null {
+    return this.platformVersion
   }
 
   /**
@@ -391,7 +391,7 @@ export class HttpClient {
 
     const headers: Record<string, string> = {
       Accept: "application/json",
-      // 浏览器禁止脚本改写 User-Agent，设了也会被静默丢弃，所以只在服务端运行时带上。
+      // 浏览器会丢弃脚本设置的 User-Agent，只在服务端运行时带上。
       ...(this.userAgent ? { "User-Agent": this.userAgent } : {}),
       ...this.extraHeaders,
     }
@@ -404,7 +404,6 @@ export class HttpClient {
 
     if (options.auth) {
       if (!this.token) {
-        // 请求还没发出去就在本地拦下，用专门的异常，别伪造一个假的 401。
         throw new VerhubAuthError("缺少凭据：请先设置 token")
       }
       headers.Authorization = `Bearer ${this.token}`
@@ -416,7 +415,6 @@ export class HttpClient {
       payload = JSON.stringify(options.body)
     }
 
-    // 只对幂等方法自动重试；POST（含 check-update）不重放。
     const canRetry = IDEMPOTENT_METHODS.has(method) && this.retries > 0
     const maxAttempts = canRetry ? this.retries + 1 : 1
 
@@ -427,7 +425,6 @@ export class HttpClient {
       try {
         response = await this.fetchOnce(method, url, headers, payload)
       } catch (cause) {
-        // 连接阶段失败，请求没到服务端，幂等方法可安全重试；否则原样抛出。
         if (canRetry && attempt < maxAttempts) {
           await this.backoff(attempt)
           continue
@@ -437,7 +434,6 @@ export class HttpClient {
 
       this.logger?.({ method, url, status: response.status, attempt })
 
-      // 502/503/504 是临时性错误，幂等方法退避后重试。
       if (RETRY_STATUS.has(response.status) && canRetry && attempt < maxAttempts) {
         await this.backoff(attempt)
         continue
@@ -452,7 +448,7 @@ export class HttpClient {
       return parsed as T
     }
 
-    // 循环结构保证上面必然 return 或 throw，这行只为类型收敛。
+    // 循环必然 return 或 throw，这行只为类型收敛。
     throw new VerhubConnectionError(`请求 ${method} ${url} 失败：重试耗尽`, undefined)
   }
 
@@ -500,7 +496,7 @@ export class HttpClient {
 
   /**
    * @param path 已填充的路径
-   * @param query 查询参数
+   * @param query 查询参数，值为 null / undefined 的项会被丢弃
    */
   private buildUrl(path: string, query?: RequestQuery): string {
     if (!query) {
@@ -521,6 +517,7 @@ export class HttpClient {
 
   /**
    * @param raw 原始响应文本
+   * @returns 解析结果；不是 JSON 时原样返回文本
    */
   private parseJson(raw: string): unknown {
     if (!raw) {

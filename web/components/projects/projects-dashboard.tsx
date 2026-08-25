@@ -69,6 +69,15 @@ const DEFAULT_STATS_RETENTION_DAYS = 365
 const MIN_STATS_RETENTION_DAYS = 1
 const MAX_STATS_RETENTION_DAYS = 365
 
+/**
+ * 事件明细的保留期。默认比统计短得多——明细带匿名标识，是可关联到个人的高频
+ * 数据，不该与纯计数用同一个窗口。上限仍留到一年，供确有长周期留存分析需求的
+ * 运营者自行放宽。
+ */
+const DEFAULT_EVENT_RETENTION_DAYS = 90
+const MIN_EVENT_RETENTION_DAYS = 1
+const MAX_EVENT_RETENTION_DAYS = 365
+
 type FormState = {
   project_key: string
   name: string
@@ -83,6 +92,8 @@ type FormState = {
   optional_update_min_comparable_version: string
   optional_update_max_comparable_version: string
   stats_retention_days: string
+  event_collection_enabled: boolean
+  event_retention_days: string
   /** 按语言存的名称/描述草稿。两项都留空的语言不会提交。 */
   translations: Record<string, { name: string; description: string }>
 }
@@ -101,6 +112,8 @@ const emptyForm: FormState = {
   optional_update_min_comparable_version: "",
   optional_update_max_comparable_version: "",
   stats_retention_days: String(DEFAULT_STATS_RETENTION_DAYS),
+  event_collection_enabled: true,
+  event_retention_days: String(DEFAULT_EVENT_RETENTION_DAYS),
   translations: {},
 }
 
@@ -135,6 +148,26 @@ function toTimestampSeconds(value: string): number | undefined {
   }
 
   return Math.floor(millis / 1000)
+}
+
+function toEventRetentionDays(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return undefined
+  }
+
+  const days = Number(trimmed)
+  if (
+    !Number.isInteger(days) ||
+    days < MIN_EVENT_RETENTION_DAYS ||
+    days > MAX_EVENT_RETENTION_DAYS
+  ) {
+    throw new Error(
+      `事件明细保留时长需为 ${MIN_EVENT_RETENTION_DAYS}-${MAX_EVENT_RETENTION_DAYS} 之间的整数天`,
+    )
+  }
+
+  return days
 }
 
 function toStatsRetentionDays(value: string): number | undefined {
@@ -188,6 +221,8 @@ function toMutationInput(
     optional_update_min_comparable_version: resolveOptionalField(optionalMin),
     optional_update_max_comparable_version: resolveOptionalField(optionalMax),
     stats_retention_days: toStatsRetentionDays(form.stats_retention_days),
+    event_collection_enabled: form.event_collection_enabled,
+    event_retention_days: toEventRetentionDays(form.event_retention_days),
     // 只有编辑弹窗会填译文（新建时项目还不存在，必然没注册语言），
     // 新建请求里它恒为空数组，与"没有译文"同义。
     translations: toProjectTranslationList(form.translations),
@@ -441,6 +476,42 @@ function ProjectFormFields({
           超出该时长的接口请求统计会被自动清理，最长 {MAX_STATS_RETENTION_DAYS} 天。
         </p>
       </label>
+      <label className="space-y-1 text-sm">
+        <span className="text-slate-700 dark:text-slate-300">事件明细保留时长（天）</span>
+        <input
+          type="number"
+          min={MIN_EVENT_RETENTION_DAYS}
+          max={MAX_EVENT_RETENTION_DAYS}
+          step={1}
+          placeholder={String(DEFAULT_EVENT_RETENTION_DAYS)}
+          value={form.event_retention_days}
+          onChange={(event) =>
+            setForm((prev) => ({ ...prev, event_retention_days: event.target.value }))
+          }
+          className={inputClassName}
+        />
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          行为事件的明细带匿名标识，属于可关联到个人的数据，因此保留期独立于上面的统计， 默认{" "}
+          {DEFAULT_EVENT_RETENTION_DAYS} 天。事件量的小时汇总不含标识符，仍按上面的统计保留期清理。
+        </p>
+      </label>
+      <label className="flex items-start gap-2 text-sm sm:col-span-2">
+        <input
+          type="checkbox"
+          checked={form.event_collection_enabled}
+          onChange={(event) =>
+            setForm((prev) => ({ ...prev, event_collection_enabled: event.target.checked }))
+          }
+          className="mt-1"
+        />
+        <span>
+          <span className="text-slate-700 dark:text-slate-300">启用行为事件采集</span>
+          <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+            关掉后采集接口照常返回 202 但不入库、不计数、不解析归属地，既有数据保留。
+            用于在收到监管问询等情况时立即止血，不必改配置重启。
+          </span>
+        </span>
+      </label>
     </>
   )
 }
@@ -588,6 +659,8 @@ export function ProjectsDashboard() {
       optional_update_min_comparable_version: project.optional_update_min_comparable_version ?? "",
       optional_update_max_comparable_version: project.optional_update_max_comparable_version ?? "",
       stats_retention_days: String(project.stats_retention_days ?? DEFAULT_STATS_RETENTION_DAYS),
+      event_collection_enabled: project.event_collection_enabled ?? true,
+      event_retention_days: String(project.event_retention_days ?? DEFAULT_EVENT_RETENTION_DAYS),
       translations: toProjectFormTranslations(project.translations),
     })
     setEditDialogOpen(true)
@@ -610,6 +683,8 @@ export function ProjectsDashboard() {
       optional_update_min_comparable_version: project.optional_update_min_comparable_version ?? "",
       optional_update_max_comparable_version: project.optional_update_max_comparable_version ?? "",
       stats_retention_days: String(project.stats_retention_days ?? DEFAULT_STATS_RETENTION_DAYS),
+      event_collection_enabled: project.event_collection_enabled ?? true,
+      event_retention_days: String(project.event_retention_days ?? DEFAULT_EVENT_RETENTION_DAYS),
       // 译文绑在原项目的语言注册上，复制到新建表单没有意义。
       translations: {},
     })

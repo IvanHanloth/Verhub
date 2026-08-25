@@ -3,8 +3,12 @@ import { describe, expect, it } from "vitest"
 import { getApiEndpointDocBySlug, listApiEndpointDocs, listApiEndpointDocsByTag } from "./registry"
 
 /**
- * 改造前手写注册表暴露的 29 个接口页地址。
+ * 改造前手写注册表暴露的接口页地址。
  * /doc/<slug> 是对外链接，管理端接口弹窗也按 slug 深链，必须保持稳定。
+ *
+ * 行为上报（actions）的五个 slug 已随该功能一并移除：旧模型要求先在后台登记
+ * 才能上报，从未被任何接入方集成，替换成事件采集（events）是一次有意的破坏性
+ * 变更。这里不保留占位——留着只会让「已发布的地址必须可达」这条约束失去意义。
  */
 const PUBLISHED_SLUGS = [
   "get-public-by-projectkey",
@@ -17,7 +21,7 @@ const PUBLISHED_SLUGS = [
   "get-public-by-projectkey-announcements-latest",
   "post-public-by-projectkey-feedbacks",
   "post-public-by-projectkey-logs",
-  "post-public-by-projectkey-actions",
+  "post-public-by-projectkey-events",
   "post-admin-projects",
   "delete-admin-projects-by-projectkey",
   "post-admin-projects-by-projectkey-versions",
@@ -30,10 +34,6 @@ const PUBLISHED_SLUGS = [
   "patch-admin-projects-by-projectkey-feedbacks-by-id",
   "delete-admin-projects-by-projectkey-feedbacks-by-id",
   "get-admin-projects-by-projectkey-logs",
-  "get-admin-projects-by-projectkey-actions",
-  "post-admin-projects-actions",
-  "patch-admin-actions-by-actionid",
-  "delete-admin-actions-by-actionid",
   "get-admin-projects-by-projectkey-stats-requests-overview",
   "get-admin-projects-by-projectkey-stats-requests-timeseries",
 ]
@@ -92,7 +92,7 @@ describe("api endpoint docs registry", () => {
     const docs = listApiEndpointDocs()
 
     expect(docs.filter((item) => item.visibility === "public").map((item) => item.module)).toEqual(
-      Array(14).fill("Public"),
+      Array(16).fill("Public"),
     )
     expect(docs.filter((item) => item.visibility === "webhook").map((item) => item.module)).toEqual(
       ["Webhooks", "GitHubApp"],

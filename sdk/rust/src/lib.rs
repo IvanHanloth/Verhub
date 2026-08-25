@@ -1,13 +1,12 @@
 //! Verhub Rust SDK。
 //!
-//! 接口面与 Python / TypeScript / 纯 JS 版一一对应，只是方法名按 Rust 习惯写成
+//! 接口面与 Python / TypeScript / 纯 JS 版一一对应，方法名按 Rust 习惯写成
 //! snake_case。契约以仓库根目录的 `verhub.openapi.yaml` 为准。
 //!
 //! ```no_run
 //! use verhub_sdk::{models::CheckUpdateInput, VerhubClient};
 //!
 //! # async fn demo() -> verhub_sdk::Result<()> {
-//! // 客户端绑定一个项目，之后项目作用域的方法不再逐次传项目参数。
 //! let client = VerhubClient::builder("https://verhub.example.com/api/v1")
 //!     .project_key("verhub")
 //!     .build()?;
@@ -31,6 +30,7 @@
 #![warn(missing_debug_implementations)]
 
 mod admin_api;
+mod analytics;
 mod error;
 mod http;
 mod public_api;
@@ -38,13 +38,17 @@ mod public_api;
 pub mod models;
 
 pub use admin_api::AdminApi;
+pub use analytics::{
+    analytics_namespace, fnv1a32_hex, origin_of, AnalyticsOptions, AnalyticsPersistence,
+    EventBatch, EventQueue, QueuedEvent,
+};
 pub use error::{Error, Result};
 pub use http::{
     detect_platform, detect_platform_version, VerhubClientBuilder, PLATFORM_HEADER,
     PLATFORM_VERSION_HEADER,
 };
 // 这两个枚举出现在几乎每个调用点上，提到 crate 根省得调用方到处写 models::。
-pub use models::{LogLevel, Platform};
+pub use models::{LogLevel, Platform, TermsDocumentSlug};
 pub use public_api::PublicApi;
 
 use std::sync::Arc;
@@ -81,7 +85,6 @@ impl VerhubClient {
     pub fn builder(base_url: impl Into<String>) -> VerhubClientBuilder {
         VerhubClientBuilder::new(base_url)
     }
-
     pub(crate) fn from_inner(inner: Inner) -> Self {
         Self {
             inner: Arc::new(inner),

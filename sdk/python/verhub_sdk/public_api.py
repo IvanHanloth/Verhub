@@ -6,15 +6,20 @@ from ._http import BaseHttpClient, compact
 from ._unset import UNSET
 from .errors import VerhubError
 from .models import (
-    ActionRecordItem,
     AnnouncementItem,
     AnnouncementListResponse,
     CheckUpdateResponse,
+    EventSubjectDeleteResponse,
+    EventSubjectExport,
     FeedbackItem,
+    IngestEventsResponse,
     LogItem,
     Platform,
     ProjectItem,
     PublicFeedbackOptions,
+    TermsDocumentListResponse,
+    TermsDocumentSlug,
+    TermsDocumentView,
     VersionItem,
     VersionListResponse,
 )
@@ -24,13 +29,12 @@ class PublicApi:
     """
     公开接口，不需要凭据。
 
-    这些是客户端 App 会直接调用的那一组：查版本、查公告、报日志和行为。全部作用于
-    客户端绑定的项目（构造时传入的 ``project_key``），因此方法不再逐次收项目参数。
+    项目作用域的方法用客户端绑定的 ``project_key``，不再逐次收项目参数。
 
     同步与异步两个客户端共用这一份实现：方法把请求转交给底层客户端，绑在
     ``VerhubClient`` 上时直接返回结果，绑在 ``AsyncVerhubClient`` 上时返回协程，
-    要 ``await``。因此下面的返回值标注按同步视角写。发请求之前的本地校验
-    （缺 ``project_key`` 等）两种形态下都在调用当下就抛。
+    要 ``await``。返回值标注按同步视角写；本地校验（缺 ``project_key`` 等）
+    两种形态下都在调用当下就抛。
     """
 
     def __init__(self, http: BaseHttpClient) -> None:
@@ -190,7 +194,7 @@ class PublicApi:
 
     def get_feedback_options(self) -> PublicFeedbackOptions:
         """
-        反馈提交选项。客户端据此决定要不要显示「转发到 GitHub Issue」的勾选框。
+        取反馈提交选项，据此决定要不要显示「转发到 GitHub Issue」的勾选框。
 
         :return: 本项目是否开放转发，以及转发时联系方式是否必填
         """
@@ -216,9 +220,8 @@ class PublicApi:
         """
         提交用户反馈。
 
-        ``forward_to_github`` 为 True 时联系方式必填，这条本地就会拒绝
-        （抛 :class:`VerhubError`），不必往服务端跑一趟；项目是否开放转发只有
-        服务端知道，未开放时提交会拿到 400，Issue 建失败则整条反馈不会被记录（503）。
+        ``forward_to_github`` 为 True 时联系方式必填，本地即拒绝；项目未开放转发
+        时服务端返回 400，Issue 建失败时整条反馈不会被记录（503）。
 
         :param content: 反馈内容，最长 4096
         :param user_id: 调用方自己的用户标识
@@ -283,15 +286,141 @@ class PublicApi:
             ),
         )
 
-    def create_action_record(self, *, action_id: str, custom_data: Any = UNSET) -> ActionRecordItem:
+    # ---- 条款文档 ----
+
+    def list_terms(self) -> TermsDocumentListResponse:
         """
-        :param action_id: 行为定义 ID，需先在后台创建
-        :param custom_data: 自定义数据
-        :return: 创建出的行为记录
+        列出全部条款文档的标题与最后更新时间，不含正文。
+
+        不作用于绑定项目，条款是实例级的。
+
+        :return: 条款文档摘要列表
+        """
+        return self._http.request("GET", "/public/terms")
+
+    def get_terms(self, slug: TermsDocumentSlug) -> TermsDocumentView:
+        """
+        取条款文档正文（Markdown）。实例未自定义时返回内置正文。
+
+        :param slug: 文档标识，``privacy-policy`` 或 ``sdk-compliance``
+        :return: 含正文的条款文档
+        """
+        return self._http.request("GET", "/public/terms/{slug}", path_params={"slug": slug})
+
+    # ---- 事件采集 ----
+
+    def track(self, name: str, properties: Optional[dict] = None) -> None:
+        """
+        记录一次用户行为，入队即返回，不发起网络请求。
+
+        事件名无需预先登记，服务端第一次收到就自动建立定义。建议用小写下划线
+        形式（``checkout_clicked``）；服务端归一化为小写，只接受字母、数字、
+        下划线、点、连字符与冒号。
+
+        队列满 ``batch_size`` 条或每 ``flush_interval`` 秒发送一次；发送失败按
+        指数退避重试，每条事件带幂等键。未同意、已退出或采集被关闭时本调用是
+        空操作。异步客户端上返回协程，要 ``await``。
+
+        :param name: 事件名
+        :param properties: 自定义属性，按属性统计只看第一层
+        """
+        return self._http.analytics.track(name, properties)
+
+    def flush(self) -> None:
+        """
+        立即发送队列里的所有事件。退出前调用可以避免丢掉最后一批。
+
+        异步客户端上返回协程，要 ``await``。
+        """
+        return self._http.analytics.flush()
+
+    def opt_out(self) -> None:
+        """停止采集、丢弃待发队列、删除本地匿名标识，并把退出标记写入本地。"""
+        self._http.analytics.opt_out()
+
+    def opt_in(self) -> None:
+        """撤销退出，并生成一个新的匿名标识。"""
+        self._http.analytics.opt_in()
+
+    def has_opted_out(self) -> bool:
+        """当前是否处于退出状态。"""
+        return self._http.analytics.has_opted_out()
+
+    def grant_consent(self) -> None:
+        """``require_consent`` 模式下开闸。在此之前 SDK 不采集、不写盘。"""
+        self._http.analytics.grant_consent()
+
+    def revoke_consent(self) -> None:
+        """撤回同意，等价于 :meth:`opt_out` 并回到未同意状态。"""
+        self._http.analytics.revoke_consent()
+
+    def reset_identity(self) -> None:
+        """换一个新的匿名标识，切断与既往事件序列的关联。保持采集开启。"""
+        self._http.analytics.reset_identity()
+
+    @property
+    def distinct_id(self) -> Optional[str]:
+        """当前的匿名标识；未采集状态下为 ``None``。"""
+        return self._http.analytics.current_distinct_id()
+
+    def export_my_data(self, distinct_id: Optional[str] = None) -> EventSubjectExport:
+        """
+        导出本机匿名标识下的全部事件明细（GDPR Art.15 / Art.20）。
+
+        :param distinct_id: 省略则用当前标识
+        :return: 事件明细
+        :raises VerhubError: 没有可用的匿名标识（未采集或已退出）
+        """
+        return self._http.request(
+            "GET",
+            "/public/{projectKey}/events/me",
+            path_params={"projectKey": self._http.require_project_key()},
+            query={"distinct_id": self._require_distinct_id(distinct_id)},
+        )
+
+    def delete_my_data(self, distinct_id: Optional[str] = None) -> EventSubjectDeleteResponse:
+        """
+        删除本机匿名标识下的全部事件明细（GDPR Art.17）。小时汇总不在删除范围内。
+
+        :param distinct_id: 省略则用当前标识
+        :return: 删除结果
+        :raises VerhubError: 没有可用的匿名标识（未采集或已退出）
+        """
+        return self._http.request(
+            "DELETE",
+            "/public/{projectKey}/events/me",
+            path_params={"projectKey": self._http.require_project_key()},
+            query={"distinct_id": self._require_distinct_id(distinct_id)},
+        )
+
+    def ingest_events(
+        self,
+        *,
+        distinct_id: str,
+        events: list,
+        session_id: Any = UNSET,
+    ) -> IngestEventsResponse:
+        """
+        直接发一批事件，绕过本地队列。常规入口是 :meth:`track`。
+
+        :param distinct_id: 匿名标识
+        :param events: 事件数组，单批上限 50，每条须带 ``event_id`` 与 ``name``
+        :param session_id: 会话标识
+        :return: 逐条回执
         """
         return self._http.request(
             "POST",
-            "/public/{projectKey}/actions",
+            "/public/{projectKey}/events",
             path_params={"projectKey": self._http.require_project_key()},
-            body=compact({"action_id": action_id, "custom_data": custom_data}),
+            body=compact(
+                {"distinct_id": distinct_id, "session_id": session_id, "events": events}
+            ),
         )
+
+    def _require_distinct_id(self, explicit: Optional[str]) -> str:
+        resolved = explicit or self._http.analytics.current_distinct_id()
+        if not resolved:
+            raise VerhubError(
+                "没有可用的匿名标识：事件采集未启用或已退出。可显式传入 distinct_id。"
+            )
+        return resolved

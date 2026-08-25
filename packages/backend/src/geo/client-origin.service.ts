@@ -11,7 +11,7 @@ import { GeoLocationService } from "./geo-location.service"
 
 /**
  * The server-observed origin of one client submission, in the exact shape the
- * `Log` / `Feedback` / `ActionRecord` columns expect.
+ * `Log` / `Feedback` / `EventRecord` columns expect.
  *
  * `countryCode` is `UNKNOWN` / `LOCAL` on the stats path, but null here: the
  * stats table needs a non-null sentinel for its unique index, whereas a detail
@@ -38,7 +38,7 @@ type SubmissionRequest = ClientRequestLike & {
 /**
  * Builds the origin record every public submission endpoint stores.
  *
- * Centralised so logs, feedbacks and action records capture the same fields
+ * Centralised so logs, feedbacks and events capture the same fields
  * from the same sources — a per-controller copy of this would drift the moment
  * one of them gained a header the others did not.
  */

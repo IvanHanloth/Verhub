@@ -46,6 +46,26 @@ client.admin.upsert_version(
 凭据与绑定项目都可以事后更换：`client.set_token(token)` / `client.set_project_key(key)`。
 没绑定项目就调项目作用域的方法会抛 `VerhubError`。
 
+### 条款文档
+
+隐私政策与 SDK 合规性文档是**实例级**的，不作用于绑定项目，因此不需要
+`project_key` 也能读：
+
+```python
+for doc in client.public.list_terms()["data"]:
+    print(doc["slug"], doc["title"], doc["updated_at"])
+
+policy = client.public.get_terms("privacy-policy")
+print(policy["content"])          # Markdown；实例未自定义时是内置正文
+```
+
+管理端可以改写正文，只接受管理员 JWT（API Key 会得到 401）：
+
+```python
+client.admin.update_terms_document("privacy-policy", custom=True, content="# 隐私政策\n...")
+client.admin.reset_terms_document("privacy-policy")   # 关掉自定义并丢弃草稿
+```
+
 ## 省略与置空
 
 可选参数的默认值是 `UNSET` 而不是 `None`，这两者含义不同：
@@ -148,10 +168,9 @@ tkinter 用 `after()`、wxPython 用 `wx.Timer` 接 `drain` 同理。
 
 ## 重试与超时
 
-- 默认对**连接失败和幂等请求（GET 等）自动重试 2 次**并指数退避；`check_update`
-  这类 POST 只在「连接没建起来」（请求没送到服务端，重放一定安全）时重试，拿到
-  502/503/504 不会被重放。读超时一律不重试——请求可能已经在服务端生效了。
-  用 `retries=` 调整，传 `0` 关闭：`VerhubClient(base_url, "verhub", retries=3)`。
+- **GET / HEAD** 在连接失败与 502/503/504 时默认自动重试 2 次并指数退避；其余方法
+  （含 `check_update` 这类 POST）一律不重放。读超时也不重试——请求可能已经在服务端
+  生效了。用 `retries=` 调整，传 `0` 关闭：`VerhubClient(base_url, "verhub", retries=3)`。
 - `timeout` 支持 `(connect, read)` 元组，分别指定连接与读取超时——更新检查常
   希望连接快速失败、读取宽松些：`VerhubClient(base_url, timeout=(3.0, 20.0))`。
   也可以直接传 `httpx.Timeout(...)` 做精细控制，或传 `None` 不限时。
@@ -207,6 +226,150 @@ VerhubClient(base_url, "verhub", app_identifier="MyApp/1.2")
 # UA: verhub-sdk-python/x.y.z MyApp/1.2
 ```
 
+## 事件采集
+
+```python
+client.public.track("checkout_clicked", {"plan": "pro"})
+client.public.flush()   # 退出前手动催发；close() 与 with 退出时也会自动 flush
+```
+
+`track()` 入队即返回，不发起网络请求。**事件名无需预先在后台登记**，服务端第一次
+收到就自动建立定义；建议用小写下划线形式，服务端只接受字母、数字、下划线、点、
+连字符与冒号。
+
+异步客户端上 `track()` / `flush()` 返回协程，要 `await`：
+
+```python
+await client.public.track("app_opened")
+await client.public.flush()
+```
+
+### 攒批与发送时机
+
+```python
+VerhubClient(base_url, "verhub", analytics={
+    "flush_interval": 5.0,      # 秒（不是毫秒），默认 5.0
+    "batch_size": 20,           # 攒够就发，上限 50
+    "max_queue_size": 500,      # 超出丢最旧的
+    "session_timeout": 1800.0,  # 会话空闲多久换新，秒
+})
+```
+
+两个条件谁先到算谁。`batch_size` 会被钳到 50（服务端单批上限
+`VERHUB_EVENT_BATCH_MAX`），它同时也是每个请求的分片大小。
+
+想让不常用的功能少上报几次，把间隔拉长即可：
+
+```python
+VerhubClient(base_url, "verhub", analytics={
+    "flush_interval": 24 * 60 * 60,
+    "max_queue_size": 2000,
+})
+```
+
+> 硬边界：**攒够 50 条一定会立即发**，`batch_size` 拦不住。所以「24 小时发一次」
+> 成立的前提是这段时间内不足 50 条事件。
+
+后台发送走 `_worker.py` 的 `BackgroundWorker`（异步版走原生协程）。进程提前退出不会
+丢数据——队列是落盘的，下次启动读回来并排一次发送。所以拉长间隔的实际语义是
+「**最长** 24 小时」。
+
+### 本地存储
+
+这是整个 SDK 里**唯一**会在设备上写入数据的能力。其余能力（查询、检查更新、反馈、
+日志）仍然一个字节都不落盘。
+
+| 平台    | 位置                                                                  |
+| ------- | --------------------------------------------------------------------- |
+| Windows | `%LOCALAPPDATA%\verhub-sdk\<命名空间>.json`                           |
+| macOS   | `~/Library/Application Support/verhub-sdk/<命名空间>.json`            |
+| Linux   | `$XDG_STATE_HOME/verhub-sdk/<命名空间>.json`，未设则 `~/.local/state` |
+
+每个命名空间一个文件，文件里三个键：
+
+| 键            | 内容                  |
+| ------------- | --------------------- |
+| `distinct_id` | 匿名标识，随机 UUIDv4 |
+| `queue`       | 待发送事件            |
+| `opt_out`     | 退出标记，值为 `"1"`  |
+
+**匿名标识是随机数，不含任何设备特征**，也不读取设备上的既有标识（序列号、MAC、
+广告 ID）。它只在本应用本实例内有效，跨应用、跨设备都识别不出同一个人。存在的唯一
+理由是把同一使用者的事件串成序列——单条行为记录没有分析价值，漏斗与留存必须能组合
+才算得出来。
+
+#### 多实例、多项目怎么隔离
+
+本地状态按**服务实例地址 + 项目标识**隔离，命名空间是
+`<origin 哈希>-<小写 project_key>`（origin 只看协议+主机+端口，路径忽略）。这一层是
+必须的：同一个 `project_key` 在两套自部署实例上是两批毫不相干的用户，共用匿名标识会让
+统计串味，共用待发队列更会把事件投递到错误的实例。
+
+同一实例同一项目下的两个应用如需各自独立，显式给 `namespace`；四个语言的哈希实现逐位
+一致，同一实例在任何语言下都落到同一个命名空间。
+
+```python
+VerhubClient(base_url, "verhub", analytics={"namespace": "my-app"})
+```
+
+写入是「先写临时文件再 `os.replace`」，进程中途退出不会留下损坏的状态文件。同一命名
+空间下两个进程同时写仍是后写者赢——事件带幂等键，最坏结果是重发（服务端去重）。
+
+`set_project_key()` 换绑项目后，队列会按新命名空间重建；旧项目攒下的事件留在它自己的
+文件里等下次补发，**不会**被错发进新项目。
+
+目录不可写时静默退回内存：采集不该因为存不下标识就整个失效，但也不会假装落了盘。
+用 `storage=` 可以接管持久化位置。
+
+`persistence` 控制落盘程度：`"device"`（默认，重启后仍是同一标识）、`"session"`
+（只在内存里，重启即换新）、`"none"`（完全不生成持久标识，也不落盘）。
+
+### 退出与同意
+
+```python
+client.public.opt_out()         # 停采 + 清空队列 + 删除本地标识 + 落盘退出标记
+client.public.opt_in()          # 撤销退出，生成【新的】标识，不复用退出前那个
+client.public.has_opted_out()
+client.public.reset_identity()  # 继续采集但换新标识，切断与既往序列的关联
+client.public.distinct_id       # 当前标识；未采集状态下为 None
+```
+
+`opt_out()` 会**删掉** `distinct_id` 与 `queue`，同时**写入** `opt_out`。退出标记
+本身必须落盘，否则重启即失效——存「用户已拒绝」这个事实是执行用户选择所必需的，
+不在需要同意的范围内。
+
+面向欧盟用户必须开 `require_consent`：
+
+```python
+client = VerhubClient(base_url, "verhub", analytics={"require_consent": True})
+client.public.grant_consent()    # 取得同意后开闸
+client.public.revoke_consent()   # 撤回，等价于 opt_out 并回到未同意状态
+```
+
+开启后在 `grant_consent()` 之前**一个字节都不写、一条都不采**（含匿名标识的生成），
+事件直接丢弃而非在内存里暂存。ePrivacy Directive Art.5(3) 要求在设备上写入或读取
+信息**之前**取得同意，分析用途不适用「严格必要」例外。同意的取得与举证由接入方
+负责，SDK 无从判断某次调用是否已获授权。
+
+Python 侧没有浏览器的 GPC / DNT 信号，因此不提供 `respect_do_not_track`。服务端
+另有两道不依赖 SDK 的闸门：请求头 `x-verhub-do-not-track: 1`，以及项目级总开关
+`event_collection_enabled`。命中任一都返回 202 但不入库、不计数——这是正常的用户
+选择，不是错误，所以不返回 4xx。
+
+### 数据主体权利
+
+```python
+client.public.export_my_data()   # 导出本机标识下的全部明细（Art.15 / Art.20）
+client.public.delete_my_data()   # 删除（Art.17）
+```
+
+两者都可显式传 `distinct_id`。管理端可代为删除：
+`client.admin.delete_event_subject(distinct_id)`——用户往往通过客服而不是应用内
+按钮提出请求。
+
+删除范围是事件明细与日活去重记录；**小时汇总不删**。它只保存计数、不含任何标识符、
+精度为自然小时，无法回溯到具体设备或还原访问序列，属于匿名数据。
+
 ## 其他
 
 - 返回值是解析后的 `dict`；`verhub_sdk.models` 里有对应的 `TypedDict`，
@@ -222,11 +385,11 @@ VerhubClient(base_url, "verhub", app_identifier="MyApp/1.2")
 SDK 的 HTTP 底座从 `requests` 换成了 [httpx](https://www.python-httpx.org/)，
 接口面本身没变，但有三处破坏性变更：
 
-| 变更 | 旧 | 新 |
-| --- | --- | --- |
-| 依赖 | `requests` | `httpx` |
-| 自定义传输 | `session=requests.Session()` | `http_client=httpx.Client()` |
-| `close()` 对自带客户端 | 一并关闭 | 不动，由调用方自己关 |
+| 变更                   | 旧                           | 新                           |
+| ---------------------- | ---------------------------- | ---------------------------- |
+| 依赖                   | `requests`                   | `httpx`                      |
+| 自定义传输             | `session=requests.Session()` | `http_client=httpx.Client()` |
+| `close()` 对自带客户端 | 一并关闭                     | 不动，由调用方自己关         |
 
 `AsyncVerhubClient` 的用法不变，但内部从线程池换成了原生异步；捕获底层异常时注意
 `VerhubConnectionError.cause` 现在是 `httpx` 的异常类型（原先是 `requests` 的）。

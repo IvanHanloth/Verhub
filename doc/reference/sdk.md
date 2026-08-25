@@ -26,7 +26,7 @@ Verhub 提供四个官方 SDK。它们共享同一套接口设计，只是命名
   `admin` 覆盖需要凭据的管理接口。两者共用同一份连接与凭据。
 - **客户端绑定项目**：构造时传入 `project_key`，项目作用域的方法（几乎所有
   `public` 与大半 `admin` 方法）就不再逐次收项目参数；跨项目的方法（列出全部
-  项目、各类统计、按 id 操作行为）不受影响。绑定可事后用 `set_project_key`
+  项目、各类统计、按 id 操作事件定义与看板卡片）不受影响。绑定可事后用 `set_project_key`
   更换；没绑定就调项目作用域方法会直接抛错。
 - **`base_url` 带 `/api/v1` 前缀**：也就是浏览器里能直接打开 `/health` 的地址。
 - **凭据即 JWT 或 API Key**：`POST /auth/login` 拿到的管理员 JWT（默认 2 小时
@@ -42,8 +42,8 @@ Verhub 提供四个官方 SDK。它们共享同一套接口设计，只是命名
   （Rust 为 `Error::MissingToken`），服务端返回非 2xx 抛 `VerhubApiError`（带
   `status` / `message` / `body`），请求没到服务端抛 `VerhubConnectionError`，都继承自
   `VerhubError`。
-- **默认重试**：连接失败与幂等请求（GET）默认自动重试 2 次并指数退避，POST（含
-  check-update）不重放；各语言均可用 `retries` 调整或关闭。
+- **默认重试**：GET / HEAD 在连接失败与 502/503/504 时默认自动重试 2 次并指数退避；
+  其余方法（含 check-update 这类 POST）一律不重放。各语言均可用 `retries` 调整或关闭。
 
 ::: warning 不要把管理凭据放进浏览器
 `admin` 命名空间在纯 JS / TS 版里同样可用，但任何访客都能从前端代码里读到写死的
@@ -188,7 +188,16 @@ HTTP 列里的 `{k}` 是项目 key，由客户端绑定自动填入，方法本�
 | 反馈提交选项   | `get_feedback_options`       | `getFeedbackOptions`      | `GET /public/{k}/feedbacks/options`       |
 | 提交反馈       | `create_feedback`            | `createFeedback`          | `POST /public/{k}/feedbacks`              |
 | 上报日志       | `upload_log`                 | `uploadLog`               | `POST /public/{k}/logs`                   |
-| 上报行为       | `create_action_record`       | `createActionRecord`      | `POST /public/{k}/actions`                |
+| 记录事件       | `track`                      | `track`                   | 入队，攒批后发 `POST /public/{k}/events`  |
+| 立即发送       | `flush`                      | `flush`                   | `POST /public/{k}/events`                 |
+| 导出我的数据   | `export_my_data`             | `exportMyData`            | `GET /public/{k}/events/me`               |
+| 删除我的数据   | `delete_my_data`             | `deleteMyData`            | `DELETE /public/{k}/events/me`            |
+| 条款文档列表   | `list_terms`                 | `listTerms`               | `GET /public/terms`                       |
+| 条款文档正文   | `get_terms`                  | `getTerms`                | `GET /public/terms/{slug}`                |
+
+> 条款文档是**实例级**的，不作用于绑定项目，因此不需要 `projectKey` 也能调用。
+> `slug` 目前有 `privacy-policy`（隐私政策）与 `sdk-compliance`（SDK 合规性文档）；
+> 实例未自定义时返回内置正文，所以已登记的文档任何时候都有正文可读。
 
 > 反馈能否转发到 GitHub Issue 由项目配置决定，先用 `get_feedback_options` 查
 > `github_forward_available` 再决定是否给用户显示「同时提交到 GitHub Issue」的选项。
@@ -241,14 +250,22 @@ HTTP 列里的 `{k}` 是项目 key，由客户端绑定自动填入，方法本�
 | 日志列表            | `list_logs`                            | `listLogs`                         | `GET /admin/projects/{k}/logs`                             |
 | 补录日志            | `create_log`                           | `createLog`                        | `POST /admin/projects/{k}/logs`                            |
 | 日志统计            | `get_log_statistics`                   | `getLogStatistics`                 | `GET /admin/logs/statistics`                               |
-| 行为定义列表        | `list_actions`                         | `listActions`                      | `GET /admin/projects/{k}/actions`                          |
-| 创建行为定义        | `create_action`                        | `createAction`                     | `POST /admin/projects/actions`                             |
-| 更新行为定义        | `update_action`                        | `updateAction`                     | `PATCH /admin/actions/{id}`                                |
-| 删除行为定义        | `delete_action`                        | `deleteAction`                     | `DELETE /admin/actions/{id}`                               |
-| 行为记录列表        | `list_action_records`                  | `listActionRecords`                | `GET /admin/actions/{id}`                                  |
-| 行为记录详情        | `get_action_record`                    | `getActionRecord`                  | `GET /admin/actions/record/{id}`                           |
-| 行为定义统计        | `get_action_statistics`                | `getActionStatistics`              | `GET /admin/actions/statistics`                            |
-| 行为记录统计        | `get_action_record_statistics`         | `getActionRecordStatistics`        | `GET /admin/actions/record/statistics`                     |
+| 事件定义列表        | `list_event_definitions`               | `listEventDefinitions`             | `GET /admin/projects/{k}/events/definitions`               |
+| 更新事件定义        | `update_event_definition`              | `updateEventDefinition`            | `PATCH /admin/projects/{k}/events/definitions/{id}`        |
+| 删除事件定义        | `delete_event_definition`              | `deleteEventDefinition`            | `DELETE /admin/projects/{k}/events/definitions/{id}`       |
+| 事件概览            | `get_event_overview`                   | `getEventOverview`                 | `GET /admin/projects/{k}/events/stats/overview`            |
+| 事件趋势            | `get_event_timeseries`                 | `getEventTimeseries`               | `GET /admin/projects/{k}/events/stats/timeseries`          |
+| 事件分布            | `get_event_breakdown`                  | `getEventBreakdown`                | `GET /admin/projects/{k}/events/stats/breakdown`           |
+| 事件热力图          | `get_event_heatmap`                    | `getEventHeatmap`                  | `GET /admin/projects/{k}/events/stats/heatmap`             |
+| 漏斗分析            | `get_funnel`                           | `getFunnel`                        | `POST /admin/projects/{k}/events/analysis/funnel`          |
+| 留存分析            | `get_retention`                        | `getRetention`                     | `POST /admin/projects/{k}/events/analysis/retention`       |
+| 路径分析            | `get_paths`                            | `getPaths`                         | `POST /admin/projects/{k}/events/analysis/paths`           |
+| 指标 DSL 求值       | `run_event_query`                      | `runEventQuery`                    | `POST /admin/projects/{k}/events/analysis/query`           |
+| 看板卡片列表        | `list_dashboard_cards`                 | `listDashboardCards`               | `GET /admin/projects/{k}/events/dashboards/cards`          |
+| 创建看板卡片        | `create_dashboard_card`                | `createDashboardCard`              | `POST /admin/projects/{k}/events/dashboards/cards`         |
+| 更新看板卡片        | `update_dashboard_card`                | `updateDashboardCard`              | `PATCH /admin/projects/{k}/events/dashboards/cards/{id}`   |
+| 删除看板卡片        | `delete_dashboard_card`                | `deleteDashboardCard`              | `DELETE /admin/projects/{k}/events/dashboards/cards/{id}`  |
+| 删除某标识的事件    | `delete_event_subject`                 | `deleteEventSubject`               | `DELETE /admin/projects/{k}/events/subjects/{distinct_id}` |
 | 查 Webhook 配置     | `get_github_webhook`                   | `getGithubWebhook`                 | `GET /admin/projects/{k}/github-webhook`                   |
 | 设置 Webhook secret | `set_github_webhook_secret`            | `setGithubWebhookSecret`           | `PUT /admin/projects/{k}/github-webhook`                   |
 | 重置 Webhook secret | `regenerate_github_webhook_secret`     | `regenerateGithubWebhookSecret`    | `POST /admin/projects/{k}/github-webhook/regenerate`       |
@@ -259,9 +276,18 @@ HTTP 列里的 `{k}` 是项目 key，由客户端绑定自动填入，方法本�
 | 查 GitHub 集成      | `get_github_integration`               | `getGithubIntegration`             | `GET /admin/projects/{k}/github-integration`               |
 | 改 GitHub 集成      | `update_github_integration`            | `updateGithubIntegration`          | `PUT /admin/projects/{k}/github-integration`               |
 | 预览仓库 Issue 模板 | `get_github_integration_repo_template` | `getGithubIntegrationRepoTemplate` | `GET /admin/projects/{k}/github-integration/repo-template` |
+| 条款文档设置列表    | `list_terms_documents`                 | `listTermsDocuments`               | `GET /admin/terms/documents`                               |
+| 查单份条款文档      | `get_terms_document`                   | `getTermsDocument`                 | `GET /admin/terms/documents/{slug}`                        |
+| 改条款文档          | `update_terms_document`                | `updateTermsDocument`              | `PUT /admin/terms/documents/{slug}`                        |
+| 恢复内置条款正文    | `reset_terms_document`                 | `resetTermsDocument`               | `DELETE /admin/terms/documents/{slug}`                     |
 
 > GitHub App 实例配置（`/admin/github-app`）只接受管理员 JWT；用 API key 调用会得到 401。
 > 仓库模板预览拉取失败不抛异常，原因放在返回值的 `error` 字段里。
+>
+> 条款文档同样只接受管理员 JWT，且是实例级的，不作用于绑定项目。`update_terms_document`
+> 是部分更新：`custom` 关掉时 `content` 仍会作为草稿留在库里，重新打开即可继续编辑；
+> `content` 传空串表示清除草稿。`reset_terms_document` 关掉自定义开关并丢弃草稿，
+> 前台随即回到内置正文。
 
 ## 常见流程：检查更新
 
@@ -351,9 +377,10 @@ match client.admin().list_projects().await {
 
 ## 重试、超时与异步
 
-- **重试**：连接失败与幂等 GET 默认自动重试 2 次并指数退避，POST 不重放（连接压根
-  没建起来时除外——请求没送到服务端，重放一定安全）。各语言用 `retries`
-  （Python/TS/JS 为构造参数，Rust 为 `.retries(n)`）调整，`0` 关闭。
+- **重试**：GET / HEAD 在连接失败与 502/503/504 时默认自动重试 2 次并指数退避，
+  其余方法一律不重放；读超时也不重试（请求可能已在服务端生效）。四个语言的幂等方法
+  集合相同。各语言用 `retries`（Python/TS/JS 为构造参数，Rust 为 `.retries(n)`）调整，
+  `0` 关闭。
 - **超时**：Python 的 `timeout` 支持 `(connect, read)` 元组（也可直接传
   `httpx.Timeout`）、Rust 另有 `.connect_timeout(...)`，可让连接阶段快速失败、读取
   宽松些；TS/JS 基于 `fetch` 只有整体 `timeoutMs`。
@@ -365,6 +392,142 @@ match client.admin().list_projects().await {
 - **GUI（PySide6 等）**：Qt/tkinter 跑的是自己的事件循环，用不上 `await`。Python 同步
   客户端的 `client.background` 把调用丢到后台线程池，回调排队等主线程调用
   `drain()` 时才执行——接到框架自带的定时器上即可，SDK 不引入任何 GUI 依赖。
+
+## 行为事件采集
+
+### 埋一个点
+
+事件名**无需预先在服务端登记**——服务端第一次收到就自动建立定义，随后出现在
+后台的「行为分析 → 事件清单」里。
+
+::: code-group
+
+```ts [TS / JS / 浏览器]
+client.public.track("checkout_clicked", { plan: "pro" })
+```
+
+```python [Python]
+client.public.track("checkout_clicked", {"plan": "pro"})
+```
+
+```rust [Rust]
+client.public().track("checkout_clicked", None).await?;
+```
+
+:::
+
+`track` **入队即返回，不发起网络请求，也不阻塞调用方**——埋点写在 UI 事件处理里，
+任何一次网络等待都会被用户感知成卡顿。队列满 20 条或每 5 秒发送一次；发送失败按
+指数退避重试。每条事件带一个随机生成的幂等键，因此重发不会在服务端产生重复，这也
+是**事件采集成为「提交类请求一律不重试」这条规则的唯一例外**的前提。
+
+进程退出前调一次 `flush()`，把攒着还没发的最后一批送出去。
+
+**浏览器不需要你操心这件事**：SDK 监听 `visibilitychange` 与 `pagehide`，在标签页被
+关闭、切到后台或者跳转离开时用 `navigator.sendBeacon()` 把队列送出去。定时器在这里
+救不了场——页面一关 `setTimeout` 就不会再触发了；而 `sendBeacon` 正是为此设计的，
+浏览器会在页面消失之后继续完成投递，`fetch` 则会被直接中止。
+
+浏览器拒收（载荷过大或投递队列已满）时事件留在 `localStorage`，下次打开页面补发。
+beacon 设不了请求头，所以平台声明改走请求体——不这么做的话服务端会从 User-Agent
+推断出宿主系统，与同一客户端经 `fetch` 上报的 `web` 对不上，平台分布就废了。
+
+::: warning Rust 的差异
+Rust 版不起后台定时任务（那会要求调用方必须在 tokio 运行时里，且任务生命周期不受
+控），改为在下一次 `track` 时顺带检查是否已过发送间隔。因此 Rust 侧**必须**在退出前
+调 `flush()`，否则最后一批会丢。
+:::
+
+| 环境              | 定时发送                | 退出时兜底                                           |
+| ----------------- | ----------------------- | ---------------------------------------------------- |
+| 浏览器            | 后台定时器              | `visibilitychange` / `pagehide` + `sendBeacon`，自动 |
+| Node / Bun / Deno | 后台定时器              | 退出前自行调 `flush()`                               |
+| Python            | 守护线程定时器          | `client.close()` 会自动 flush                        |
+| Rust              | 无，随 `track` 检查间隔 | 退出前自行调 `flush()`                               |
+
+### 它在设备上写什么
+
+这是整个 SDK 里**唯一**会在设备上写入数据的能力，其余能力仍然一个字节都不落盘。
+启用时会保存三样东西：
+
+| 内容       | 说明                                                                           |
+| ---------- | ------------------------------------------------------------------------------ |
+| 匿名标识   | 首次调用 `track` 时生成的随机 UUID。**不读取任何设备特征**，与设备指纹是两回事 |
+| 待发送队列 | 尚未上传的事件，进程重启后补发                                                 |
+| 退出标记   | 用户退出后写入；不写的话退出在重启后就失效了                                   |
+
+位置：浏览器为 `localStorage`；桌面端为用户状态目录下的 `verhub-sdk/<命名空间>.json`——
+Windows 在 `%LOCALAPPDATA%`，macOS 在 `~/Library/Application Support`，Linux 在
+`$XDG_STATE_HOME`（默认 `~/.local/state`）。
+
+#### 命名空间：按自部署实例隔离
+
+命名空间是 `<origin 哈希>-<小写 project_key>`，origin 只看协议+主机+端口，路径忽略。
+带上实例地址是必须的：同一个 `project_key` 在两套自部署实例上是两批毫不相干的用户，
+共用匿名标识会让统计串味，共用待发队列更会**把事件投递到错误的实例**。
+
+| 场景                         | 结果                                      |
+| ---------------------------- | ----------------------------------------- |
+| 同实例、同项目、不同挂载路径 | 同一命名空间（粒度是 origin）             |
+| 同实例、不同项目             | 各自独立                                  |
+| 不同实例、同项目             | 各自独立                                  |
+| 同实例、同项目、两个应用     | 默认共用；要独立就显式给 `namespace` 选项 |
+
+哈希是 FNV-1a 32 位、按 UTF-8 字节计算，四个语言逐位一致——同一实例在任何语言下都落到
+同一个命名空间。桌面端每个命名空间一个文件，写入「先写临时文件再原子替换」，进程中途
+退出不会留下损坏的状态文件；同一命名空间下两个进程并发写仍是后写者赢，事件带幂等键，
+最坏结果是重发而非重复入库。
+
+换绑项目（`set_project_key` / `setProjectKey`）后队列按新命名空间重建，旧项目攒下的
+事件留在它自己的文件里等下次补发，不会被错发进新项目。
+
+**在应用调用 `track` 之前，一个字节都不会写入。**
+
+需要一个稳定标识的唯一原因是：单条行为记录没有分析价值，漏斗与留存必须能把同一个
+人的事件串起来才算得出来。
+
+### 退出与同意
+
+| 方法                                   | 效果                                                       |
+| -------------------------------------- | ---------------------------------------------------------- |
+| `opt_out()` / `optOut()`               | 停止采集、清空队列、**删除本地匿名标识**，并持久化退出标记 |
+| `opt_in()` / `optIn()`                 | 撤销退出。生成**全新的**标识，不复用退出前的那个           |
+| `has_opted_out()` / `hasOptedOut()`    | 查询当前状态                                               |
+| `reset_identity()` / `resetIdentity()` | 保持采集但换标识，切断与既往序列的关联                     |
+| `export_my_data()` / `exportMyData()`  | 导出该标识下的全部事件明细（GDPR Art.15 / Art.20）         |
+| `delete_my_data()` / `deleteMyData()`  | 删除该标识下的全部事件明细（GDPR Art.17）                  |
+
+浏览器环境下默认还会尊重 `navigator.globalPrivacyControl`（GPC）与
+`navigator.doNotTrack`，命中任一即等同于用户已退出。
+
+**用户退出后 SDK 根本不发请求**，而不是发一个会被服务端丢弃的请求。直接对接 HTTP
+接口的接入方可以改用请求头 `x-verhub-do-not-track: 1`。
+
+::: danger 面向欧盟用户必须开启事前同意
+GDPR 要求行为分析类处理具备合法性基础（实践中即用户同意）；《电子隐私指令》第 5 条
+第 3 款进一步要求**在设备上写入或读取信息之前**取得同意，分析用途不适用其中的
+「严格必要」例外。
+
+因此面向欧盟用户时，初始化必须传 `requireConsent`（Python 为 `require_consent`），
+并在取得用户明确同意后才调用 `grant_consent()`。此前 SDK 不生成标识、不写盘、不采集，
+期间产生的事件直接丢弃而非暂存。撤回同意用 `revoke_consent()`。
+
+**同意的取得方式、范围与举证责任在接入方一侧**——SDK 与服务端都无从判断某一次调用
+是否已经取得同意。
+:::
+
+### 配置
+
+| 目标                   | 配置方式                                                                                                        |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------- |
+| 完全关闭               | TS / 浏览器 `analytics: { enabled: false }`；Python `analytics={"enabled": False}`；Rust `.without_analytics()` |
+| 只在同意后采集         | `requireConsent` / `require_consent`                                                                            |
+| 不在设备上保存任何内容 | `persistence: "none"`（事件仍可上报，但无法做按人的分析）                                                       |
+| 标识只在本次运行内有效 | `persistence: "session"`（漏斗仍可用，跨天留存无法计算）                                                        |
+| 调整发送节奏           | `flushIntervalMs` / `batchSize` / `maxQueueSize`                                                                |
+| 隔离本地状态           | `namespace`（默认由实例地址与项目算出，通常不用给）                                                             |
+
+完整的字段清单、存储位置与合规义务见实例内的《SDK 合规性文档》与《隐私政策》。
 
 ## 平台声明与请求统计
 

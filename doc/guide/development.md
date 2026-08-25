@@ -171,7 +171,8 @@ JWT 是管理员身份，天然拥有全部权限。API Key 则按 scope 逐个�
 
 - 读接口（GET）要求 `<资源>:read`，写接口（POST/PUT/PATCH/DELETE）要求 `<资源>:write`；
 - **写权限不隐含读权限**——需要读就显式授予 `:read`；
-- 资源即 `projects` / `versions` / `announcements` / `feedbacks` / `logs` / `actions`，另有 `stats:read` 用于请求统计接口。
+- 资源即 `projects` / `versions` / `announcements` / `feedbacks` / `logs` / `events`，另有 `stats:read` 用于请求统计接口。
+- 事件分析里有四条只读接口用 POST（漏斗、留存、路径、指标 DSL），它们仍然只需要 `events:read` —— 用 POST 只是因为入参是结构化数组，塞进 query string 既超长又要自己发明一套编码。
 
 Key 的项目范围（全部项目或指定项目）也会一并校验。scope 或项目范围不匹配时返回 `401`。
 

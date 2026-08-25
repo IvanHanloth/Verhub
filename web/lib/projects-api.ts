@@ -15,6 +15,10 @@ export type ProjectItem = {
   optional_update_min_comparable_version?: string | null
   optional_update_max_comparable_version?: string | null
   stats_retention_days?: number
+  /** 事件采集总开关。关掉后采集端点空转，既有数据保留。 */
+  event_collection_enabled?: boolean
+  /** 事件明细的保留时长（天），独立于 stats_retention_days 且默认更短。 */
+  event_retention_days?: number
   /** 改名后保留的旧 Project Key（别名），均可访问到本项目。新到旧排序。 */
   aliases?: string[]
   /** 本条 name / description 来自哪个语言的译文；null 表示项目自身的值。 */
@@ -65,6 +69,8 @@ export type ProjectMutationInput = {
   optional_update_min_comparable_version?: string | null
   optional_update_max_comparable_version?: string | null
   stats_retention_days?: number
+  event_collection_enabled?: boolean
+  event_retention_days?: number
   /** 传了即整体替换全部译文，空数组即清空；不传则保持原样。 */
   translations?: ProjectTranslation[]
 }

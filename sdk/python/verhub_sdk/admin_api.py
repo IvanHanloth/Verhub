@@ -1,38 +1,51 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 from ._http import BaseHttpClient, compact
 from ._unset import UNSET
 from .models import (
-    ActionItem,
-    ActionListResponse,
-    ActionRecordItem,
-    ActionRecordListResponse,
-    ActionStatistics,
     AnnouncementItem,
     AnnouncementListResponse,
     AnnouncementStatistics,
+    DashboardCardItem,
+    DashboardCardListResponse,
     DeleteSuccessResponse,
+    EventBreakdownResponse,
+    EventDefinitionItem,
+    EventDefinitionListResponse,
+    EventHeatmapResponse,
+    EventOverviewResponse,
+    EventQuery,
+    EventQueryResponse,
+    EventSubjectDeleteResponse,
+    EventTimeseriesResponse,
+    FeedbackIssueRepoTemplatePreview,
     FeedbackItem,
     FeedbackListResponse,
-    FeedbackIssueRepoTemplatePreview,
     FeedbackStatistics,
+    FunnelResponse,
+    FunnelStep,
     GithubAppConfig,
     GithubReleaseVersionPreview,
     GithubRepoProjectPreview,
     GithubWebhookSecretRevealed,
     GithubWebhookSettings,
-    ProjectGithubIntegration,
     LogItem,
     LogListResponse,
     LogStatistics,
-    ProjectItem,
+    PathsResponse,
     ProjectAliasListResponse,
+    ProjectGithubIntegration,
+    ProjectItem,
+    ProjectListResponse,
     ProjectLocaleItem,
     ProjectLocaleListResponse,
-    ProjectListResponse,
     ProjectStatistics,
+    RetentionResponse,
+    TermsDocumentConfigListResponse,
+    TermsDocumentConfigView,
+    TermsDocumentSlug,
     VersionImportResult,
     VersionItem,
     VersionListResponse,
@@ -50,11 +63,11 @@ class AdminApi:
     写权限不隐含读权限。
 
     项目作用域的方法用客户端绑定的 ``project_key``，不再逐次收项目参数；跨项目的
-    方法（``list_projects``、各类统计、按 id 操作行为等）不涉及绑定项目。
+    方法（``list_projects``、各类统计、条款文档等）不涉及绑定项目。
 
     同步与异步两个客户端共用这一份实现：方法把请求转交给底层客户端，绑在
     ``VerhubClient`` 上时直接返回结果，绑在 ``AsyncVerhubClient`` 上时返回协程，
-    要 ``await``。因此下面的返回值标注按同步视角写。
+    要 ``await``。返回值标注按同步视角写。
     """
 
     def __init__(self, http: BaseHttpClient) -> None:
@@ -99,6 +112,8 @@ class AdminApi:
         optional_update_min_comparable_version: Any = UNSET,
         optional_update_max_comparable_version: Any = UNSET,
         stats_retention_days: Any = UNSET,
+        event_collection_enabled: Any = UNSET,
+        event_retention_days: Any = UNSET,
         translations: Any = UNSET,
     ) -> ProjectItem:
         """
@@ -117,6 +132,8 @@ class AdminApi:
         :param optional_update_min_comparable_version: 可选更新范围下限
         :param optional_update_max_comparable_version: 可选更新范围上限
         :param stats_retention_days: 请求统计保留天数，1..365，默认 365
+        :param event_collection_enabled: 事件采集总开关，默认 true
+        :param event_retention_days: 事件明细保留天数，1..365，默认 90
         :param translations: 项目名称与描述的译文（ProjectTranslation 列表）。传了即整体
             替换全部译文，空列表即清空；语言必须先在项目里注册，否则整个请求 400
         :return: 创建出的项目
@@ -143,6 +160,8 @@ class AdminApi:
                         optional_update_max_comparable_version
                     ),
                     "stats_retention_days": stats_retention_days,
+                    "event_collection_enabled": event_collection_enabled,
+                    "event_retention_days": event_retention_days,
                     "translations": translations,
                 }
             ),
@@ -176,6 +195,8 @@ class AdminApi:
         optional_update_min_comparable_version: Any = UNSET,
         optional_update_max_comparable_version: Any = UNSET,
         stats_retention_days: Any = UNSET,
+        event_collection_enabled: Any = UNSET,
+        event_retention_days: Any = UNSET,
         translations: Any = UNSET,
     ) -> ProjectItem:
         """
@@ -195,6 +216,8 @@ class AdminApi:
         :param optional_update_min_comparable_version: 可选更新范围下限
         :param optional_update_max_comparable_version: 可选更新范围上限
         :param stats_retention_days: 请求统计保留天数，1..365
+        :param event_collection_enabled: 事件采集总开关，默认 true
+        :param event_retention_days: 事件明细保留天数，1..365
         :param translations: 项目译文。传了即整体替换全部译文，空列表即清空；不传则不动
         :return: 更新后的项目
         """
@@ -221,6 +244,8 @@ class AdminApi:
                         optional_update_max_comparable_version
                     ),
                     "stats_retention_days": stats_retention_days,
+                    "event_collection_enabled": event_collection_enabled,
+                    "event_retention_days": event_retention_days,
                     "translations": translations,
                 }
             ),
@@ -973,135 +998,499 @@ class AdminApi:
         """
         return self._http.request("GET", "/admin/logs/statistics", auth=True)
 
-    # ---- 行为 ----
+    # ---- 事件分析 ----
 
-    def list_actions(
+    def list_event_definitions(
         self,
         *,
+        start_time: Any = UNSET,
+        end_time: Any = UNSET,
+        tz_offset_minutes: Any = UNSET,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
-    ) -> ActionListResponse:
+        search: Any = UNSET,
+        include_archived: Any = UNSET,
+    ) -> EventDefinitionListResponse:
         """
+        自动发现的事件清单。定义由采集端在第一次收到某个事件名时登记，没有创建接口。
+
+        :param start_time: 统计区间起点（Unix 秒），省略则最近 7 天
+        :param end_time: 统计区间终点（Unix 秒）
+        :param tz_offset_minutes: 相对 UTC 的分钟偏移
         :param limit: 分页大小，1..100，默认 20
         :param offset: 分页偏移，默认 0
-        :return: 行为定义列表
+        :param search: 关键字，匹配事件名、显示名与描述
+        :param include_archived: 是否包含已归档的事件，默认否
+        :return: 事件定义列表，``range_count`` 是区间内的上报量
         """
         return self._http.request(
             "GET",
-            "/admin/projects/{projectKey}/actions",
+            "/admin/projects/{projectKey}/events/definitions",
             path_params={"projectKey": self._http.require_project_key()},
-            query={"limit": limit, "offset": offset},
-            auth=True,
-        )
-
-    def create_action(
-        self,
-        *,
-        name: str,
-        description: str,
-        custom_data: Any = UNSET,
-    ) -> ActionItem:
-        """
-        在绑定项目下创建行为定义。
-
-        :param name: 行为名称，最长 128
-        :param description: 行为描述，最长 512
-        :param custom_data: 自定义数据
-        :return: 创建出的行为定义
-        """
-        return self._http.request(
-            "POST",
-            "/admin/projects/actions",
-            body=compact(
+            query=compact(
                 {
-                    "project_key": self._http.require_project_key(),
-                    "name": name,
-                    "description": description,
-                    "custom_data": custom_data,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "tz_offset_minutes": tz_offset_minutes,
+                    "limit": limit,
+                    "offset": offset,
+                    "search": search,
+                    "include_archived": include_archived,
                 }
             ),
             auth=True,
         )
 
-    def update_action(
+    def update_event_definition(
         self,
-        action_id: str,
+        definition_id: str,
         *,
-        name: Any = UNSET,
+        display_name: Any = UNSET,
         description: Any = UNSET,
-        custom_data: Any = UNSET,
-    ) -> ActionItem:
+        archived: Any = UNSET,
+    ) -> EventDefinitionItem:
         """
-        :param action_id: 行为定义 id
-        :param name: 行为名称
-        :param description: 行为描述
-        :param custom_data: 自定义数据
-        :return: 更新后的行为定义
+        补充显示名与描述，或把停用的事件归档。
+
+        事件名不在可改字段里——它是客户端上报时使用的键。
+
+        :param definition_id: 事件定义 id
+        :param display_name: 给管理端看的名字
+        :param description: 事件说明
+        :param archived: 是否归档
+        :return: 更新后的事件定义
         """
         return self._http.request(
             "PATCH",
-            "/admin/actions/{action_id}",
-            path_params={"action_id": action_id},
-            body=compact({"name": name, "description": description, "custom_data": custom_data}),
+            "/admin/projects/{projectKey}/events/definitions/{definitionId}",
+            path_params={
+                "projectKey": self._http.require_project_key(),
+                "definitionId": definition_id,
+            },
+            body=compact(
+                {
+                    "display_name": display_name,
+                    "description": description,
+                    "archived": archived,
+                }
+            ),
             auth=True,
         )
 
-    def delete_action(self, action_id: str) -> DeleteSuccessResponse:
+    def delete_event_definition(self, definition_id: str) -> DeleteSuccessResponse:
         """
-        :param action_id: 行为定义 id
+        删除事件定义本身；明细与统计保留，下一次上报会把定义重新建回来。
+        要停用某个事件请改用归档。
+
+        :param definition_id: 事件定义 id
         :return: 删除结果
         """
         return self._http.request(
             "DELETE",
-            "/admin/actions/{action_id}",
-            path_params={"action_id": action_id},
+            "/admin/projects/{projectKey}/events/definitions/{definitionId}",
+            path_params={
+                "projectKey": self._http.require_project_key(),
+                "definitionId": definition_id,
+            },
             auth=True,
         )
 
-    def list_action_records(
+    def get_event_overview(
         self,
-        action_id: str,
         *,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-    ) -> ActionRecordListResponse:
+        start_time: Any = UNSET,
+        end_time: Any = UNSET,
+        tz_offset_minutes: Any = UNSET,
+    ) -> EventOverviewResponse:
         """
-        :param action_id: 行为定义 id
-        :param limit: 分页大小，1..100，默认 20
-        :param offset: 分页偏移，默认 0
-        :return: 该行为下的记录列表
-        """
-        return self._http.request(
-            "GET",
-            "/admin/actions/{action_id}",
-            path_params={"action_id": action_id},
-            query={"limit": limit, "offset": offset},
-            auth=True,
-        )
-
-    def get_action_record(self, action_record_id: str) -> ActionRecordItem:
-        """
-        :param action_record_id: 行为记录 id
-        :return: 行为记录详情
+        :param start_time: 统计区间起点（Unix 秒），省略则最近 7 天
+        :param end_time: 统计区间终点（Unix 秒）
+        :param tz_offset_minutes: 相对 UTC 的分钟偏移
+        :return: 区间内的事件总量、独立标识数、活跃会话数与事件种类数
         """
         return self._http.request(
             "GET",
-            "/admin/actions/record/{action_record_id}",
-            path_params={"action_record_id": action_record_id},
+            "/admin/projects/{projectKey}/events/stats/overview",
+            path_params={"projectKey": self._http.require_project_key()},
+            query=compact(
+                {
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "tz_offset_minutes": tz_offset_minutes,
+                }
+            ),
             auth=True,
         )
 
-    def get_action_statistics(self) -> ActionStatistics:
+    def get_event_timeseries(
+        self,
+        *,
+        start_time: Any = UNSET,
+        end_time: Any = UNSET,
+        tz_offset_minutes: Any = UNSET,
+        granularity: Any = UNSET,
+        event_name: Any = UNSET,
+        group_by: Any = UNSET,
+        limit: Any = UNSET,
+    ) -> EventTimeseriesResponse:
         """
-        :return: 行为定义总数
-        """
-        return self._http.request("GET", "/admin/actions/statistics", auth=True)
+        事件量趋势。
 
-    def get_action_record_statistics(self) -> ActionStatistics:
+        ``data`` 是总量，永远返回；给了 ``group_by`` 时额外返回拆开的 ``series``。
+
+        :param start_time: 统计区间起点（Unix 秒），省略则最近 7 天
+        :param end_time: 统计区间终点（Unix 秒）
+        :param tz_offset_minutes: 相对 UTC 的分钟偏移
+        :param granularity: ``"hour"`` 或 ``"day"``，默认按天
+        :param event_name: 只统计这一个事件
+        :param group_by: ``"event"`` / ``"platform"`` / ``"region"``
+        :param limit: 拆分维度最多返回几条序列
+        :return: 总量序列与可选的拆分序列
         """
-        :return: 行为记录总数
+        return self._http.request(
+            "GET",
+            "/admin/projects/{projectKey}/events/stats/timeseries",
+            path_params={"projectKey": self._http.require_project_key()},
+            query=compact(
+                {
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "tz_offset_minutes": tz_offset_minutes,
+                    "granularity": granularity,
+                    "event_name": event_name,
+                    "group_by": group_by,
+                    "limit": limit,
+                }
+            ),
+            auth=True,
+        )
+
+    def get_event_breakdown(
+        self,
+        *,
+        start_time: Any = UNSET,
+        end_time: Any = UNSET,
+        tz_offset_minutes: Any = UNSET,
+        dimension: Any = UNSET,
+        property_key: Any = UNSET,
+        event_name: Any = UNSET,
+        limit: Any = UNSET,
+    ) -> EventBreakdownResponse:
         """
-        return self._http.request("GET", "/admin/actions/record/statistics", auth=True)
+        事件分布。``total`` 是全量而非本页之和。
+
+        :param start_time: 统计区间起点（Unix 秒），省略则最近 7 天
+        :param end_time: 统计区间终点（Unix 秒）
+        :param tz_offset_minutes: 相对 UTC 的分钟偏移
+        :param dimension: ``"event"`` / ``"platform"`` / ``"region"`` / ``"property"``
+        :param property_key: ``dimension="property"`` 时必填
+        :param event_name: 只统计这一个事件
+        :param limit: 最多返回几个分桶
+        :return: 分布结果
+        """
+        return self._http.request(
+            "GET",
+            "/admin/projects/{projectKey}/events/stats/breakdown",
+            path_params={"projectKey": self._http.require_project_key()},
+            query=compact(
+                {
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "tz_offset_minutes": tz_offset_minutes,
+                    "dimension": dimension,
+                    "property_key": property_key,
+                    "event_name": event_name,
+                    "limit": limit,
+                }
+            ),
+            auth=True,
+        )
+
+    def get_event_heatmap(
+        self,
+        *,
+        start_time: Any = UNSET,
+        end_time: Any = UNSET,
+        tz_offset_minutes: Any = UNSET,
+        event_name: Any = UNSET,
+    ) -> EventHeatmapResponse:
+        """
+        星期 × 小时活跃热力图，固定 168 格。
+
+        折叠按每条上报来源国家的代表时区进行；``tz_offset_minutes`` 是无法定位的
+        来源的回退值。
+
+        :param start_time: 统计区间起点（Unix 秒），省略则最近 7 天
+        :param end_time: 统计区间终点（Unix 秒）
+        :param tz_offset_minutes: 无法定位来源时使用的分钟偏移
+        :param event_name: 只统计这一个事件
+        :return: 168 个格子的活跃度
+        """
+        return self._http.request(
+            "GET",
+            "/admin/projects/{projectKey}/events/stats/heatmap",
+            path_params={"projectKey": self._http.require_project_key()},
+            query=compact(
+                {
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "tz_offset_minutes": tz_offset_minutes,
+                    "event_name": event_name,
+                }
+            ),
+            auth=True,
+        )
+
+    def get_funnel(
+        self,
+        *,
+        steps: List[FunnelStep],
+        window_seconds: Any = UNSET,
+        start_time: Any = UNSET,
+        end_time: Any = UNSET,
+        tz_offset_minutes: Any = UNSET,
+    ) -> FunnelResponse:
+        """
+        漏斗转化。
+
+        每一步取「上一步之后、且仍在转化窗口内」的最早一条命中，窗口锚定在第一步。
+        只读接口，所需 scope 是 ``events:read``。
+
+        :param steps: 2 到 8 个步骤，每步至少给 ``event_name``
+        :param window_seconds: 从第一步算起的转化窗口（秒），默认 7 天
+        :param start_time: 统计区间起点（Unix 秒），省略则最近 7 天
+        :param end_time: 统计区间终点（Unix 秒）
+        :param tz_offset_minutes: 相对 UTC 的分钟偏移
+        :return: 逐步转化结果
+        """
+        return self._http.request(
+            "POST",
+            "/admin/projects/{projectKey}/events/analysis/funnel",
+            path_params={"projectKey": self._http.require_project_key()},
+            body=compact(
+                {
+                    "steps": steps,
+                    "window_seconds": window_seconds,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "tz_offset_minutes": tz_offset_minutes,
+                }
+            ),
+            auth=True,
+        )
+
+    def get_retention(
+        self,
+        *,
+        start_event: str,
+        return_event: Any = UNSET,
+        period: Any = UNSET,
+        periods: Any = UNSET,
+        start_time: Any = UNSET,
+        end_time: Any = UNSET,
+        tz_offset_minutes: Any = UNSET,
+    ) -> RetentionResponse:
+        """
+        留存矩阵。尚未走完的周期返回 ``None`` 而不是 0。
+
+        :param start_event: 把人纳入队列的起始事件
+        :param return_event: 判定「回来了」的事件；省略则任意事件都算回访
+        :param period: ``"day"`` 或 ``"week"``
+        :param periods: 观察多少个周期
+        :param start_time: 统计区间起点（Unix 秒），省略则最近 7 天
+        :param end_time: 统计区间终点（Unix 秒）
+        :param tz_offset_minutes: 相对 UTC 的分钟偏移
+        :return: 各队列的留存矩阵
+        """
+        return self._http.request(
+            "POST",
+            "/admin/projects/{projectKey}/events/analysis/retention",
+            path_params={"projectKey": self._http.require_project_key()},
+            body=compact(
+                {
+                    "start_event": start_event,
+                    "return_event": return_event,
+                    "period": period,
+                    "periods": periods,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "tz_offset_minutes": tz_offset_minutes,
+                }
+            ),
+            auth=True,
+        )
+
+    def get_paths(
+        self,
+        *,
+        start_event: Any = UNSET,
+        depth: Any = UNSET,
+        branch_limit: Any = UNSET,
+        scope: Any = UNSET,
+        start_time: Any = UNSET,
+        end_time: Any = UNSET,
+        tz_offset_minutes: Any = UNSET,
+    ) -> PathsResponse:
+        """
+        路径分析（桑基图边集）。
+
+        :param start_event: 路径起点；省略则从每条序列的第一个事件开始
+        :param depth: 最多走几步
+        :param branch_limit: 每一层保留的分支数，其余并入「（其他）」
+        :param scope: ``"session"``（默认）按会话串联，``"user"`` 跨会话按人串联
+        :param start_time: 统计区间起点（Unix 秒），省略则最近 7 天
+        :param end_time: 统计区间终点（Unix 秒）
+        :param tz_offset_minutes: 相对 UTC 的分钟偏移
+        :return: 边集
+        """
+        return self._http.request(
+            "POST",
+            "/admin/projects/{projectKey}/events/analysis/paths",
+            path_params={"projectKey": self._http.require_project_key()},
+            body=compact(
+                {
+                    "start_event": start_event,
+                    "depth": depth,
+                    "branch_limit": branch_limit,
+                    "scope": scope,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "tz_offset_minutes": tz_offset_minutes,
+                }
+            ),
+            auth=True,
+        )
+
+    def run_event_query(self, query: EventQuery) -> EventQueryResponse:
+        """
+        指标 DSL 求值。查询构建器与看板卡片共用这一个入口。
+
+        :param query: 指标定义；``formula`` 支持 ``"A / B * 100"`` 形式的跨事件运算
+        :return: 形状随 ``query["type"]`` 变化
+        """
+        return self._http.request(
+            "POST",
+            "/admin/projects/{projectKey}/events/analysis/query",
+            path_params={"projectKey": self._http.require_project_key()},
+            body=dict(query),
+            auth=True,
+        )
+
+    def list_dashboard_cards(self) -> DashboardCardListResponse:
+        """
+        :return: 该项目保存的分析卡片，按 ``sort_order`` 升序
+        """
+        return self._http.request(
+            "GET",
+            "/admin/projects/{projectKey}/events/dashboards/cards",
+            path_params={"projectKey": self._http.require_project_key()},
+            auth=True,
+        )
+
+    def create_dashboard_card(
+        self,
+        *,
+        title: str,
+        query: EventQuery,
+        description: Any = UNSET,
+        layout: Any = UNSET,
+        sort_order: Any = UNSET,
+    ) -> DashboardCardItem:
+        """
+        保存一份指标 DSL 查询定义。只存定义不存结果——结果随时间范围变化。
+
+        :param title: 卡片标题
+        :param query: 指标定义，写入时就完整校验（含公式语法），不合法直接 400
+        :param description: 卡片说明
+        :param layout: 前端网格布局，服务端只存不解析
+        :param sort_order: 排序值，升序
+        :return: 创建出的卡片
+        """
+        return self._http.request(
+            "POST",
+            "/admin/projects/{projectKey}/events/dashboards/cards",
+            path_params={"projectKey": self._http.require_project_key()},
+            body=compact(
+                {
+                    "title": title,
+                    "query": query,
+                    "description": description,
+                    "layout": layout,
+                    "sort_order": sort_order,
+                }
+            ),
+            auth=True,
+        )
+
+    def update_dashboard_card(
+        self,
+        card_id: str,
+        *,
+        title: Any = UNSET,
+        query: Any = UNSET,
+        description: Any = UNSET,
+        layout: Any = UNSET,
+        sort_order: Any = UNSET,
+    ) -> DashboardCardItem:
+        """
+        :param card_id: 卡片 id
+        :param title: 卡片标题
+        :param query: 指标定义
+        :param description: 卡片说明
+        :param layout: 前端网格布局
+        :param sort_order: 排序值，升序
+        :return: 更新后的卡片
+        """
+        return self._http.request(
+            "PATCH",
+            "/admin/projects/{projectKey}/events/dashboards/cards/{cardId}",
+            path_params={
+                "projectKey": self._http.require_project_key(),
+                "cardId": card_id,
+            },
+            body=compact(
+                {
+                    "title": title,
+                    "query": query,
+                    "description": description,
+                    "layout": layout,
+                    "sort_order": sort_order,
+                }
+            ),
+            auth=True,
+        )
+
+    def delete_dashboard_card(self, card_id: str) -> DeleteSuccessResponse:
+        """
+        :param card_id: 卡片 id
+        :return: 删除结果
+        """
+        return self._http.request(
+            "DELETE",
+            "/admin/projects/{projectKey}/events/dashboards/cards/{cardId}",
+            path_params={
+                "projectKey": self._http.require_project_key(),
+                "cardId": card_id,
+            },
+            auth=True,
+        )
+
+    def delete_event_subject(self, distinct_id: str) -> EventSubjectDeleteResponse:
+        """
+        代最终用户删除其全部事件明细（GDPR Art.17）。小时汇总不在删除范围内。
+
+        :param distinct_id: 要删除的匿名标识
+        :return: 删除结果
+        """
+        return self._http.request(
+            "DELETE",
+            "/admin/projects/{projectKey}/events/subjects/{distinctId}",
+            path_params={
+                "projectKey": self._http.require_project_key(),
+                "distinctId": distinct_id,
+            },
+            auth=True,
+        )
 
     # ---- GitHub Webhook ----
 
@@ -1288,5 +1677,68 @@ class AdminApi:
             "/admin/projects/{projectKey}/github-integration/repo-template",
             path_params={"projectKey": self._http.require_project_key()},
             query={"refresh": "true"} if refresh else None,
+            auth=True,
+        )
+
+    # ---- 条款文档 ----
+
+    def list_terms_documents(self) -> TermsDocumentConfigListResponse:
+        """
+        列出全部条款文档的设置视图（含生效正文、自定义草稿与内置原文）。
+
+        条款接口只接受管理员 JWT，API Key 会得到 401。不作用于绑定项目。
+
+        :return: 条款文档设置列表
+        """
+        return self._http.request("GET", "/admin/terms/documents", auth=True)
+
+    def get_terms_document(self, slug: TermsDocumentSlug) -> TermsDocumentConfigView:
+        """
+        :param slug: 文档标识，``privacy-policy`` 或 ``sdk-compliance``
+        :return: 单份条款文档的设置视图
+        """
+        return self._http.request(
+            "GET",
+            "/admin/terms/documents/{slug}",
+            path_params={"slug": slug},
+            auth=True,
+        )
+
+    def update_terms_document(
+        self,
+        slug: TermsDocumentSlug,
+        *,
+        custom: Any = UNSET,
+        content: Any = UNSET,
+    ) -> TermsDocumentConfigView:
+        """
+        部分更新条款文档，只修改传入的字段。
+
+        ``custom`` 关闭时 ``content`` 仍会保存为草稿，重新打开即可继续编辑。
+
+        :param slug: 文档标识，``privacy-policy`` 或 ``sdk-compliance``
+        :param custom: 是否启用自定义正文
+        :param content: 自定义正文（Markdown），最长 65536；传空串清除草稿
+        :return: 更新后的设置视图
+        """
+        return self._http.request(
+            "PUT",
+            "/admin/terms/documents/{slug}",
+            path_params={"slug": slug},
+            body=compact({"custom": custom, "content": content}),
+            auth=True,
+        )
+
+    def reset_terms_document(self, slug: TermsDocumentSlug) -> TermsDocumentConfigView:
+        """
+        恢复内置条款正文：关闭自定义开关并丢弃草稿，前台随即回到内置正文。
+
+        :param slug: 文档标识，``privacy-policy`` 或 ``sdk-compliance``
+        :return: 恢复后的设置视图
+        """
+        return self._http.request(
+            "DELETE",
+            "/admin/terms/documents/{slug}",
+            path_params={"slug": slug},
             auth=True,
         )

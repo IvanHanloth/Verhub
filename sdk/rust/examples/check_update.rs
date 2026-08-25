@@ -18,7 +18,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let current = args.next().unwrap_or_else(|| "1.0.0".into());
 
     // 客户端绑定项目后，check_update 不再单独传 project_key。
-    let client = VerhubClient::builder(base_url).project_key(project_key).build()?;
+    let client = VerhubClient::builder(base_url)
+        .project_key(project_key)
+        .build()?;
     println!("health: {:?}", client.health().await?);
 
     let result = client

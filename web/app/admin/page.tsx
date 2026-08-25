@@ -110,16 +110,14 @@ export default function DashboardHomePage() {
       <AdminCard as="article" className="p-6">
         <h3 className="text-lg font-medium">访问趋势（实时聚合）</h3>
         <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
-          基于后端统计接口实时计算，反映模块数据体量。
+          基于后端统计接口实时计算，反映模块数据体量。行为事件按项目统计，见「行为分析」。
         </p>
-        <div className="mt-5 grid grid-cols-7 items-end gap-2">
+        <div className="mt-5 grid grid-cols-5 items-end gap-2">
           {[
             { label: "版本", value: stats.versions },
             { label: "公告", value: stats.announcements },
             { label: "反馈", value: stats.feedbacks },
             { label: "日志", value: stats.logs },
-            { label: "行为分类", value: stats.actions },
-            { label: "行为记录", value: stats.actionRecords },
             { label: "项目", value: stats.projects },
           ].map((item) => {
             const heightClass = resolveBarHeightClass(item.value)

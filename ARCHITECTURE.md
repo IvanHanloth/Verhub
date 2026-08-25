@@ -29,10 +29,10 @@ Verhub 采用 Monorepo + 模块化单体架构：
 - `announcements`：公告发布与管理
 - `feedbacks`：用户反馈上报/管理
 - `logs`：日志上报与日志查询
-- `actions`：行为定义管理与行为记录上报
+- `events`：用户行为事件的采集与分析。**schema-on-write**——客户端直接报事件名，服务端第一次收到就自动登记 `EventDefinition`，上报不需要任何前置的后台操作（旧的 `actions` 模块要求先建定义、把 cuid 硬编码进客户端，从未被任何接入方集成，已整体移除）。写入分三层：明细 `EventRecord`（漏斗/留存/路径的唯一数据源，带 `distinctId`）、小时汇总 `EventStat`（照抄 `ApiRequestStat` 的原子自增与哨兵值约定）、日活去重 `EventActiveUser`。查询分两路：`stats/*` 走汇总，`analysis/*` 走明细。指标 DSL 在 `dsl/` 下，`compile.ts` 只产出参数化 SQL、`formula.ts` 用递归下降解析器求值（**不用 eval，也不把公式下推到 SQL**）
 - `webhooks`：GitHub Release 推送接收（`GithubWebhookService`）与项目级 webhook secret 管理（`GithubWebhookSecretService`）
 - `github-app`：GitHub App 集成。实例级凭据与功能开关（`GithubAppConfigService`，私钥经 `secret-box` AES-256-GCM 加密落库）、出站 API 客户端（`GithubAppClientService`，App JWT → installation token）、项目级功能配置（`ProjectGithubIntegrationService`）、反馈转发 Issue（`FeedbackIssueService`，模板来源与内置模板见 `feedback-issue-template.ts`，单 IP 转发限流见 `FeedbackForwardThrottler`）与评论命令触发工作流（`CommentCommandsService`，走 `POST /webhooks/github-app`）。功能采用三级判定：实例级 enabledFeatures 是总闸，项目级开关只能在总闸开启后打开且只表示「允许」，最终是否转发由提交者在 `forward_to_github` 里逐条选择。转发是提交事务的一部分而非旁路：Issue 建成功才保留反馈行（并记下 `forwardedToGithub` 与 Issue 编号/链接），失败则连带删除刚落库的行并把 503 返回给客户端——不能让用户以为问题已经报到仓库里
-- `terms`：实例级条款文档（`TermsService`）。登记表见 `terms-documents.ts`，目前两份：《隐私政策》与《SDK 合规性文档》，内置正文在 `builtin/` 下、不入库。与反馈 Issue 模板同一套「开关 + 自定义正文」结构：关掉开关或草稿为空一律回落到内置正文，所以 `GET /public/terms/{slug}` 对已登记的文档任何时候都有正文可读。《隐私政策》面向最终用户，《SDK 合规性文档》面向接入方开发者（供其在自己的隐私政策里披露）、同时对最终用户公开；两份都逐项对应实际实现（各端点 DTO、行为记录的 http 字段、三张统计表、去重指纹、归属地缓存与保留期清理），改动采集行为时必须同步修订，否则公示即失实。内置正文是模板：运营主体、联系方式等只有运营者知道的内容留成 `{{占位符}}`，键登记在 `placeholders.ts`（正文出现未登记的键会在模块加载时抛错），管理端据 `TermsDocumentConfigView.placeholders` 渲染填空表单、替换后把成品提交保存 —— 替换只发生在管理端，库里与前台都只有成品
+- `terms`：实例级条款文档（`TermsService`）。登记表见 `terms-documents.ts`，目前两份：《隐私政策》与《SDK 合规性文档》，内置正文在 `builtin/` 下、不入库。与反馈 Issue 模板同一套「开关 + 自定义正文」结构：关掉开关或草稿为空一律回落到内置正文，所以 `GET /public/terms/{slug}` 对已登记的文档任何时候都有正文可读。《隐私政策》面向最终用户，《SDK 合规性文档》面向接入方开发者（供其在自己的隐私政策里披露）、同时对最终用户公开；两份都逐项对应实际实现（各端点 DTO、事件采集在设备上写入的匿名标识与队列、四张统计表、去重指纹与事件幂等键、事件 IP 匿名化、归属地缓存与两套保留期），改动采集行为时必须同步修订，否则公示即失实。内置正文是模板：运营主体、联系方式等只有运营者知道的内容留成 `{{占位符}}`，键登记在 `placeholders.ts`（正文出现未登记的键会在模块加载时抛错），管理端据 `TermsDocumentConfigView.placeholders` 渲染填空表单、替换后把成品提交保存 —— 替换只发生在管理端，库里与前台都只有成品
 - `geo`：调用方来源解析。`GeoLocationService` 做 IP → 国家/地区解析与缓存，`ClientOriginService` 把请求拼装成各上报表要写入的来源字段。模块声明为 `@Global`，因为四个采集点都要用，且服务持有进程级缓存，不能被重复实例化
 - `database`：PrismaService 与数据库连接能力
 - `health`：服务健康检查
@@ -129,19 +129,21 @@ Webhook 鉴权（Project）：
 - 解析结果持久化在 `IpGeoCache`（按 IP 主键），命中顺序为：私网短路 → 进程内 Map → `IpGeoCache` 表 → 供应商链。失败同样入缓存（`source = "NONE"`，TTL 15 分钟），否则每个请求都会重放整条链。进程内缓存有条数上限：它以客户端 IP 为键，而这个键由不可信调用方控制。
 - `VERHUB_GEO_TIMEOUT_MS` 是**整条链**的预算而非单家的超时。上报接口会等待解析完成（写入的那一行需要带上地区），若按单家计时，四家都慢就会在客户端的一次日志上报上叠成十秒。超预算即记为 UNKNOWN——缺个地区远比请求挂住轻。
 - 其余环境变量：`VERHUB_GEO_ENABLED`（`false` 关闭出网解析）、`VERHUB_GEO_PROVIDERS`（逗号分隔，覆盖顺序）、`VERHUB_GEO_TTL_DAYS`。
-- 国家码写入 `ApiRequestStat.region`（聚合表不存 IP），并作为独立列写入 `Log` / `Feedback` / `ActionRecord`。这些列刻意不塞进 `deviceInfo` / `http` 这类客户端自报的 JSON：一个可伪造、一个是服务端观测，混在一起排障时就分不清了。
+- 国家码写入 `ApiRequestStat.region`（聚合表不存 IP），并作为独立列写入 `Log` / `Feedback` / `EventRecord`。这些列刻意不塞进 `deviceInfo` / `http` 这类客户端自报的 JSON：一个可伪造、一个是服务端观测，混在一起排障时就分不清了。
 - 国内来源精确到省市：`ApiRequestStat` 除国家码外还存省/市级行政区划码（`regionCode`/`cityCode`，GB/T 2260），聚合按**码**分组而非中文名——太平洋科技返回「辽宁省/大连市」、纯真网络返回「辽宁/大连」，按名分组会把同一省劈成两桶，而两家的码一致（`210000`/`210200`）。境外与未定位无国标码，落空串 sentinel（NULL 会被 Postgres unique 视为互异，破坏 upsert-increment）。省份分布只取 `region=CN` 且省码非空的行，中文省名由后端静态表 `province-names.ts`（`Intl.DisplayNames` 不含中国省级）给出，随 overview 的 `by_province` 返回，前端据此渲染中国省级热力地图。市级码已入库，暂不在 UI 展开。
 - 热力图（星期 × 小时）按**来源当地时区**折叠，而非查询者时区：回答的是「用户在其当地几点活跃」。聚合表只到国家码，故用 `region-timezone.ts` 的国家→代表时区静态表平移（中国全境 UTC+8 精确，美/俄等跨时区国家取代表时区近似），无法定位（UNKNOWN/LOCAL/表外）回退到查询者时区兜底。趋势图 timeseries 仍按查询者时区——那是给管理员看的绝对时间轴，两者口径不同是有意为之。
 
 公开上报限流：
 
-- 四个公开写接口（`/public/{projectKey}/logs`、`/feedbacks`、`/actions`、`/versions/check-update`）挂 `ClientIpThrottlerGuard`，单 IP 每分钟默认 300 次（`VERHUB_PUBLIC_RATE_LIMIT` 可调），超限返回 429。
+- 四个公开写接口（`/public/{projectKey}/logs`、`/feedbacks`、`/events`、`/versions/check-update`）挂 `ClientIpThrottlerGuard`，单 IP 每分钟默认 300 次（`VERHUB_PUBLIC_RATE_LIMIT` 可调），超限返回 429。
+- 数据主体权利的两个自助端点（`GET` / `DELETE /public/{projectKey}/events/me`）限流严得多：单 IP 每小时 10 次。正常用户一小时行使不了十次权利，而一个能无限次调用的导出接口本身就是个数据外泄面。
 - 去重只挡重复载荷的存储，构造不同载荷的洪泛仍会无上限写库并触发 geo 解析，限流是这层的硬上限。
 - 计数按 `extractClientIp` 解析出的真实客户端 IP，而非连接对端——否则 CDN/nginx 后面全体访客共用一个桶。只挂公开写接口：管理端与被 Next SSR 代理拉取的公开只读接口（版本列表、项目详情等）不限流，免得误伤 SSR 出口 IP。
 
 上报去重：
 
-- `Log` / `Feedback` / `ActionRecord` 各有 `dedupHash` 列，指纹取「项目 + 载荷 + 调用方」。窗口内命中则直接返回已存在的那条记录，不新建行。
+- `Log` / `Feedback` 各有 `dedupHash` 列，指纹取「项目 + 载荷 + 调用方」。窗口内命中则直接返回已存在的那条记录，不新建行。
+- **`EventRecord` 没有 `dedupHash`**，走的是另一套：客户端为每条事件生成 `eventId`，配合 `(projectKey, eventId)` 唯一索引与 `createMany({ skipDuplicates: true })` 精确去重。幂等键比模糊指纹严格更好——后者会把「用户连点三次」折叠成一次，而那恰恰是行为分析要采集的信号。这也是「提交类请求一律不重试」这条规则对事件采集网开一面的前提。
 
 隐藏语义（`Log.isHidden` / `Feedback.isHidden` / `Announcement.isHidden`）：
 
@@ -159,7 +161,12 @@ Webhook 鉴权（Project）：
 列表搜索：`search` 参数在各列表接口上语义一致——不区分大小写的子串匹配，命中字段由各 service 指定（见 OpenAPI 中每个端点的说明）。JSON 列（`custom_data` / `device_info` / `http`）一律不参与匹配：既慢又无从解释命中在哪。
 
 - 窗口由 `VERHUB_DEDUP_WINDOW_SECONDS` 控制，默认 60 秒，设为 0 或非法值即关闭。
-- 语义刻意粗糙，不是精确一次投递：超过窗口的重试会被保留，因为真正在反复发生的事件本身就值得看见。行为记录的指纹不含 `http`——它带整套请求头，任何轮换字段（trace id、cookie）都会让每次重试看起来都不一样，整个检查就失效了。
+- 语义刻意粗糙，不是精确一次投递：超过窗口的重试会被保留，因为真正在反复发生的事件本身就值得看见。事件采集不适用这段语义，理由见上。
+
+### 事件采集的两条额外规则
+
+- **时钟钳制**：客户端声明的 `occurred_at` 落在 `[now - VERHUB_EVENT_CLOCK_SKEW_SECONDS, now + 5min]` 之外时回退到服务端接收时间。离线补发要求信任客户端时间（否则补上来的事件全堆在恢复联网那一刻），但不能让一台时钟错乱的设备把趋势图的横轴拉到没法看。
+- **IP 匿名化**：`EventRecord.ip` 默认只存匿名化后的值（`VERHUB_EVENT_IP_STORAGE`，IPv4 截末段 / IPv6 截末 80 位）。**归属地解析在匿名化之前用完整地址完成**，所以地区统计精度不受影响。与 `Log` / `Feedback` 存完整 IP 的做法有意不同：事件量大一个数量级，且用途是聚合分析而非逐条排障。
 
 ## 4. 前端架构
 
@@ -185,7 +192,7 @@ Webhook 鉴权（Project）：
 
 当前核心页面：
 
-- 项目管理、版本管理、公告管理、行为管理、反馈管理、日志审计、Token 管理，均基于同一套 `DataTable`
+- 项目管理、版本管理、公告管理、反馈管理、日志审计、Token 管理，均基于同一套 `DataTable`；行为分析（`/admin/events`，七个子页）复用统计大屏的图表组件，不另起一套
 
 状态设计：
 

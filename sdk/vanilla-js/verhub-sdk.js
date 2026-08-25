@@ -6,7 +6,7 @@
  * verhub.openapi.yaml 为准。
  *
  * 本文件是 verhub-sdk.global.js 的生成源，`node build.mjs` 会把文件末尾那条
- * export 语句换成全局赋值——所以整份文件里只允许出现那一处 export。
+ * export 语句换成全局赋值，因此整份文件里只允许出现那一处 export。
  */
 
 const VERHUB_SDK_VERSION = "0.2.8"
@@ -17,22 +17,17 @@ const PLATFORM_HEADER = "x-verhub-platform"
 /** 客户端系统版本明细头，如 `11` / `ubuntu 24.04`；超过 32 字符会被服务端丢弃。 */
 const PLATFORM_VERSION_HEADER = "x-verhub-platform-version"
 
-/** 系统版本明细的长度上限，与服务端一致，超出直接截断。 */
+/** 系统版本明细的长度上限，与服务端一致。 */
 const MAX_PLATFORM_VERSION_LENGTH = 32
 
 /**
- * 把系统版本明细规整成能安全放进 HTTP 头的形式。
+ * 把系统版本明细规整成能进 HTTP 头的形式。
  *
- * 请求头只能承载 ASCII，而这个值未必干净：调用方用错编码读系统版本时拿到的就是
- * `Microsoft Windows [�汾 10.0.26200.8875]` 这种串。不清洗的话 fetch 会直接抛
- * TypeError，整个请求跟着失败——一个纯统计用的头不该有本事弄挂业务请求。
- *
- * 清洗规则：非可打印 ASCII 的字符一律当作空白（版本号本身是 ASCII，能完整留下），
- * 折叠连续空白，再按 MAX_PLATFORM_VERSION_LENGTH 截断。返回空串表示无从得知，
- * 此时不发这个头。四个语言的 SDK 用同一套规则。
+ * 非可打印 ASCII 一律替换成空格，折叠连续空白，按 MAX_PLATFORM_VERSION_LENGTH
+ * 截断。四个语言的 SDK 规则相同。
  *
  * @param {string} value 原始声明
- * @returns {string}
+ * @returns {string} 清洗后的值；空串表示无从得知
  */
 function sanitizePlatformVersion(value) {
   return String(value || "")
@@ -44,30 +39,25 @@ function sanitizePlatformVersion(value) {
 }
 
 /**
- * sanitizePlatformVersion 的 null 版：洗完是空串就收敛成 null（不发这个头）。
+ * sanitizePlatformVersion 的 null 版：洗完是空串则返回 null。
  *
- * 平台声明同样走这一步：它在纯 JS 里是自由字符串，调用方塞进非 ASCII 一样会让
- * fetch 抛异常，而 Rust / TS 那边平台是枚举，天然没这个口子。
- *
- * @param {string | null | undefined} value
+ * @param {string | null | undefined} value 原始声明
  * @returns {string | null}
  */
 function headerSafe(value) {
   return value ? sanitizePlatformVersion(value) || null : null
 }
 
-/** 默认重试次数。只作用于连接失败与幂等方法（GET/HEAD），POST 不自动重试。 */
+/** 默认重试次数。 */
 const DEFAULT_RETRIES = 2
 
-/** 会触发重试的服务端状态码，均为可安全重试的临时性错误。 */
+/** 会触发重试的服务端状态码。 */
 const RETRY_STATUS = new Set([502, 503, 504])
 
-/** 可安全重试的幂等方法。 */
+/** 会自动重试的幂等方法；其余方法一律不重试。 */
 const IDEMPOTENT_METHODS = new Set(["GET", "HEAD"])
 
-/**
- * 所有 SDK 异常的基类，便于调用方一次性捕获。
- */
+/** 所有 SDK 异常的基类，可用于一次性捕获。 */
 class VerhubError extends Error {
   /**
    * @param {string} message 错误信息
@@ -79,10 +69,9 @@ class VerhubError extends Error {
 }
 
 /**
- * 本地前置校验失败：调用 admin 接口但没有设置凭据，请求根本没发出去。
+ * 调用需要凭据的接口时未设置 token，请求未发出。
  *
- * 与 VerhubApiError 区分开——后者是「请求发出去了、服务端拒了」，这个是「你忘了
- * 设 token」。故意不继承 VerhubApiError，避免调用方把两种情况混为一谈。
+ * 不继承 VerhubApiError，`instanceof VerhubApiError` 不会命中本类。
  */
 class VerhubAuthError extends VerhubError {
   /**
@@ -94,9 +83,7 @@ class VerhubAuthError extends VerhubError {
   }
 }
 
-/**
- * 服务端返回了非 2xx 响应。
- */
+/** 服务端返回了非 2xx 响应。 */
 class VerhubApiError extends VerhubError {
   /**
    * @param {string} message 错误信息，优先取响应体的 message 字段
@@ -111,9 +98,7 @@ class VerhubApiError extends VerhubError {
   }
 }
 
-/**
- * 请求没能到达服务端（超时、DNS、连接被拒等）。
- */
+/** 请求没能到达服务端（超时、DNS、连接被拒等）。 */
 class VerhubConnectionError extends VerhubError {
   /**
    * @param {string} message 错误信息
@@ -126,7 +111,7 @@ class VerhubConnectionError extends VerhubError {
   }
 }
 
-/** 宿主系统名 → 契约平台值。认不出的一律 others，不瞎猜。 */
+/** 宿主系统名 → 契约平台值。表里没有的一律 others。 */
 const OS_TO_PLATFORM = {
   win32: "windows",
   windows: "windows",
@@ -135,7 +120,7 @@ const OS_TO_PLATFORM = {
   android: "android",
 }
 
-/** 老 Windows 的 NT 内核号 → 市场版本号。Win10/11 都是 10.0，另按构建号区分。 */
+/** Windows NT 内核号 → 市场版本号。10.0 不在表内，另按构建号区分。 */
 const WINDOWS_NT_TO_MARKET = { 6.1: "7", 6.2: "8", 6.3: "8.1" }
 
 /** Darwin 内核大版本 → macOS 市场版本号。 */
@@ -155,7 +140,7 @@ const DARWIN_TO_MACOS = {
 /**
  * 运行在服务端 JS 运行时（Node / Bun / Deno）时返回宿主系统名。
  *
- * @returns {string | undefined}
+ * @returns {string | undefined} 浏览器里为 undefined
  */
 function hostOsName() {
   const proc = globalThis.process
@@ -167,13 +152,10 @@ function hostOsName() {
 }
 
 /**
- * 同步取 Node 内建模块，不用 import 以免污染浏览器打包。
- *
- * process.getBuiltinModule（Node 20.16+/22+）在 CJS 与 ESM 下都能用；老 Node
- * 退回到全局 require（仅 CJS 有）。浏览器里两者都没有，返回 undefined。
+ * 同步取 Node 内建模块。
  *
  * @param {string} name 模块名
- * @returns {any}
+ * @returns {any} 浏览器里取不到，返回 undefined
  */
 function loadNodeBuiltin(name) {
   const proc = globalThis.process
@@ -182,23 +164,22 @@ function loadNodeBuiltin(name) {
       return proc.getBuiltinModule(name)
     }
   } catch {
-    /* 忽略 */
+    /* 取不到就当没有 */
   }
   try {
     if (typeof globalThis.require === "function") {
       return globalThis.require(name)
     }
   } catch {
-    /* 忽略 */
+    /* 同上 */
   }
   return undefined
 }
 
 /**
- * 猜测当前运行平台，用于填充 PLATFORM_HEADER。
+ * 探测当前运行平台，用于填充 PLATFORM_HEADER。
  *
- * 浏览器与 Worker 一律记作 web——那里真正有意义的维度是浏览器而不是宿主系统，
- * 而 navigator 是两者都有、Node 里又已经被上一步排除掉的判据。
+ * 浏览器与 Worker 记作 web，识别不出的宿主系统记作 others。
  *
  * @returns {string}
  */
@@ -229,10 +210,10 @@ function linuxDistroVersion() {
 }
 
 /**
- * 从系统信息里提取系统版本明细，用于填充 PLATFORM_VERSION_HEADER。
+ * 探测系统版本明细，用于填充 PLATFORM_VERSION_HEADER。
  *
- * Windows 按内核构建号还原市场版本号，macOS 由 Darwin 大版本映射，Linux 读
- * os-release。浏览器与取不到内建模块时返回空串，交给服务端从 User-Agent 兜底。
+ * Windows 与 macOS 给市场版本号（11 / 15 / 10.15），Linux 给 `发行版 版本号`。
+ * 浏览器与取不到系统信息时返回空串。
  *
  * @returns {string}
  */
@@ -265,7 +246,7 @@ function detectPlatformVersion() {
       return linuxDistroVersion()
     }
   } catch {
-    /* 版本探测纯属锦上添花，任何异常都不该阻断请求 */
+    /* 探测失败时不声明版本 */
   }
 
   return ""
@@ -273,9 +254,6 @@ function detectPlatformVersion() {
 
 /**
  * 丢掉值为 undefined 的字段，保留显式的 null。
- *
- * null 会被序列化成 JSON null，是「把这个字段置空」的意思；只有完全没提供的
- * 字段才该从请求里消失。
  *
  * @param {Record<string, unknown>} input 原始字段表
  * @returns {Record<string, unknown>}
@@ -291,10 +269,7 @@ function compact(input) {
 }
 
 /**
- * 去掉首尾空白与末尾斜杠；baseUrl 不像带 /api/v 前缀时给一句温和提醒。
- *
- * 传错前缀（比如只给裸域名）时所有请求会静默 404，很难排查，这里主动 warn
- * 一声而不是抛错——非标准挂载路径的部署仍能正常用。
+ * 去掉首尾空白与末尾斜杠；不含 /api/v 时 console.warn 一次，不抛错。
  *
  * @param {string} baseUrl 原始根地址
  * @returns {string} 规范化后的根地址
@@ -337,16 +312,11 @@ class HttpClient {
     this.extraHeaders = options.headers || {}
     this.logger = options.logger
 
-    // 浏览器改不了 User-Agent，appIdentifier 只对服务端运行时有意义。
     const appId = options.appIdentifier ? String(options.appIdentifier).trim() : ""
     this.userAgent = hostOsName()
       ? `verhub-sdk-js/${VERHUB_SDK_VERSION}${appId ? ` ${appId}` : ""}`
       : null
 
-    // 两个维度各管各的：显式给了就用给的，没给就自己探测。显式指定平台不再连带
-    // 禁掉版本探测——那样会让「声明了平台」的调用方彻底报不上系统版本，而这正是
-    // 绝大多数客户端的用法。唯一的例外是显式传 platform: null：那是明确的退出
-    // 声明，版本一并不报。
     this.platform = headerSafe(options.platform === undefined ? detectPlatform() : options.platform)
 
     if (options.platformVersion === undefined) {
@@ -359,7 +329,7 @@ class HttpClient {
     if (typeof fetcher !== "function") {
       throw new TypeError("当前环境没有全局 fetch，请通过 options.fetch 传入实现")
     }
-    // 解绑到 globalThis：某些实现要求 fetch 以全局对象为 this。
+    // 部分实现要求 fetch 以全局对象为 this。
     this.fetcher = fetcher.bind(globalThis)
   }
 
@@ -370,7 +340,7 @@ class HttpClient {
     this.token = token
   }
 
-  /** 清除当前凭据，之后调用 admin 接口会直接抛错。 */
+  /** 清除当前凭据，之后调用 admin 接口会抛 VerhubAuthError。 */
   clearToken() {
     this.token = ""
   }
@@ -393,7 +363,6 @@ class HttpClient {
    * @param {string | null} platformVersion 系统版本明细；传 null 则不再声明
    */
   setPlatformVersion(platformVersion) {
-    // 存进来就已清洗过，请求路径上拿到的一定是能进头的值。
     this.platformVersion = headerSafe(platformVersion)
   }
 
@@ -409,6 +378,17 @@ class HttpClient {
   }
 
   /**
+   * 拼出可直接交给 navigator.sendBeacon 的请求地址。
+   *
+   * @param {string} pathTemplate 形如 `/public/{projectKey}/events` 的路径模板
+   * @param {Record<string, string>} [pathParams] 路径参数
+   * @returns {string}
+   */
+  resolveUrl(pathTemplate, pathParams) {
+    return `${this.baseUrl}${this.resolvePath(pathTemplate, pathParams)}`
+  }
+
+  /**
    * @param {string} method HTTP 方法
    * @param {string} pathTemplate 形如 `/public/{projectKey}` 的路径模板
    * @param {{pathParams?: Record<string, string>, query?: Record<string, unknown>, body?: unknown, auth?: boolean}} [options] 请求参数
@@ -419,7 +399,7 @@ class HttpClient {
 
     const headers = Object.assign(
       { Accept: "application/json" },
-      // 浏览器禁止脚本改写 User-Agent，设了也会被静默丢弃，所以只在服务端运行时带上。
+      // 浏览器会丢弃脚本设置的 User-Agent，只在服务端运行时带上。
       this.userAgent ? { "User-Agent": this.userAgent } : {},
       this.extraHeaders,
     )
@@ -433,7 +413,6 @@ class HttpClient {
 
     if (options.auth) {
       if (!this.token) {
-        // 请求还没发出去就在本地拦下，用专门的异常，别伪造一个假的 401。
         throw new VerhubAuthError("缺少凭据：请先设置 token")
       }
       headers.Authorization = `Bearer ${this.token}`
@@ -445,7 +424,6 @@ class HttpClient {
       body = JSON.stringify(options.body)
     }
 
-    // 只对幂等方法自动重试；POST（含 check-update）不重放。
     const canRetry = IDEMPOTENT_METHODS.has(method) && this.retries > 0
     const maxAttempts = canRetry ? this.retries + 1 : 1
 
@@ -458,7 +436,6 @@ class HttpClient {
       try {
         response = await this.fetchOnce(method, url, headers, body)
       } catch (cause) {
-        // 连接阶段失败，请求没到服务端，幂等方法可安全重试；否则原样抛出。
         if (canRetry && attempt < maxAttempts) {
           await this.backoff(attempt)
           continue
@@ -470,7 +447,6 @@ class HttpClient {
         this.logger({ method, url, status: response.status, attempt })
       }
 
-      // 502/503/504 是临时性错误，幂等方法退避后重试。
       if (RETRY_STATUS.has(response.status) && canRetry && attempt < maxAttempts) {
         await this.backoff(attempt)
         continue
@@ -485,7 +461,7 @@ class HttpClient {
       return payload
     }
 
-    // 循环结构保证上面必然 return 或 throw，这行只为兜底。
+    // 循环必然 return 或 throw，这行只为兜底。
     throw new VerhubConnectionError(`请求 ${method} ${url} 失败：重试耗尽`, undefined)
   }
 
@@ -548,7 +524,7 @@ class HttpClient {
 
   /**
    * @param {string} path 已填充的路径
-   * @param {Record<string, unknown>} [query] 查询参数
+   * @param {Record<string, unknown>} [query] 查询参数，值为 null / undefined 的项会被丢弃
    * @returns {string}
    */
   buildUrl(path, query) {
@@ -570,7 +546,7 @@ class HttpClient {
 
   /**
    * @param {string} raw 原始响应文本
-   * @returns {unknown}
+   * @returns {unknown} 解析结果；不是 JSON 时原样返回文本
    */
   parseJson(raw) {
     if (!raw) {
@@ -604,18 +580,531 @@ class HttpClient {
   }
 }
 
+/* ---- 事件采集 ---- */
+
+/**
+ * 事件采集的本地状态：匿名标识、退出标记与待发送队列。
+ *
+ * 这是整个 SDK 里唯一会在设备上写入数据的部分；改动这里要同步更新
+ * 《SDK 合规性文档》。
+ */
+
+const DEFAULT_FLUSH_INTERVAL_MS = 5000
+const DEFAULT_BATCH_SIZE = 20
+const DEFAULT_MAX_QUEUE_SIZE = 500
+const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000
+
+/** 服务端单批上限，与 VERHUB_EVENT_BATCH_MAX 的默认值一致。 */
+const SERVER_BATCH_MAX = 50
+
+/** 重试退避的上限。 */
+const MAX_BACKOFF_MS = 60000
+
+/**
+ * 取 baseUrl 的 origin（协议 + 主机 + 端口），路径一律忽略。
+ *
+ * 主机名与协议转小写，剥掉 userinfo，http 的 80 与 https 的 443 会被省略。
+ * 不含 `://` 的输入原样转小写返回。四个语言的 SDK 规则相同。
+ *
+ * @param {string} baseUrl 已规范化（去首尾空白、去末尾斜杠）的根地址
+ * @returns {string}
+ */
+function originOf(baseUrl) {
+  const trimmed = baseUrl.trim()
+  const schemeEnd = trimmed.indexOf("://")
+  if (schemeEnd < 0) {
+    return trimmed.toLowerCase()
+  }
+
+  const scheme = trimmed.slice(0, schemeEnd).toLowerCase()
+  const rest = trimmed.slice(schemeEnd + 3)
+  const slash = rest.indexOf("/")
+  let authority = (slash < 0 ? rest : rest.slice(0, slash)).toLowerCase()
+
+  const at = authority.lastIndexOf("@")
+  if (at >= 0) {
+    authority = authority.slice(at + 1)
+  }
+
+  // IPv6 的冒号在方括号里，端口只可能在 `]` 之后。
+  const hostEnd = authority.lastIndexOf("]")
+  const colon = authority.indexOf(":", hostEnd < 0 ? 0 : hostEnd)
+  if (colon >= 0) {
+    const port = authority.slice(colon + 1)
+    if ((scheme === "http" && port === "80") || (scheme === "https" && port === "443")) {
+      authority = authority.slice(0, colon)
+    }
+  }
+
+  return `${scheme}://${authority}`
+}
+
+/**
+ * FNV-1a 32 位，按 UTF-8 字节计算，输出 8 位小写 hex。
+ *
+ * 四个语言的 SDK 对同一输入给出同一结果。
+ *
+ * @param {string} input 输入串
+ * @returns {string}
+ */
+function fnv1a32Hex(input) {
+  const bytes = new TextEncoder().encode(input)
+  let hash = 0x811c9dc5
+  for (let i = 0; i < bytes.length; i += 1) {
+    hash ^= bytes[i]
+    // 乘 16777619，用移位避免 32 位溢出后的精度丢失。
+    hash = (hash + ((hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24))) >>> 0
+  }
+  return hash.toString(16).padStart(8, "0")
+}
+
+/**
+ * 本地状态的命名空间：`<origin 哈希>-<小写 projectKey>`。
+ *
+ * projectKey 去首尾空白后转小写；为空或只有空白时用 default。
+ * 四个语言的 SDK 对同一组入参给出同一结果。
+ *
+ * @param {string} baseUrl 规范化后的根地址
+ * @param {string} [projectKey] 绑定的项目标识
+ * @returns {string}
+ */
+function analyticsNamespace(baseUrl, projectKey) {
+  const key =
+    String(projectKey ?? "default")
+      .trim()
+      .toLowerCase() || "default"
+  return `${fnv1a32Hex(originOf(baseUrl))}-${key}`
+}
+
+/** 进程内存储，persistence: "session" 用，也是拿不到 localStorage 时的回退。 */
+function memoryStorage() {
+  const map = new Map()
+  return {
+    read: (key) => (map.has(key) ? map.get(key) : null),
+    write: (key, value) => {
+      map.set(key, value)
+    },
+    remove: (key) => {
+      map.delete(key)
+    },
+  }
+}
+
+/** 什么都不存的实现，persistence: "none" 用。 */
+function nullStorage() {
+  return { read: () => null, write: () => {}, remove: () => {} }
+}
+
+/** 浏览器里用 localStorage；不可用或写不进去时退回内存。 */
+function defaultStorage() {
+  const ls = typeof localStorage === "undefined" ? null : localStorage
+  if (!ls) {
+    return memoryStorage()
+  }
+  return {
+    read: (key) => {
+      try {
+        return ls.getItem(key)
+      } catch {
+        return null
+      }
+    },
+    write: (key, value) => {
+      try {
+        ls.setItem(key, value)
+      } catch {
+        /* 写不进去就不持久化 */
+      }
+    },
+    remove: (key) => {
+      try {
+        ls.removeItem(key)
+      } catch {
+        /* 同上 */
+      }
+    },
+  }
+}
+
+/** 随机 UUIDv4。不读取任何设备特征。 */
+function randomId() {
+  const cryptoObj = typeof crypto === "undefined" ? null : crypto
+  if (cryptoObj && typeof cryptoObj.randomUUID === "function") {
+    return cryptoObj.randomUUID()
+  }
+  if (cryptoObj && typeof cryptoObj.getRandomValues === "function") {
+    const bytes = cryptoObj.getRandomValues(new Uint8Array(16))
+    bytes[6] = (bytes[6] & 0x0f) | 0x40
+    bytes[8] = (bytes[8] & 0x3f) | 0x80
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+  }
+  return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 14)}`
+}
+
+/**
+ * 浏览器的退出信号：GPC 或 DNT 打开时为 true。非浏览器环境恒为 false。
+ *
+ * @returns {boolean}
+ */
+function detectDoNotTrack() {
+  if (typeof navigator === "undefined") {
+    return false
+  }
+  return navigator.globalPrivacyControl === true || navigator.doNotTrack === "1"
+}
+
+/**
+ * 事件队列：攒批入队，满一批或到间隔时发送，失败按指数退避重试。
+ *
+ * 每条事件带 event_id 幂等键，重发不会在服务端产生重复。
+ */
+class EventQueue {
+  /**
+   * @param {string} namespace 本地状态的命名空间，由 analyticsNamespace() 算出
+   * @param {(payload: object) => Promise<unknown>} send 实际发送函数
+   * @param {object} [options] 采集配置
+   * @param {((payload: object) => boolean) | null} [beacon] 页面卸载时的兜底发送函数
+   */
+  constructor(namespace, send, options = {}, beacon = null) {
+    const persistence = options.persistence || "device"
+    const resolved = options.namespace || namespace
+    this.options = {
+      enabled: options.enabled !== false,
+      requireConsent: options.requireConsent === true,
+      persistence,
+      respectDoNotTrack: options.respectDoNotTrack !== false,
+      flushIntervalMs: options.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS,
+      batchSize: Math.min(options.batchSize ?? DEFAULT_BATCH_SIZE, SERVER_BATCH_MAX),
+      maxQueueSize: options.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE,
+      sessionTimeoutMs: options.sessionTimeoutMs ?? DEFAULT_SESSION_TIMEOUT_MS,
+      storage:
+        options.storage ||
+        (persistence === "device"
+          ? defaultStorage()
+          : persistence === "session"
+            ? memoryStorage()
+            : nullStorage()),
+    }
+    /** 本地状态的命名空间。调用方据此判断绑定项目变化后要不要重建队列。 */
+    this.namespace = resolved
+    this.keyPrefix = `verhub.analytics.${resolved}.`
+    this.send = send
+    this.beacon = beacon
+    this.unloadHooked = false
+
+    this.queue = []
+    this.distinctId = null
+    this.sessionId = null
+    this.lastEventAt = 0
+    this.timer = null
+    this.flushing = false
+    this.failures = 0
+    this.consented = !this.options.requireConsent
+
+    this.optedOut = this.options.storage.read(`${this.keyPrefix}opt_out`) === "1"
+
+    if (this.active()) {
+      this.restoreQueue()
+      this.hookUnload()
+    }
+  }
+
+  /**
+   * 挂上 visibilitychange 与 pagehide 监听，页面进入隐藏或卸载时用 beacon 把
+   * 队列送出去。两者都触发时由服务端的幂等键去重。
+   */
+  hookUnload() {
+    if (this.unloadHooked || !this.beacon || typeof document === "undefined") {
+      return
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") {
+        this.flushBeacon()
+      }
+    })
+    // pagehide 在 window 上派发，挂到 document 上收不到。
+    if (typeof globalThis.addEventListener === "function") {
+      globalThis.addEventListener("pagehide", () => this.flushBeacon())
+    }
+    this.unloadHooked = true
+  }
+
+  /**
+   * 用 sendBeacon 把整个队列同步送出去，仅浏览器可用。
+   *
+   * 按 batchSize 分批；浏览器拒收时剩余事件留在队列里，等下次打开页面补发。
+   */
+  flushBeacon() {
+    if (!this.beacon || !this.active() || this.queue.length === 0) {
+      return
+    }
+    const distinctId = this.identity()
+    if (!distinctId) {
+      return
+    }
+
+    while (this.queue.length > 0) {
+      const batch = this.queue.slice(0, this.options.batchSize)
+      const payload = { distinct_id: distinctId, events: batch }
+      if (this.sessionId) {
+        payload.session_id = this.sessionId
+      }
+      if (!this.beacon(payload)) {
+        break
+      }
+      this.queue.splice(0, batch.length)
+    }
+    this.persistQueue()
+  }
+
+  /** 当前是否会采集。为 false 时不生成标识、不落盘、不发请求。 */
+  active() {
+    if (!this.options.enabled || this.optedOut || !this.consented) {
+      return false
+    }
+    return !(this.options.respectDoNotTrack && detectDoNotTrack())
+  }
+
+  /** @returns {boolean} 当前是否处于退出状态 */
+  hasOptedOut() {
+    return this.optedOut
+  }
+
+  /** 停止采集、丢弃待发队列、删除本地匿名标识，并把退出标记写入本地。 */
+  optOut() {
+    this.optedOut = true
+    this.consented = !this.options.requireConsent
+    this.queue = []
+    this.distinctId = null
+    this.sessionId = null
+    this.cancelTimer()
+    this.options.storage.remove(`${this.keyPrefix}distinct_id`)
+    this.options.storage.remove(`${this.keyPrefix}queue`)
+    this.options.storage.write(`${this.keyPrefix}opt_out`, "1")
+  }
+
+  /** 撤销退出，并生成一个新的匿名标识。 */
+  optIn() {
+    this.optedOut = false
+    this.options.storage.remove(`${this.keyPrefix}opt_out`)
+    this.resetIdentity()
+    this.hookUnload()
+  }
+
+  /** requireConsent 模式下开闸。在此之前不会有任何字节写入设备。 */
+  grantConsent() {
+    this.consented = true
+    this.hookUnload()
+  }
+
+  /** 撤回同意，等价于 optOut() 并回到未同意状态。 */
+  revokeConsent() {
+    this.optOut()
+    this.consented = false
+  }
+
+  /** 换一个新的匿名标识，切断与既往事件序列的关联。 */
+  resetIdentity() {
+    this.distinctId = null
+    this.sessionId = null
+    this.options.storage.remove(`${this.keyPrefix}distinct_id`)
+  }
+
+  /** 当前的匿名标识；未采集状态下返回 null，且不会顺带生成一个。 */
+  currentDistinctId() {
+    return this.active() ? this.identity() : null
+  }
+
+  /**
+   * 入队一条事件，立即返回，不发起网络请求。
+   *
+   * 攒够 batchSize 条立即发送，否则排一个 flushIntervalMs 后的定时发送。
+   *
+   * @param {string} name 事件名
+   * @param {object} [properties] 自定义属性
+   */
+  track(name, properties) {
+    if (!this.active()) {
+      return
+    }
+
+    const event = {
+      event_id: randomId(),
+      name,
+      occurred_at: Math.floor(Date.now() / 1000),
+    }
+    if (properties) {
+      event.properties = properties
+    }
+    this.queue.push(event)
+
+    if (this.queue.length > this.options.maxQueueSize) {
+      this.queue.splice(0, this.queue.length - this.options.maxQueueSize)
+    }
+
+    this.touchSession()
+    this.persistQueue()
+
+    if (this.queue.length >= this.options.batchSize) {
+      void this.flush()
+    } else {
+      this.scheduleFlush()
+    }
+  }
+
+  /**
+   * 立即发送队列里的所有事件。
+   *
+   * 失败的那一批留在队列里，按指数退避重排；已在发送中时直接返回。
+   */
+  async flush() {
+    if (this.flushing || !this.active() || this.queue.length === 0) {
+      return
+    }
+
+    const distinctId = this.identity()
+    if (!distinctId) {
+      return
+    }
+
+    this.cancelTimer()
+    this.flushing = true
+
+    try {
+      while (this.queue.length > 0) {
+        const batch = this.queue.slice(0, this.options.batchSize)
+        const payload = { distinct_id: distinctId, events: batch }
+        if (this.sessionId) {
+          payload.session_id = this.sessionId
+        }
+
+        try {
+          await this.send(payload)
+        } catch {
+          this.failures += 1
+          this.scheduleFlush(this.backoffMs())
+          return
+        }
+
+        this.queue.splice(0, batch.length)
+        this.failures = 0
+        this.persistQueue()
+      }
+    } finally {
+      this.flushing = false
+    }
+  }
+
+  /** 匿名标识。persistence 为 "none" 时每次返回一个不落盘的临时标识。 */
+  identity() {
+    if (this.distinctId) {
+      return this.distinctId
+    }
+
+    const stored = this.options.storage.read(`${this.keyPrefix}distinct_id`)
+    if (stored) {
+      this.distinctId = stored
+      return stored
+    }
+
+    const created = randomId()
+    this.distinctId = created
+    this.options.storage.write(`${this.keyPrefix}distinct_id`, created)
+    return created
+  }
+
+  /** 空闲超过 sessionTimeoutMs 就换一个会话号。会话号从不落盘。 */
+  touchSession() {
+    const now = Date.now()
+    if (!this.sessionId || now - this.lastEventAt > this.options.sessionTimeoutMs) {
+      this.sessionId = randomId()
+    }
+    this.lastEventAt = now
+  }
+
+  /**
+   * 排一次定时发送；已有定时器时不重排。
+   *
+   * @param {number} [delayMs] 延迟毫秒数，省略则用 flushIntervalMs
+   */
+  scheduleFlush(delayMs) {
+    if (this.timer) {
+      return
+    }
+    this.timer = setTimeout(
+      () => {
+        this.timer = null
+        void this.flush()
+      },
+      delayMs === undefined ? this.options.flushIntervalMs : delayMs,
+    )
+    // Node 下这个定时器不应吊住进程退出。
+    if (this.timer && typeof this.timer.unref === "function") {
+      this.timer.unref()
+    }
+  }
+
+  /** 取消待触发的定时发送。 */
+  cancelTimer() {
+    if (this.timer) {
+      clearTimeout(this.timer)
+      this.timer = null
+    }
+  }
+
+  /** 指数退避，封顶 MAX_BACKOFF_MS。 */
+  backoffMs() {
+    return Math.min(this.options.flushIntervalMs * 2 ** (this.failures - 1), MAX_BACKOFF_MS)
+  }
+
+  /** 把当前队列写入本地，persistence 非 "device" 时是空操作。 */
+  persistQueue() {
+    if (this.options.persistence !== "device") {
+      return
+    }
+    try {
+      this.options.storage.write(`${this.keyPrefix}queue`, JSON.stringify(this.queue))
+    } catch {
+      /* 存不下不影响本次发送 */
+    }
+  }
+
+  /** 启动时把上次没发出去的事件读回来，并排一次发送。 */
+  restoreQueue() {
+    if (this.options.persistence !== "device") {
+      return
+    }
+    const raw = this.options.storage.read(`${this.keyPrefix}queue`)
+    if (!raw) {
+      return
+    }
+    try {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length) {
+        this.queue = parsed.slice(-this.options.maxQueueSize)
+        this.scheduleFlush()
+      }
+    } catch {
+      this.options.storage.remove(`${this.keyPrefix}queue`)
+    }
+  }
+}
+
 /**
  * 公开接口，不需要凭据。
  *
- * 这些是客户端 App 会直接调用的那一组：查版本、查公告、报日志和行为。全部作用于
- * 客户端绑定的项目（构造时传入的 projectKey），因此方法不再逐次收项目参数。
+ * 项目作用域的方法用客户端绑定的 projectKey，不再逐次收项目参数。
  */
 class PublicApi {
   /**
    * @param {HttpClient} http 底层 HTTP 客户端
+   * @param {object} [analytics] 事件采集配置；省略则用默认值（设备级持久化 + 本地队列）
    */
-  constructor(http) {
+  constructor(http, analytics = {}) {
     this.http = http
+    this.analyticsOptions = analytics
+    this.queue = null
   }
 
   /**
@@ -640,6 +1129,9 @@ class PublicApi {
     })
   }
 
+  /**
+   * @returns 最新正式版本
+   */
   getLatestVersion() {
     return this.http.request("GET", "/public/{projectKey}/versions/latest", {
       pathParams: { projectKey: this.http.requireProjectKey() },
@@ -714,7 +1206,9 @@ class PublicApi {
   }
 
   /**
-   * 反馈提交选项。客户端据此决定要不要显示「转发到 GitHub Issue」的勾选框。
+   * 取反馈提交选项，据此决定要不要显示「转发到 GitHub Issue」的勾选框。
+   *
+   * @returns 本项目是否开放转发，以及转发时联系方式是否必填
    */
   getFeedbackOptions() {
     return this.http.request("GET", "/public/{projectKey}/feedbacks/options", {
@@ -725,9 +1219,8 @@ class PublicApi {
   /**
    * 提交用户反馈。
    *
-   * `forward_to_github` 为 true 时联系方式必填，这条本地就会拒绝（抛 VerhubError），
-   * 不必往服务端跑一趟；项目是否开放转发只有服务端知道，未开放时提交会拿到 400，
-   * Issue 建失败则整条反馈不会被记录（503）。
+   * forward_to_github 为 true 时联系方式必填，本地即拒绝；项目未开放转发时服务端
+   * 返回 400，Issue 建失败时整条反馈不会被记录（503）。
    *
    * @param {{content: string, user_id?: string, rating?: number, contact?: string, forward_to_github?: boolean, is_hidden?: boolean, platform?: string, platform_version?: string, custom_data?: object}} input 反馈字段
    * @throws {VerhubError} 选了转发却没填 contact
@@ -752,23 +1245,200 @@ class PublicApi {
     })
   }
 
+  // ---- 条款文档 ----
+
   /**
-   * @param {{action_id: string, custom_data?: object}} input 行为记录字段
+   * 列出全部条款文档的标题与最后更新时间，不含正文。
+   *
+   * 不作用于绑定项目，条款是实例级的。
    */
-  createActionRecord(input) {
-    return this.http.request("POST", "/public/{projectKey}/actions", {
+  listTerms() {
+    return this.http.request("GET", "/public/terms")
+  }
+
+  /**
+   * 取条款文档正文（Markdown）。实例未自定义时返回内置正文。
+   *
+   * @param {"privacy-policy" | "sdk-compliance"} slug 文档标识
+   */
+  getTerms(slug) {
+    return this.http.request("GET", "/public/terms/{slug}", { pathParams: { slug } })
+  }
+
+  // ---- 事件采集 ----
+
+  /**
+   * 记录一次用户行为，入队即返回，不发起网络请求。
+   *
+   * 事件名无需预先登记，服务端第一次收到就自动建立定义。建议用小写下划线形式
+   * （`checkout_clicked`）；服务端归一化为小写，只接受字母、数字、下划线、点、
+   * 连字符与冒号。
+   *
+   * 队列满 batchSize 条或每 flushIntervalMs 毫秒发送一次；发送失败按指数退避
+   * 重试，每条事件带幂等键。未同意、已退出、命中 GPC/DNT 或采集被关闭时本调用
+   * 是空操作。
+   *
+   * @param {string} name 事件名
+   * @param {object} [properties] 自定义属性，按属性统计只看第一层
+   */
+  track(name, properties) {
+    this.events().track(name, properties)
+  }
+
+  /** 立即发送队列里的所有事件。页面卸载前调用可以避免丢掉最后一批。 */
+  flush() {
+    return this.events().flush()
+  }
+
+  /** 停止采集、丢弃待发队列、删除本地匿名标识，并把退出标记写入本地。 */
+  optOut() {
+    this.events().optOut()
+  }
+
+  /** 撤销退出，并生成一个新的匿名标识。 */
+  optIn() {
+    this.events().optIn()
+  }
+
+  /** @returns {boolean} 当前是否处于退出状态 */
+  hasOptedOut() {
+    return this.events().hasOptedOut()
+  }
+
+  /**
+   * requireConsent 模式下开闸。在此之前 SDK 不采集、不写盘，含匿名标识的生成。
+   */
+  grantConsent() {
+    this.events().grantConsent()
+  }
+
+  /** 撤回同意，等价于 optOut() 并回到未同意状态。 */
+  revokeConsent() {
+    this.events().revokeConsent()
+  }
+
+  /** 换一个新的匿名标识，切断与既往事件序列的关联。保持采集开启。 */
+  resetIdentity() {
+    this.events().resetIdentity()
+  }
+
+  /** 当前的匿名标识；未采集状态下为 null。 */
+  get distinctId() {
+    return this.events().currentDistinctId()
+  }
+
+  /**
+   * 导出本机匿名标识下的全部事件明细（GDPR Art.15 / Art.20）。
+   *
+   * @param {string} [distinctId] 省略则用当前标识
+   */
+  exportMyData(distinctId) {
+    return this.http.request("GET", "/public/{projectKey}/events/me", {
       pathParams: { projectKey: this.http.requireProjectKey() },
-      body: compact(Object.assign({}, input)),
+      query: { distinct_id: this.requireDistinctId(distinctId) },
     })
+  }
+
+  /**
+   * 删除本机匿名标识下的全部事件明细（GDPR Art.17）。小时汇总不在删除范围内。
+   *
+   * @param {string} [distinctId] 省略则用当前标识
+   */
+  deleteMyData(distinctId) {
+    return this.http.request("DELETE", "/public/{projectKey}/events/me", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      query: { distinct_id: this.requireDistinctId(distinctId) },
+    })
+  }
+
+  /**
+   * 直接发一批事件，绕过本地队列。常规入口是 track()。
+   *
+   * @param {{distinct_id: string, session_id?: string, events: Array<object>}} payload 单批上限 50
+   */
+  ingestEvents(payload) {
+    return this.http.request("POST", "/public/{projectKey}/events", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact(Object.assign({}, payload)),
+    })
+  }
+
+  /**
+   * 首次访问时才建队列，命名空间变化时丢弃重建。
+   *
+   * 旧命名空间攒下的事件留在它自己的键下，下次绑定回去时补发。
+   */
+  events() {
+    const namespace =
+      (this.analyticsOptions && this.analyticsOptions.namespace) ||
+      analyticsNamespace(this.http.baseUrl, this.http.projectKey)
+
+    if (this.queue && this.queue.namespace !== namespace) {
+      this.queue = null
+    }
+    if (!this.queue) {
+      this.queue = new EventQueue(
+        namespace,
+        (payload) => this.ingestEvents(payload),
+        this.analyticsOptions,
+        (payload) => this.beaconEvents(payload),
+      )
+    }
+    return this.queue
+  }
+
+  /**
+   * 页面卸载时用 navigator.sendBeacon 把队列送出去，非浏览器环境返回 false。
+   *
+   * beacon 设不了请求头，平台与系统版本改走请求体。
+   *
+   * @param {object} payload 一批事件
+   * @returns {boolean} 浏览器是否接下了这次投递
+   */
+  beaconEvents(payload) {
+    if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") {
+      return false
+    }
+    const projectKey = this.http.projectKey
+    if (!projectKey) {
+      return false
+    }
+
+    const body = compact(
+      Object.assign({}, payload, {
+        platform: this.http.platform || undefined,
+        platform_version: this.http.platformVersion || undefined,
+      }),
+    )
+
+    try {
+      const url = this.http.resolveUrl("/public/{projectKey}/events", { projectKey })
+      const blob = new Blob([JSON.stringify(body)], { type: "application/json" })
+      return navigator.sendBeacon(url, blob)
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * @param {string} [explicit] 显式指定的匿名标识
+   * @returns {string}
+   * @throws {VerhubError} 没有可用的匿名标识
+   */
+  requireDistinctId(explicit) {
+    const id = explicit || this.events().currentDistinctId()
+    if (!id) {
+      throw new VerhubError("没有可用的匿名标识：事件采集未启用或已退出。可显式传入 distinctId。")
+    }
+    return id
   }
 }
 
 /**
  * 管理接口，全部需要凭据。
  *
- * 凭据可以是 `POST /auth/login` 拿到的管理员 JWT（默认 2 小时过期），也可以是
- * 后台签发的长期 API Key（vh_ 前缀）。别把管理凭据打进浏览器产物——网页里请
- * 只用 public 命名空间。
+ * 凭据可以是 `POST /auth/login` 拿到的管理员 JWT，也可以是后台签发的长期
+ * API Key（vh_ 前缀）。网页里只用 public 命名空间，不要把管理凭据打进浏览器产物。
  *
  * 项目作用域的方法用客户端绑定的 projectKey，不再逐次收项目参数。
  */
@@ -808,6 +1478,9 @@ class AdminApi {
     })
   }
 
+  /**
+   * @returns 绑定项目的详情
+   */
   getProject() {
     return this.http.request("GET", "/admin/projects/{projectKey}", {
       pathParams: { projectKey: this.http.requireProjectKey() },
@@ -829,6 +1502,9 @@ class AdminApi {
     })
   }
 
+  /**
+   * @returns 删除结果
+   */
   deleteProject() {
     return this.http.request("DELETE", "/admin/projects/{projectKey}", {
       pathParams: { projectKey: this.http.requireProjectKey() },
@@ -1186,83 +1862,229 @@ class AdminApi {
     return this.http.request("GET", "/admin/logs/statistics", { auth: true })
   }
 
-  // ---- 行为 ----
+  // ---- 事件分析 ----
 
   /**
-   * @param {{limit?: number, offset?: number}} [options] 分页参数
-   */
-  listActions(options = {}) {
-    return this.http.request("GET", "/admin/projects/{projectKey}/actions", {
-      pathParams: { projectKey: this.http.requireProjectKey() },
-      query: { limit: options.limit, offset: options.offset },
-      auth: true,
-    })
-  }
-
-  /**
-   * 在绑定项目下创建行为定义。
+   * 自动发现的事件清单。定义由采集端在第一次收到某个事件名时登记，没有创建接口。
    *
-   * @param {{name: string, description: string, custom_data?: object}} input 行为定义字段
+   * @param {object} [options] 区间、分页与搜索
    */
-  createAction(input) {
-    return this.http.request("POST", "/admin/projects/actions", {
-      body: compact(Object.assign({}, input, { project_key: this.http.requireProjectKey() })),
+  listEventDefinitions(options = {}) {
+    return this.http.request("GET", "/admin/projects/{projectKey}/events/definitions", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      query: {
+        start_time: options.start_time,
+        end_time: options.end_time,
+        tz_offset_minutes: options.tz_offset_minutes,
+        limit: options.limit,
+        offset: options.offset,
+        search: options.search,
+        include_archived: options.include_archived,
+      },
       auth: true,
     })
   }
 
   /**
-   * @param {string} actionId 行为定义 id
-   * @param {object} input 要改的字段
+   * @param {string} definitionId 事件定义 id
+   * @param {{display_name?: string, description?: string, archived?: boolean}} input
+   *   事件名不可改——它是客户端上报时使用的键。
    */
-  updateAction(actionId, input) {
-    return this.http.request("PATCH", "/admin/actions/{action_id}", {
-      pathParams: { action_id: actionId },
+  updateEventDefinition(definitionId, input) {
+    return this.http.request(
+      "PATCH",
+      "/admin/projects/{projectKey}/events/definitions/{definitionId}",
+      {
+        pathParams: { projectKey: this.http.requireProjectKey(), definitionId },
+        body: compact(Object.assign({}, input)),
+        auth: true,
+      },
+    )
+  }
+
+  /**
+   * 删除事件定义本身；明细与统计保留，下一次上报会把定义重新建回来。
+   *
+   * @param {string} definitionId 事件定义 id
+   */
+  deleteEventDefinition(definitionId) {
+    return this.http.request(
+      "DELETE",
+      "/admin/projects/{projectKey}/events/definitions/{definitionId}",
+      {
+        pathParams: { projectKey: this.http.requireProjectKey(), definitionId },
+        auth: true,
+      },
+    )
+  }
+
+  /**
+   * @param {object} [options] 统计区间
+   */
+  getEventOverview(options = {}) {
+    return this.http.request("GET", "/admin/projects/{projectKey}/events/stats/overview", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      query: Object.assign({}, options),
+      auth: true,
+    })
+  }
+
+  /**
+   * 事件量趋势。data 是总量，永远返回；给了 group_by 时额外返回拆开的 series。
+   *
+   * @param {object} [options] 区间、粒度与拆分维度
+   */
+  getEventTimeseries(options = {}) {
+    return this.http.request("GET", "/admin/projects/{projectKey}/events/stats/timeseries", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      query: Object.assign({}, options),
+      auth: true,
+    })
+  }
+
+  /**
+   * 事件分布。total 是全量而非本页之和。
+   *
+   * @param {object} [options] dimension 为 "property" 时必须给 property_key
+   */
+  getEventBreakdown(options = {}) {
+    return this.http.request("GET", "/admin/projects/{projectKey}/events/stats/breakdown", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      query: Object.assign({}, options),
+      auth: true,
+    })
+  }
+
+  /**
+   * 星期 × 小时活跃热力图，固定 168 格。按每条上报来源国家的时区折叠。
+   *
+   * @param {object} [options] 区间与可选的单事件筛选
+   */
+  getEventHeatmap(options = {}) {
+    return this.http.request("GET", "/admin/projects/{projectKey}/events/stats/heatmap", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      query: Object.assign({}, options),
+      auth: true,
+    })
+  }
+
+  /**
+   * 漏斗转化。只读接口，所需 scope 是 events:read。
+   *
+   * @param {{steps: Array<object>, window_seconds?: number}} options 步骤数组（2 到 8 步）
+   */
+  getFunnel(options) {
+    return this.http.request("POST", "/admin/projects/{projectKey}/events/analysis/funnel", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact(Object.assign({}, options)),
+      auth: true,
+    })
+  }
+
+  /**
+   * 留存矩阵。尚未走完的周期返回 null 而不是 0。
+   *
+   * @param {{start_event: string, return_event?: string}} options 起始与回访事件
+   */
+  getRetention(options) {
+    return this.http.request("POST", "/admin/projects/{projectKey}/events/analysis/retention", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact(Object.assign({}, options)),
+      auth: true,
+    })
+  }
+
+  /**
+   * 路径分析（桑基图边集）。默认按会话串联。
+   *
+   * @param {object} [options] 起点、深度与分支数
+   */
+  getPaths(options = {}) {
+    return this.http.request("POST", "/admin/projects/{projectKey}/events/analysis/paths", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact(Object.assign({}, options)),
+      auth: true,
+    })
+  }
+
+  /**
+   * 指标 DSL 求值。查询构建器与看板卡片共用这一个入口。
+   *
+   * @param {object} query 指标定义；formula 支持 "A / B * 100" 形式的跨事件运算
+   */
+  runEventQuery(query) {
+    return this.http.request("POST", "/admin/projects/{projectKey}/events/analysis/query", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact(Object.assign({}, query)),
+      auth: true,
+    })
+  }
+
+  /**
+   * @returns 该项目保存的分析卡片，按 sort_order 升序
+   */
+  listDashboardCards() {
+    return this.http.request("GET", "/admin/projects/{projectKey}/events/dashboards/cards", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      auth: true,
+    })
+  }
+
+  /**
+   * @param {{title: string, query: object}} input 查询定义在写入时就完整校验
+   */
+  createDashboardCard(input) {
+    return this.http.request("POST", "/admin/projects/{projectKey}/events/dashboards/cards", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
       body: compact(Object.assign({}, input)),
       auth: true,
     })
   }
 
   /**
-   * @param {string} actionId 行为定义 id
+   * @param {string} cardId 卡片 id
+   * @param {object} input 要改的字段
    */
-  deleteAction(actionId) {
-    return this.http.request("DELETE", "/admin/actions/{action_id}", {
-      pathParams: { action_id: actionId },
-      auth: true,
-    })
+  updateDashboardCard(cardId, input) {
+    return this.http.request(
+      "PATCH",
+      "/admin/projects/{projectKey}/events/dashboards/cards/{cardId}",
+      {
+        pathParams: { projectKey: this.http.requireProjectKey(), cardId },
+        body: compact(Object.assign({}, input)),
+        auth: true,
+      },
+    )
   }
 
   /**
-   * @param {string} actionId 行为定义 id
-   * @param {{limit?: number, offset?: number}} [options] 分页参数
+   * @param {string} cardId 卡片 id
    */
-  listActionRecords(actionId, options = {}) {
-    return this.http.request("GET", "/admin/actions/{action_id}", {
-      pathParams: { action_id: actionId },
-      query: { limit: options.limit, offset: options.offset },
-      auth: true,
-    })
+  deleteDashboardCard(cardId) {
+    return this.http.request(
+      "DELETE",
+      "/admin/projects/{projectKey}/events/dashboards/cards/{cardId}",
+      {
+        pathParams: { projectKey: this.http.requireProjectKey(), cardId },
+        auth: true,
+      },
+    )
   }
 
   /**
-   * @param {string} actionRecordId 行为记录 id
+   * 代最终用户删除其全部事件明细（GDPR Art.17）。小时汇总不在删除范围内。
+   *
+   * @param {string} distinctId 要删除的匿名标识
    */
-  getActionRecord(actionRecordId) {
-    return this.http.request("GET", "/admin/actions/record/{action_record_id}", {
-      pathParams: { action_record_id: actionRecordId },
-      auth: true,
-    })
-  }
-
-  /** @returns 行为定义总数 */
-  getActionStatistics() {
-    return this.http.request("GET", "/admin/actions/statistics", { auth: true })
-  }
-
-  /** @returns 行为记录总数 */
-  getActionRecordStatistics() {
-    return this.http.request("GET", "/admin/actions/record/statistics", { auth: true })
+  deleteEventSubject(distinctId) {
+    return this.http.request(
+      "DELETE",
+      "/admin/projects/{projectKey}/events/subjects/{distinctId}",
+      {
+        pathParams: { projectKey: this.http.requireProjectKey(), distinctId },
+        auth: true,
+      },
+    )
   }
 
   // ---- GitHub Webhook ----
@@ -1374,14 +2196,65 @@ class AdminApi {
       },
     )
   }
+
+  // ---- 条款文档 ----
+
+  /**
+   * 列出全部条款文档的设置视图（含生效正文、自定义草稿与内置原文）。
+   *
+   * 条款接口只接受管理员 JWT，API Key 会得到 401。不作用于绑定项目。
+   */
+  listTermsDocuments() {
+    return this.http.request("GET", "/admin/terms/documents", { auth: true })
+  }
+
+  /**
+   * @param {"privacy-policy" | "sdk-compliance"} slug 文档标识
+   * @returns 单份条款文档的设置视图
+   */
+  getTermsDocument(slug) {
+    return this.http.request("GET", "/admin/terms/documents/{slug}", {
+      pathParams: { slug },
+      auth: true,
+    })
+  }
+
+  /**
+   * 部分更新条款文档，只修改传入的字段。
+   *
+   * custom 关闭时 content 仍会保存为草稿，重新打开即可继续编辑；content 传空串
+   * 表示清除草稿。
+   *
+   * @param {"privacy-policy" | "sdk-compliance"} slug 文档标识
+   * @param {{custom?: boolean, content?: string}} input 自定义开关与正文
+   */
+  updateTermsDocument(slug, input) {
+    return this.http.request("PUT", "/admin/terms/documents/{slug}", {
+      pathParams: { slug },
+      body: compact(Object.assign({}, input)),
+      auth: true,
+    })
+  }
+
+  /**
+   * 恢复内置条款正文：关闭自定义开关并丢弃草稿，前台随即回到内置正文。
+   *
+   * @param {"privacy-policy" | "sdk-compliance"} slug 文档标识
+   */
+  resetTermsDocument(slug) {
+    return this.http.request("DELETE", "/admin/terms/documents/{slug}", {
+      pathParams: { slug },
+      auth: true,
+    })
+  }
 }
 
 /**
  * Verhub SDK 入口。
  *
- * 客户端绑定一个项目：在配置里传入 projectKey 后，项目作用域的方法都用它，
- * 不必再逐次传项目参数。两个命名空间共用一份连接、凭据与来源声明：client.public
- * 不需要凭据，client.admin 需要管理员 JWT 或 API Key。
+ * 配置里传入 projectKey 后，项目作用域的方法都用它，不必再逐次传项目参数。
+ * 两个命名空间共用一份连接、凭据与来源声明：client.public 不需要凭据，
+ * client.admin 需要管理员 JWT 或 API Key。
  */
 class VerhubClient {
   /**
@@ -1392,13 +2265,19 @@ class VerhubClient {
    *   platform?: string | null,
    *   platformVersion?: string | null,
    *   timeoutMs?: number,
+   *   retries?: number,
    *   fetch?: typeof fetch,
    *   headers?: Record<string, string>,
-   * }} options 客户端配置；baseUrl 须包含 /api/v1 前缀
+   *   appIdentifier?: string,
+   *   logger?: (event: {method: string, url: string, status?: number, attempt: number}) => void,
+   *   analytics?: object,
+   * }} options 客户端配置；baseUrl 须包含 /api/v1 前缀。
+   *   analytics 是事件采集配置，省略即启用默认行为（设备级匿名标识 + 本地待发
+   *   队列）；面向欧盟用户的接入方应当设置 analytics.requireConsent 为 true。
    */
   constructor(options) {
     this.http = new HttpClient(options)
-    this.public = new PublicApi(this.http)
+    this.public = new PublicApi(this.http, options.analytics)
     this.admin = new AdminApi(this.http)
   }
 
@@ -1429,7 +2308,7 @@ class VerhubClient {
     this.http.setToken(token)
   }
 
-  /** 清除当前凭据，之后调用 admin 接口会直接抛错。 */
+  /** 清除当前凭据，之后调用 admin 接口会抛 VerhubAuthError。 */
   clearToken() {
     this.http.clearToken()
   }
@@ -1456,7 +2335,7 @@ class VerhubClient {
 
 VerhubClient.version = VERHUB_SDK_VERSION
 
-/** 兼容早期版本的旧名字。 */
+/** VerhubClient 的别名。 */
 const VerhubSDK = VerhubClient
 
 export {
@@ -1464,12 +2343,20 @@ export {
   VerhubSDK,
   PublicApi,
   AdminApi,
+  EventQueue,
   VerhubError,
   VerhubApiError,
   VerhubAuthError,
   VerhubConnectionError,
   detectPlatform,
   detectPlatformVersion,
+  detectDoNotTrack,
+  analyticsNamespace,
+  fnv1a32Hex,
+  originOf,
+  memoryStorage,
+  nullStorage,
+  randomId,
   sanitizePlatformVersion,
   compact,
   PLATFORM_HEADER,

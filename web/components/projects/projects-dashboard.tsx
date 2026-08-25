@@ -33,8 +33,9 @@ import { useUnsavedChangesGuard } from "@/components/common/unsaved-changes-guar
 import {
   DataTable,
   EmptyValue,
+  MarkdownCell,
   TruncatedCell,
-  type DataTableColumn,
+  createDataTableColumns,
 } from "@/components/common/data-table"
 import { notifyAdminProjectsChanged, useAdminProjects } from "@/hooks/use-admin-projects"
 import { usePagination } from "@/hooks/use-pagination"
@@ -516,6 +517,8 @@ function ProjectFormFields({
   )
 }
 
+const column = createDataTableColumns<ProjectItem>()
+
 export function ProjectsDashboard() {
   const confirm = useConfirm()
   const { selectedProjectKey, setSelectedProjectKey } = useAdminProjects()
@@ -850,125 +853,115 @@ export function ProjectsDashboard() {
   }
 
   // 不做 memo：操作按钮闭包了当前页数据，缓存下来会让编辑/删除作用在上一轮的行上。
-  const columns: Array<DataTableColumn<ProjectItem>> = [
-    {
+  const columns = [
+    column.display({
       id: "name",
       header: "名称",
-      label: "名称",
-      alwaysVisible: true,
-      className: "font-medium",
-      cell: (project) => (
-        <TruncatedCell className="max-w-[16rem]" title={project.name}>
-          {project.name}
+      enableHiding: false,
+      cell: ({ row }) => (
+        <TruncatedCell className="max-w-[16rem]" title={row.original.name}>
+          {row.original.name}
         </TruncatedCell>
       ),
-    },
-    {
+      meta: { className: "font-medium" },
+    }),
+    column.display({
       id: "project_key",
       header: "Project Key",
-      label: "Project Key",
-      alwaysVisible: true,
-      className: "font-mono text-xs whitespace-nowrap",
-      cell: (project) => project.project_key,
-    },
-    {
+      enableHiding: false,
+      cell: ({ row }) => row.original.project_key,
+      meta: { className: "font-mono text-xs whitespace-nowrap" },
+    }),
+    column.display({
       id: "aliases",
       header: "历史 Key",
-      label: "历史 Key（别名）",
-      defaultHidden: true,
-      className: "font-mono text-xs text-slate-600 dark:text-slate-300",
       // aliases 是后加的字段，旧接口响应里可能没有。
-      cell: (project) => (project.aliases?.length ? project.aliases.join(", ") : <EmptyValue />),
-    },
-    {
+      cell: ({ row }) =>
+        row.original.aliases?.length ? row.original.aliases.join(", ") : <EmptyValue />,
+      meta: {
+        label: "历史 Key（别名）",
+        defaultHidden: true,
+        className: "font-mono text-xs text-slate-600 dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "description",
       header: "描述",
-      label: "描述",
-      defaultHidden: true,
-      className: "text-xs text-slate-600 dark:text-slate-300",
-      cell: (project) =>
-        project.description ? (
-          <TruncatedCell className="max-w-[20rem]" title={project.description}>
-            {project.description}
-          </TruncatedCell>
-        ) : (
-          <EmptyValue />
-        ),
-    },
-    {
+      cell: ({ row }) => <MarkdownCell value={row.original.description} />,
+      meta: { defaultHidden: true, className: "text-xs text-slate-600 dark:text-slate-300" },
+    }),
+    column.display({
       id: "author",
       header: "作者",
-      label: "作者",
-      defaultHidden: true,
-      className: "text-xs text-slate-600 dark:text-slate-300",
-      cell: (project) => project.author ?? <EmptyValue />,
-    },
-    {
+      cell: ({ row }) => row.original.author ?? <EmptyValue />,
+      meta: { defaultHidden: true, className: "text-xs text-slate-600 dark:text-slate-300" },
+    }),
+    column.display({
       id: "repo_url",
       header: "仓库",
-      label: "仓库地址",
-      cell: (project) => <ExternalLinkCell url={project.repo_url} />,
-    },
-    {
+      cell: ({ row }) => <ExternalLinkCell url={row.original.repo_url} />,
+      meta: { label: "仓库地址" },
+    }),
+    column.display({
       id: "website_url",
       header: "官网",
-      label: "官网",
-      cell: (project) => <ExternalLinkCell url={project.website_url} />,
-    },
-    {
+      cell: ({ row }) => <ExternalLinkCell url={row.original.website_url} />,
+    }),
+    column.display({
       id: "docs_url",
       header: "文档",
-      label: "文档",
-      defaultHidden: true,
-      cell: (project) => <ExternalLinkCell url={project.docs_url} />,
-    },
-    {
+      cell: ({ row }) => <ExternalLinkCell url={row.original.docs_url} />,
+      meta: { defaultHidden: true },
+    }),
+    column.display({
       id: "optional_update_range",
       header: "可选更新范围",
-      label: "可选更新范围",
-      className: "font-mono text-xs whitespace-nowrap text-slate-600 dark:text-slate-300",
-      cell: (project) =>
-        `${project.optional_update_min_comparable_version ?? "-∞"} ~ ${
-          project.optional_update_max_comparable_version ?? "+∞"
+      cell: ({ row }) =>
+        `${row.original.optional_update_min_comparable_version ?? "-∞"} ~ ${
+          row.original.optional_update_max_comparable_version ?? "+∞"
         }`,
-    },
-    {
+      meta: {
+        className: "font-mono text-xs whitespace-nowrap text-slate-600 dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "stats_retention_days",
       header: "统计保留",
-      label: "统计保留天数",
-      defaultHidden: true,
-      className: "text-xs tabular-nums",
-      cell: (project) => `${project.stats_retention_days} 天`,
-    },
-    {
+      cell: ({ row }) => `${row.original.stats_retention_days} 天`,
+      meta: {
+        label: "统计保留天数",
+        defaultHidden: true,
+        className: "text-xs tabular-nums",
+      },
+    }),
+    column.display({
       id: "published_at",
       header: "发布时间",
-      label: "发布时间",
-      defaultHidden: true,
-      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
-      cell: (project) => formatTimestamp(project.published_at, "—"),
-    },
-    {
+      cell: ({ row }) => formatTimestamp(row.original.published_at, "—"),
+      meta: {
+        defaultHidden: true,
+        className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "created_at",
       header: "创建时间",
-      label: "创建时间",
-      defaultHidden: true,
-      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
-      cell: (project) => formatTimestamp(project.created_at, "—"),
-    },
-    {
+      cell: ({ row }) => formatTimestamp(row.original.created_at, "—"),
+      meta: {
+        defaultHidden: true,
+        className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "actions",
       header: "操作",
-      label: "操作",
-      alwaysVisible: true,
-      headerClassName: "text-right",
-      className: "text-right",
-      cell: (project) => (
-        // 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。
+      enableHiding: false,
+      // 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。
+      cell: ({ row }) => (
         <div className="flex justify-end gap-1.5">
           <Button asChild type="button" size="icon-sm" variant="outline">
             <Link
-              href={`/projects/${project.project_key}`}
+              href={`/projects/${row.original.project_key}`}
               target="_blank"
               rel="noreferrer"
               title="项目展示页"
@@ -983,7 +976,7 @@ export function ProjectsDashboard() {
             variant="outline"
             title="复制配置"
             aria-label="复制配置"
-            onClick={() => copyFromProject(project)}
+            onClick={() => copyFromProject(row.original)}
           >
             <Copy className="size-4" />
           </Button>
@@ -994,8 +987,8 @@ export function ProjectsDashboard() {
             title="GitHub 集成"
             aria-label="GitHub 集成"
             onClick={() => {
-              setGithubProjectKey(project.project_key)
-              setGithubProjectRepoUrl(project.repo_url)
+              setGithubProjectKey(row.original.project_key)
+              setGithubProjectRepoUrl(row.original.repo_url)
               setGithubDialogOpen(true)
             }}
           >
@@ -1007,7 +1000,7 @@ export function ProjectsDashboard() {
             variant="outline"
             title="编辑"
             aria-label="编辑"
-            onClick={() => beginEdit(project)}
+            onClick={() => beginEdit(row.original)}
           >
             <PencilLine className="size-4" />
           </Button>
@@ -1017,13 +1010,19 @@ export function ProjectsDashboard() {
             variant="destructive"
             title="删除"
             aria-label="删除"
-            onClick={() => void handleDelete(project.project_key)}
+            onClick={() => void handleDelete(row.original.project_key)}
           >
             <Trash2 className="size-4" />
           </Button>
         </div>
       ),
-    },
+      meta: {
+        hideInDetail: true,
+        pin: "end",
+        headerClassName: "text-right",
+        className: "text-right",
+      },
+    }),
   ]
 
   return (
@@ -1089,6 +1088,7 @@ export function ProjectsDashboard() {
             },
             placeholder: "搜索 key / 名称 / 仓库",
           }}
+          detailTitle={(project) => project.name}
           pagination={{ total, page, totalPages, hasPrev, hasNext, onPrev, onNext }}
         />
       </AdminCard>

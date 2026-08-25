@@ -18,10 +18,10 @@ import {
   DataTableSelectFilter,
   DataTableToggle,
   EmptyValue,
+  JsonCell,
   TruncatedCell,
-  type DataTableColumn,
+  createDataTableColumns,
 } from "@/components/common/data-table"
-import { JsonField } from "@/components/common/json-viewer"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import { useAdminProjects } from "@/hooks/use-admin-projects"
 import {
@@ -176,21 +176,7 @@ function formatLocation(log: LogItem): string | null {
   return unique.length > 0 ? unique.join(" · ") : null
 }
 
-/** JSON 列的单元格：只报有没有、有几项，具体内容进展开行。 */
-function JsonSummaryCell({ value }: { value: unknown }) {
-  if (value === null || value === undefined) {
-    return <EmptyValue />
-  }
-
-  const size =
-    typeof value === "object" && value !== null
-      ? Array.isArray(value)
-        ? value.length
-        : Object.keys(value).length
-      : 0
-
-  return <span className="text-xs text-slate-500 tabular-nums dark:text-slate-400">{size} 项</span>
-}
+const column = createDataTableColumns<LogItem>()
 
 export function LogsDashboard() {
   const [token, setToken] = React.useState(() => getSessionToken().trim())
@@ -391,45 +377,43 @@ export function LogsDashboard() {
 
   // 不做 memo：列定义里的操作按钮闭包了当前页数据与筛选状态，缓存下来只会让
   // 「隐藏」拿到上一轮的行。十列的对象字面量重建不值得为此冒风险。
-  const columns: Array<DataTableColumn<LogItem>> = [
-    {
+  const columns = [
+    column.display({
       id: "level",
       header: "级别",
-      label: "级别",
-      alwaysVisible: true,
-      cell: (log) => (
+      enableHiding: false,
+      cell: ({ row }) => (
         <span
-          className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${levelBadgeClass(log.level)}`}
+          className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium ${levelBadgeClass(row.original.level)}`}
         >
-          {levelLabel(log.level)}
+          {levelLabel(row.original.level)}
         </span>
       ),
-    },
-    {
+    }),
+    column.display({
       id: "created_at",
       header: "时间",
-      label: "时间",
-      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
-      cell: (log) => formatDateTime(log.created_at),
-    },
-    {
+      cell: ({ row }) => formatDateTime(row.original.created_at),
+      meta: {
+        className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "content",
       header: "内容",
-      label: "内容",
-      alwaysVisible: true,
-      className: "min-w-64",
-      cell: (log) => (
-        <TruncatedCell className="max-w-[32rem]" title={log.content}>
-          {log.content}
+      enableHiding: false,
+      cell: ({ row }) => (
+        <TruncatedCell className="max-w-[32rem]" title={row.original.content}>
+          {row.original.content}
         </TruncatedCell>
       ),
-    },
-    {
+      meta: { className: "min-w-64" },
+    }),
+    column.display({
       id: "status",
       header: "状态",
-      label: "状态（是否隐藏）",
-      cell: (log) =>
-        log.is_hidden ? (
+      cell: ({ row }) =>
+        row.original.is_hidden ? (
           <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:border-amber-300/40 dark:bg-amber-300/10 dark:text-amber-200">
             <EyeOff className="size-3" />
             已隐藏
@@ -437,85 +421,93 @@ export function LogsDashboard() {
         ) : (
           <span className="text-xs text-slate-500 dark:text-slate-400">正常</span>
         ),
-    },
-    {
+      meta: { label: "状态（是否隐藏）" },
+    }),
+    column.display({
       id: "platform",
       header: "平台",
-      label: "平台",
-      className: "whitespace-nowrap text-xs text-slate-600 dark:text-slate-300",
-      cell: (log) => formatPlatformVersion(log.platform, log.platform_version) ?? <EmptyValue />,
-    },
-    {
+      cell: ({ row }) =>
+        formatPlatformVersion(row.original.platform, row.original.platform_version) ?? (
+          <EmptyValue />
+        ),
+      meta: { className: "whitespace-nowrap text-xs text-slate-600 dark:text-slate-300" },
+    }),
+    column.display({
       id: "ip",
       header: "IP",
-      label: "来源 IP",
-      className: "font-mono text-xs text-slate-600 dark:text-slate-300",
-      cell: (log) => log.ip ?? <EmptyValue />,
-    },
-    {
+      cell: ({ row }) => row.original.ip ?? <EmptyValue />,
+      meta: {
+        label: "来源 IP",
+        className: "font-mono text-xs text-slate-600 dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "location",
       header: "地区",
-      label: "来源地区",
-      className: "text-xs text-slate-600 dark:text-slate-300",
-      cell: (log) => formatLocation(log) ?? <EmptyValue />,
-    },
-    {
+      cell: ({ row }) => formatLocation(row.original) ?? <EmptyValue />,
+      meta: { label: "来源地区", className: "text-xs text-slate-600 dark:text-slate-300" },
+    }),
+    column.display({
       id: "user_agent",
       header: "User-Agent",
-      label: "User-Agent",
-      defaultHidden: true,
-      className: "font-mono text-xs text-slate-600 dark:text-slate-300",
-      cell: (log) =>
-        log.user_agent ? (
-          <TruncatedCell className="max-w-[18rem]" title={log.user_agent}>
-            {log.user_agent}
+      cell: ({ row }) =>
+        row.original.user_agent ? (
+          <TruncatedCell className="max-w-[18rem]" title={row.original.user_agent}>
+            {row.original.user_agent}
           </TruncatedCell>
         ) : (
           <EmptyValue />
         ),
-    },
-    {
+      meta: {
+        defaultHidden: true,
+        className: "font-mono text-xs text-slate-600 dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "device_info",
       header: "device_info",
-      label: "device_info",
-      defaultHidden: true,
-      cell: (log) => <JsonSummaryCell value={log.device_info} />,
-    },
-    {
+      cell: ({ row }) => <JsonCell value={row.original.device_info} />,
+      meta: { defaultHidden: true },
+    }),
+    column.display({
       id: "custom_data",
       header: "custom_data",
-      label: "custom_data",
-      defaultHidden: true,
-      cell: (log) => <JsonSummaryCell value={log.custom_data} />,
-    },
-    {
+      cell: ({ row }) => <JsonCell value={row.original.custom_data} />,
+      meta: { defaultHidden: true },
+    }),
+    column.display({
       id: "id",
       header: "ID",
-      label: "日志 ID",
-      defaultHidden: true,
-      className: "font-mono text-xs text-slate-500 dark:text-slate-400",
-      cell: (log) => log.id,
-    },
-    {
+      cell: ({ row }) => row.original.id,
+      meta: {
+        label: "日志 ID",
+        defaultHidden: true,
+        className: "font-mono text-xs text-slate-500 dark:text-slate-400",
+      },
+    }),
+    column.display({
       id: "actions",
       header: "操作",
-      label: "操作",
-      alwaysVisible: true,
-      headerClassName: "text-right",
-      className: "text-right",
-      cell: (log) => (
+      enableHiding: false,
+      cell: ({ row }) => (
         <Button
           type="button"
           size="icon-sm"
           variant="outline"
-          title={log.is_hidden ? "取消隐藏" : "隐藏"}
-          aria-label={log.is_hidden ? "取消隐藏" : "隐藏"}
-          onClick={() => void handleToggleHidden(log)}
+          title={row.original.is_hidden ? "取消隐藏" : "隐藏"}
+          aria-label={row.original.is_hidden ? "取消隐藏" : "隐藏"}
+          onClick={() => void handleToggleHidden(row.original)}
         >
-          {log.is_hidden ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+          {row.original.is_hidden ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
         </Button>
       ),
-    },
+      meta: {
+        hideInDetail: true,
+        pin: "end",
+        headerClassName: "text-right",
+        className: "text-right",
+      },
+    }),
   ]
 
   return (
@@ -616,12 +608,7 @@ export function LogsDashboard() {
               onChange={(checked) => updateFilter("includeHidden", checked)}
             />
           }
-          renderExpanded={(log) => (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <JsonField label="device_info" value={log.device_info} />
-              <JsonField label="custom_data" value={log.custom_data} />
-            </div>
-          )}
+          detailTitle={(log) => `${levelLabel(log.level)} · ${formatDateTime(log.created_at)}`}
           pagination={{ total, page, totalPages, hasPrev, hasNext, onPrev, onNext }}
         />
       </AdminCard>

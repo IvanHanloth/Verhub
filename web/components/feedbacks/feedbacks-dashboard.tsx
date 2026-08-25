@@ -30,10 +30,10 @@ import {
   DataTableSelectFilter,
   DataTableToggle,
   EmptyValue,
+  JsonCell,
   TruncatedCell,
-  type DataTableColumn,
+  createDataTableColumns,
 } from "@/components/common/data-table"
-import { JsonField } from "@/components/common/json-viewer"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import { useAdminProjects } from "@/hooks/use-admin-projects"
 import {
@@ -135,6 +135,8 @@ function toPrettyJson(value: unknown): string {
 
 const FIELD_CLASS =
   "w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
+
+const column = createDataTableColumns<FeedbackItem>()
 
 const ISSUE_BADGE_CLASS =
   "inline-flex items-center gap-1 rounded-full border border-sky-300/40 bg-sky-300/10 px-2 py-0.5 text-xs text-sky-200"
@@ -579,120 +581,136 @@ export function FeedbacksDashboard() {
   }
 
   // 不做 memo：操作按钮闭包了当前页数据，缓存下来会让隐藏/删除作用在上一轮的行上。
-  const columns: Array<DataTableColumn<FeedbackItem>> = [
-    {
+  const columns = [
+    column.display({
       id: "content",
       header: "内容",
-      label: "内容",
-      alwaysVisible: true,
-      className: "min-w-64",
-      cell: (item) => (
-        <TruncatedCell className="max-w-[28rem]" title={item.content}>
-          {item.content}
+      enableHiding: false,
+      cell: ({ row }) => (
+        <TruncatedCell className="max-w-[28rem]" title={row.original.content}>
+          {row.original.content}
         </TruncatedCell>
       ),
-    },
-    {
+      meta: { className: "min-w-64" },
+    }),
+    column.display({
       id: "rating",
       header: "评分",
-      label: "评分",
-      className: "whitespace-nowrap text-xs tabular-nums",
-      cell: (item) =>
-        item.rating === null ? <EmptyValue>未评分</EmptyValue> : `${item.rating} 分`,
-    },
-    {
+      cell: ({ row }) =>
+        row.original.rating === null ? (
+          <EmptyValue>未评分</EmptyValue>
+        ) : (
+          `${row.original.rating} 分`
+        ),
+      meta: { className: "whitespace-nowrap text-xs tabular-nums" },
+    }),
+    column.display({
       id: "user_id",
       header: "用户",
-      label: "用户 ID",
-      className: "text-xs text-slate-600 dark:text-slate-300",
-      cell: (item) => item.user_id ?? <EmptyValue>匿名</EmptyValue>,
-    },
-    {
+      cell: ({ row }) => row.original.user_id ?? <EmptyValue>匿名</EmptyValue>,
+      meta: { label: "用户 ID", className: "text-xs text-slate-600 dark:text-slate-300" },
+    }),
+    column.display({
       id: "contact",
       header: "联系方式",
-      label: "联系方式",
-      className: "text-xs text-slate-600 dark:text-slate-300",
-      cell: (item) =>
-        item.contact ? (
-          <TruncatedCell className="max-w-[14rem]" title={item.contact}>
-            {item.contact}
+      cell: ({ row }) =>
+        row.original.contact ? (
+          <TruncatedCell className="max-w-[14rem]" title={row.original.contact}>
+            {row.original.contact}
           </TruncatedCell>
         ) : (
           <EmptyValue />
         ),
-    },
-    {
+      meta: { className: "text-xs text-slate-600 dark:text-slate-300" },
+    }),
+    column.display({
       id: "status",
       header: "状态",
-      label: "状态（隐藏 / Issue）",
-      cell: (item) => (
+      cell: ({ row }) => (
         <div className="flex flex-wrap items-center gap-1">
-          {item.is_hidden ? (
+          {row.original.is_hidden ? (
             <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:border-amber-300/40 dark:bg-amber-300/10 dark:text-amber-200">
               <EyeOff className="size-3" />
               已隐藏
             </span>
           ) : null}
-          {item.forwarded_to_github ? <GithubIssueBadge item={item} /> : null}
-          {!item.is_hidden && !item.forwarded_to_github ? (
+          {row.original.forwarded_to_github ? <GithubIssueBadge item={row.original} /> : null}
+          {!row.original.is_hidden && !row.original.forwarded_to_github ? (
             <span className="text-xs text-slate-500 dark:text-slate-400">正常</span>
           ) : null}
         </div>
       ),
-    },
-    {
+      meta: { label: "状态（隐藏 / Issue）" },
+    }),
+    column.display({
       id: "platform",
       header: "平台",
-      label: "平台",
-      className: "whitespace-nowrap text-xs text-slate-600 dark:text-slate-300",
-      cell: (item) => formatPlatformVersion(item.platform, item.platform_version) ?? <EmptyValue />,
-    },
-    {
+      cell: ({ row }) =>
+        formatPlatformVersion(row.original.platform, row.original.platform_version) ?? (
+          <EmptyValue />
+        ),
+      meta: { className: "whitespace-nowrap text-xs text-slate-600 dark:text-slate-300" },
+    }),
+    column.display({
       id: "created_at",
       header: "提交时间",
-      label: "提交时间",
-      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
-      cell: (item) => formatTimestamp(item.created_at, "—"),
-    },
-    {
+      cell: ({ row }) => formatTimestamp(row.original.created_at, "—"),
+      meta: {
+        className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "ip",
       header: "IP",
-      label: "来源 IP",
-      defaultHidden: true,
-      className: "font-mono text-xs text-slate-600 dark:text-slate-300",
-      cell: (item) => item.ip ?? <EmptyValue />,
-    },
-    {
+      cell: ({ row }) => row.original.ip ?? <EmptyValue />,
+      meta: {
+        label: "来源 IP",
+        defaultHidden: true,
+        className: "font-mono text-xs text-slate-600 dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "location",
       header: "地区",
-      label: "来源地区",
-      defaultHidden: true,
-      className: "text-xs text-slate-600 dark:text-slate-300",
-      cell: (item) => {
-        const parts = [item.city, item.region_name, item.country_name ?? item.country_code]
+      cell: ({ row }) => {
+        const parts = [
+          row.original.city,
+          row.original.region_name,
+          row.original.country_name ?? row.original.country_code,
+        ]
           .map((part) => part?.trim())
           .filter((part): part is string => Boolean(part))
         const unique = parts.filter((part, index) => parts.indexOf(part) === index)
         return unique.length > 0 ? unique.join(" · ") : <EmptyValue />
       },
-    },
-    {
+      meta: {
+        label: "来源地区",
+        defaultHidden: true,
+        className: "text-xs text-slate-600 dark:text-slate-300",
+      },
+    }),
+    column.display({
+      id: "custom_data",
+      header: "custom_data",
+      cell: ({ row }) => <JsonCell value={row.original.custom_data} />,
+      meta: { defaultHidden: true },
+    }),
+    column.display({
       id: "id",
       header: "ID",
-      label: "反馈 ID",
-      defaultHidden: true,
-      className: "font-mono text-xs text-slate-500 dark:text-slate-400",
-      cell: (item) => item.id,
-    },
-    {
+      cell: ({ row }) => row.original.id,
+      meta: {
+        label: "反馈 ID",
+        defaultHidden: true,
+        className: "font-mono text-xs text-slate-500 dark:text-slate-400",
+      },
+    }),
+    column.display({
       id: "actions",
       header: "操作",
-      label: "操作",
-      alwaysVisible: true,
-      headerClassName: "text-right",
-      className: "text-right",
-      cell: (item) => (
-        // 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。
+      enableHiding: false,
+      // 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。
+      cell: ({ row }) => (
         <div className="flex justify-end gap-1.5">
           <Button
             type="button"
@@ -700,7 +718,7 @@ export function FeedbacksDashboard() {
             variant="outline"
             title="复制配置"
             aria-label="复制配置"
-            onClick={() => copyFromFeedback(item)}
+            onClick={() => copyFromFeedback(row.original)}
           >
             <Copy className="size-4" />
           </Button>
@@ -708,11 +726,11 @@ export function FeedbacksDashboard() {
             type="button"
             size="icon-sm"
             variant="outline"
-            title={item.is_hidden ? "取消隐藏" : "隐藏"}
-            aria-label={item.is_hidden ? "取消隐藏" : "隐藏"}
-            onClick={() => void handleToggleHidden(item)}
+            title={row.original.is_hidden ? "取消隐藏" : "隐藏"}
+            aria-label={row.original.is_hidden ? "取消隐藏" : "隐藏"}
+            onClick={() => void handleToggleHidden(row.original)}
           >
-            {item.is_hidden ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+            {row.original.is_hidden ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
           </Button>
           <Button
             type="button"
@@ -720,7 +738,7 @@ export function FeedbacksDashboard() {
             variant="outline"
             title="编辑"
             aria-label="编辑"
-            onClick={() => beginEdit(item)}
+            onClick={() => beginEdit(row.original)}
           >
             <PencilLine className="size-4" />
           </Button>
@@ -730,13 +748,19 @@ export function FeedbacksDashboard() {
             variant="destructive"
             title="删除"
             aria-label="删除"
-            onClick={() => void handleDelete(item.id)}
+            onClick={() => void handleDelete(row.original.id)}
           >
             <Trash2 className="size-4" />
           </Button>
         </div>
       ),
-    },
+      meta: {
+        hideInDetail: true,
+        pin: "end",
+        headerClassName: "text-right",
+        className: "text-right",
+      },
+    }),
   ]
 
   return (
@@ -815,12 +839,10 @@ export function FeedbacksDashboard() {
               onChange={(checked) => updateFilter("includeHidden", checked)}
             />
           }
-          renderExpanded={(item) => (
-            <div className="space-y-3">
-              <ClientOriginBadges origin={item} />
-              <JsonField label="custom_data" value={item.custom_data} />
-            </div>
-          )}
+          renderDetail={(item) => <ClientOriginBadges origin={item} />}
+          detailTitle={(item) =>
+            `${item.user_id ?? "匿名"} · ${formatTimestamp(item.created_at, "—")}`
+          }
           pagination={{ total, page, totalPages, hasPrev, hasNext, onPrev, onNext }}
         />
       </AdminCard>

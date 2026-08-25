@@ -29,8 +29,10 @@ import {
   DataTable,
   DataTableSelectFilter,
   EmptyValue,
+  JsonCell,
+  MarkdownCell,
   TruncatedCell,
-  type DataTableColumn,
+  createDataTableColumns,
 } from "@/components/common/data-table"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import { PLATFORM_OPTIONS, type Platform } from "@/lib/platform"
@@ -138,6 +140,8 @@ function VersionDownloadCell({ version }: { version: VersionItem }) {
 
   return <EmptyValue>未配置</EmptyValue>
 }
+
+const column = createDataTableColumns<VersionItem>()
 
 export function VersionsDashboard() {
   const confirm = useConfirm()
@@ -612,106 +616,114 @@ export function VersionsDashboard() {
   }
 
   // 不做 memo：操作按钮闭包了当前页数据，缓存下来会让编辑/删除作用在上一轮的行上。
-  const versionColumns: Array<DataTableColumn<VersionItem>> = [
-    {
+  const versionColumns = [
+    column.display({
       id: "version",
       header: "版本号",
-      label: "版本号",
-      alwaysVisible: true,
-      className: "font-medium whitespace-nowrap",
-      cell: (version) => (
+      enableHiding: false,
+      cell: ({ row }) => (
         <span className="inline-flex items-center gap-1.5">
-          {version.version}
-          {version.is_latest ? (
+          {row.original.version}
+          {row.original.is_latest ? (
             <Star className="size-3.5 text-amber-500" aria-label="最新" />
           ) : null}
-          {version.is_preview ? (
+          {row.original.is_preview ? (
             <Sparkles className="size-3.5 text-sky-500" aria-label="预览版" />
           ) : null}
         </span>
       ),
-    },
-    {
+      meta: { className: "font-medium whitespace-nowrap" },
+    }),
+    column.display({
       id: "comparable_version",
       header: "可比较版本号",
-      label: "可比较版本号",
-      className: "font-mono text-xs whitespace-nowrap text-slate-600 dark:text-slate-300",
-      cell: (version) => version.comparable_version ?? <EmptyValue>未设置</EmptyValue>,
-    },
-    {
+      cell: ({ row }) => row.original.comparable_version ?? <EmptyValue>未设置</EmptyValue>,
+      meta: {
+        className: "font-mono text-xs whitespace-nowrap text-slate-600 dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "title",
       header: "标题",
-      label: "标题",
-      cell: (version) =>
-        version.title ? (
-          <TruncatedCell className="max-w-[18rem]" title={version.title}>
-            {version.title}
+      cell: ({ row }) =>
+        row.original.title ? (
+          <TruncatedCell className="max-w-[18rem]" title={row.original.title}>
+            {row.original.title}
           </TruncatedCell>
         ) : (
           <EmptyValue />
         ),
-    },
-    {
+    }),
+    // 发布说明默认不占列表视野，但它是版本里最长的字段，必须能在详情抽屉里读全。
+    column.display({
+      id: "content",
+      header: "发布说明",
+      cell: ({ row }) => <MarkdownCell value={row.original.content} />,
+      meta: { defaultHidden: true },
+    }),
+    column.display({
       id: "platforms",
       header: "平台",
-      label: "平台",
-      className: "text-xs text-slate-600 dark:text-slate-300",
-      cell: (version) =>
-        version.platforms && version.platforms.length > 0
-          ? version.platforms.join(", ")
-          : (version.platform ?? <EmptyValue>全部</EmptyValue>),
-    },
-    {
+      cell: ({ row }) =>
+        row.original.platforms && row.original.platforms.length > 0
+          ? row.original.platforms.join(", ")
+          : (row.original.platform ?? <EmptyValue>全部</EmptyValue>),
+      meta: { className: "text-xs text-slate-600 dark:text-slate-300" },
+    }),
+    column.display({
       id: "forced",
       header: "强制",
-      label: "强制更新",
-      className: "text-xs",
-      cell: (version) => <BoolMark value={version.forced} />,
-    },
-    {
+      cell: ({ row }) => <BoolMark value={row.original.forced} />,
+      meta: { label: "强制更新", className: "text-xs" },
+    }),
+    column.display({
       id: "is_milestone",
       header: "里程碑",
-      label: "里程碑",
-      className: "text-xs",
-      cell: (version) => <BoolMark value={version.is_milestone} />,
-    },
-    {
+      cell: ({ row }) => <BoolMark value={row.original.is_milestone} />,
+      meta: { className: "text-xs" },
+    }),
+    column.display({
       id: "is_deprecated",
       header: "废弃",
-      label: "废弃",
-      className: "text-xs",
-      cell: (version) => <BoolMark value={version.is_deprecated} />,
-    },
-    {
+      cell: ({ row }) => <BoolMark value={row.original.is_deprecated} />,
+      meta: { className: "text-xs" },
+    }),
+    column.display({
       id: "download",
       header: "下载",
-      label: "下载地址",
-      cell: (version) => <VersionDownloadCell version={version} />,
-    },
-    {
+      cell: ({ row }) => <VersionDownloadCell version={row.original} />,
+      meta: { label: "下载地址" },
+    }),
+    column.display({
       id: "published_at",
       header: "发布时间",
-      label: "发布时间",
-      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
-      cell: (version) => formatTimestamp(version.published_at, "—"),
-    },
-    {
+      cell: ({ row }) => formatTimestamp(row.original.published_at, "—"),
+      meta: {
+        className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      },
+    }),
+    column.display({
+      id: "custom_data",
+      header: "custom_data",
+      cell: ({ row }) => <JsonCell value={row.original.custom_data} />,
+      meta: { defaultHidden: true },
+    }),
+    column.display({
       id: "id",
       header: "ID",
-      label: "版本 ID",
-      defaultHidden: true,
-      className: "font-mono text-xs text-slate-500 dark:text-slate-400",
-      cell: (version) => version.id,
-    },
-    {
+      cell: ({ row }) => row.original.id,
+      meta: {
+        label: "版本 ID",
+        defaultHidden: true,
+        className: "font-mono text-xs text-slate-500 dark:text-slate-400",
+      },
+    }),
+    column.display({
       id: "actions",
       header: "操作",
-      label: "操作",
-      alwaysVisible: true,
-      headerClassName: "text-right",
-      className: "text-right",
-      cell: (version) => (
-        // 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。
+      enableHiding: false,
+      // 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。
+      cell: ({ row }) => (
         <div className="flex justify-end gap-1.5">
           <Button
             type="button"
@@ -719,7 +731,7 @@ export function VersionsDashboard() {
             variant="outline"
             title="复制配置"
             aria-label="复制配置"
-            onClick={() => copyFromVersion(version)}
+            onClick={() => copyFromVersion(row.original)}
           >
             <Copy className="size-4" />
           </Button>
@@ -729,7 +741,7 @@ export function VersionsDashboard() {
             variant="outline"
             title="编辑版本"
             aria-label="编辑版本"
-            onClick={() => beginEdit(version)}
+            onClick={() => beginEdit(row.original)}
           >
             <PencilLine className="size-4" />
           </Button>
@@ -739,13 +751,19 @@ export function VersionsDashboard() {
             variant="destructive"
             title="删除版本"
             aria-label="删除版本"
-            onClick={() => void handleDelete(version.id)}
+            onClick={() => void handleDelete(row.original.id)}
           >
             <Trash2 className="size-4" />
           </Button>
         </div>
       ),
-    },
+      meta: {
+        hideInDetail: true,
+        pin: "end",
+        headerClassName: "text-right",
+        className: "text-right",
+      },
+    }),
   ]
 
   return (
@@ -948,6 +966,7 @@ export function VersionsDashboard() {
             </>
           }
           onResetFilters={resetFilters}
+          detailTitle={(version) => version.version}
           pagination={{
             total: totalVersions,
             page,

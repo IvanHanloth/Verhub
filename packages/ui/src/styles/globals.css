@@ -190,6 +190,11 @@
     --admin-border: rgba(15, 23, 42, 0.12);
     --admin-text-soft: rgb(71, 85, 105);
     --admin-ring: rgba(14, 165, 233, 0.35);
+    /* 表格固定列的底色。sticky 单元格必须挡住底下横向滚过去的内容，而卡片本身是
+       半透明的，直接沿用会透出来；取值是卡片叠加到页面底色之后的实心等效色，
+       -head 那份还多叠了一层表头自己的浅色底纹。 */
+    --admin-surface-solid: rgb(253, 253, 254);
+    --admin-surface-solid-head: rgb(243, 244, 245);
   }
 
   .dark .admin-unified {
@@ -198,6 +203,8 @@
     --admin-border: rgba(148, 163, 184, 0.2);
     --admin-text-soft: rgb(148, 163, 184);
     --admin-ring: rgba(125, 211, 252, 0.45);
+    --admin-surface-solid: rgb(13, 17, 25);
+    --admin-surface-solid-head: rgb(32, 36, 43);
   }
 
   .admin-unified main,

@@ -13,7 +13,7 @@ import {
   DataTableSelectFilter,
   EmptyValue,
   TruncatedCell,
-  type DataTableColumn,
+  createDataTableColumns,
 } from "@/components/common/data-table"
 import {
   createApiKey,
@@ -196,6 +196,8 @@ function TokenFormFields({
     </>
   )
 }
+
+const column = createDataTableColumns<ApiKeyItem>()
 
 export default function TokenManagementPage() {
   const [items, setItems] = React.useState<ApiKeyItem[]>([])
@@ -414,112 +416,117 @@ export default function TokenManagementPage() {
   })
 
   // 不做 memo：操作按钮闭包了当前列表，缓存下来会让撤销/轮转作用在上一轮的行上。
-  const columns: Array<DataTableColumn<ApiKeyItem>> = [
-    {
+  const columns = [
+    column.display({
       id: "name",
       header: "名称",
-      label: "名称",
-      alwaysVisible: true,
-      className: "font-medium",
-      cell: (item) => <span className={isRevoked(item) ? "line-through" : ""}>{item.name}</span>,
-    },
-    {
+      enableHiding: false,
+      cell: ({ row }) => (
+        <span className={isRevoked(row.original) ? "line-through" : ""}>{row.original.name}</span>
+      ),
+      meta: { className: "font-medium" },
+    }),
+    column.display({
       id: "status",
       header: "状态",
-      label: "状态",
-      cell: (item) =>
-        isRevoked(item) ? (
+      cell: ({ row }) =>
+        isRevoked(row.original) ? (
           <span className="rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-[11px] text-rose-600 dark:text-rose-300">
             已撤销
           </span>
         ) : (
           <span className="text-xs text-slate-500 dark:text-slate-400">有效</span>
         ),
-    },
-    {
+    }),
+    column.display({
       id: "scopes",
       header: "权限范围",
-      label: "权限范围",
-      className: "font-mono text-xs text-slate-600 dark:text-slate-300",
-      cell: (item) =>
-        item.scopes.length > 0 ? (
-          <TruncatedCell className="max-w-[22rem]" title={item.scopes.join(", ")}>
-            {item.scopes.join(", ")}
+      cell: ({ row }) =>
+        row.original.scopes.length > 0 ? (
+          <TruncatedCell className="max-w-[22rem]" title={row.original.scopes.join(", ")}>
+            {row.original.scopes.join(", ")}
           </TruncatedCell>
         ) : (
           <EmptyValue>空</EmptyValue>
         ),
-    },
-    {
+      meta: { className: "font-mono text-xs text-slate-600 dark:text-slate-300" },
+    }),
+    column.display({
       id: "projects",
       header: "项目范围",
-      label: "项目范围",
-      className: "text-xs text-slate-600 dark:text-slate-300",
-      cell: (item) =>
-        item.all_projects ? (
+      cell: ({ row }) =>
+        row.original.all_projects ? (
           "全部项目"
-        ) : item.project_ids.length > 0 ? (
-          <TruncatedCell className="max-w-[16rem]" title={item.project_ids.join(", ")}>
-            {item.project_ids.join(", ")}
+        ) : row.original.project_ids.length > 0 ? (
+          <TruncatedCell className="max-w-[16rem]" title={row.original.project_ids.join(", ")}>
+            {row.original.project_ids.join(", ")}
           </TruncatedCell>
         ) : (
           <EmptyValue>无</EmptyValue>
         ),
-    },
-    {
+      meta: { className: "text-xs text-slate-600 dark:text-slate-300" },
+    }),
+    column.display({
       id: "expires_at",
       header: "过期时间",
-      label: "过期时间",
-      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
-      cell: (item) => formatExpiry(item.expires_at),
-    },
-    {
+      cell: ({ row }) => formatExpiry(row.original.expires_at),
+      meta: {
+        className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "last_used_at",
       header: "最近使用",
-      label: "最近使用",
-      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
-      cell: (item) =>
-        item.last_used_at === null ? (
+      cell: ({ row }) =>
+        row.original.last_used_at === null ? (
           <EmptyValue>从未使用</EmptyValue>
         ) : (
-          formatEpochSeconds(item.last_used_at)
+          formatEpochSeconds(row.original.last_used_at)
         ),
-    },
-    {
+      meta: {
+        className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "revoked_at",
       header: "撤销时间",
-      label: "撤销时间",
-      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
-      cell: (item) =>
-        item.revoked_at === null ? <EmptyValue /> : formatEpochSeconds(item.revoked_at),
-    },
-    {
+      cell: ({ row }) =>
+        row.original.revoked_at === null ? (
+          <EmptyValue />
+        ) : (
+          formatEpochSeconds(row.original.revoked_at)
+        ),
+      meta: {
+        className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "created_at",
       header: "创建时间",
-      label: "创建时间",
-      defaultHidden: true,
-      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
-      cell: (item) => formatEpochSeconds(item.created_at),
-    },
-    {
+      cell: ({ row }) => formatEpochSeconds(row.original.created_at),
+      meta: {
+        defaultHidden: true,
+        className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "id",
       header: "ID",
-      label: "Token ID",
-      defaultHidden: true,
-      className: "font-mono text-xs text-slate-500 dark:text-slate-400",
-      cell: (item) => item.id,
-    },
-    {
+      cell: ({ row }) => row.original.id,
+      meta: {
+        label: "Token ID",
+        defaultHidden: true,
+        className: "font-mono text-xs text-slate-500 dark:text-slate-400",
+      },
+    }),
+    column.display({
       id: "actions",
       header: "操作",
-      label: "操作",
-      alwaysVisible: true,
-      headerClassName: "text-right",
-      className: "text-right",
+      enableHiding: false,
       // 已撤销的 token 不能再编辑或轮转：改权限、换密钥对一把死掉的钥匙都没有
       // 意义，留着按钮只会让人以为还能救回来。
-      cell: (item) =>
-        isRevoked(item) ? (
+      cell: ({ row }) =>
+        isRevoked(row.original) ? (
           <EmptyValue />
         ) : (
           <div className="flex justify-end gap-1.5">
@@ -529,7 +536,7 @@ export default function TokenManagementPage() {
               variant="outline"
               title="编辑"
               aria-label="编辑"
-              onClick={() => beginEdit(item)}
+              onClick={() => beginEdit(row.original)}
             >
               <PencilLine className="size-4" />
             </Button>
@@ -539,7 +546,7 @@ export default function TokenManagementPage() {
               variant="outline"
               title="轮转"
               aria-label="轮转"
-              onClick={() => void handleRotate(item.id)}
+              onClick={() => void handleRotate(row.original.id)}
             >
               <RotateCcw className="size-4" />
             </Button>
@@ -549,13 +556,19 @@ export default function TokenManagementPage() {
               variant="destructive"
               title="撤销"
               aria-label="撤销"
-              onClick={() => void handleRevoke(item.id)}
+              onClick={() => void handleRevoke(row.original.id)}
             >
               <Trash2 className="size-4" />
             </Button>
           </div>
         ),
-    },
+      meta: {
+        hideInDetail: true,
+        pin: "end",
+        headerClassName: "text-right",
+        className: "text-right",
+      },
+    }),
   ]
 
   return (
@@ -627,6 +640,7 @@ export default function TokenManagementPage() {
             setSearch("")
             setStatus("")
           }}
+          detailTitle={(item) => item.name}
         />
       </AdminCard>
 

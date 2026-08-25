@@ -6,7 +6,12 @@ import { Archive, ArchiveRestore, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 
 import { useConfirm } from "@/components/common/confirm-dialog"
-import { DataTable, type DataTableColumn } from "@/components/common/data-table"
+import {
+  DataTable,
+  EmptyValue,
+  TruncatedCell,
+  createDataTableColumns,
+} from "@/components/common/data-table"
 import { formatTimestamp } from "@/lib/format"
 import { getErrorMessage } from "@/lib/error-utils"
 import {
@@ -29,6 +34,8 @@ const PAGE_SIZE = 20
  * 没有「新建事件」按钮，这是与旧「行为管理」最关键的差别：定义由采集端在第一次
  * 收到某个事件名时自动登记。这里能做的只有补充显示名与描述、把停用的事件归档。
  */
+const column = createDataTableColumns<EventDefinitionItem>()
+
 export function EventDefinitions() {
   return (
     <EventsShell
@@ -129,55 +136,69 @@ function DefinitionsBody({
     }
   }
 
-  const columns: Array<DataTableColumn<EventDefinitionItem>> = [
-    {
+  const columns = [
+    column.display({
       id: "name",
       header: "事件名",
-      alwaysVisible: true,
-      cell: (row) => (
+      enableHiding: false,
+      cell: ({ row }) => (
         <div className="space-y-0.5">
           <code className="rounded bg-slate-900/5 px-1.5 py-0.5 font-mono text-xs dark:bg-white/10">
-            {row.name}
+            {row.original.name}
           </code>
-          {row.display_name ? (
-            <p className="text-xs text-slate-500 dark:text-slate-400">{row.display_name}</p>
+          {row.original.display_name ? (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {row.original.display_name}
+            </p>
           ) : null}
         </div>
       ),
-    },
-    {
+    }),
+    column.display({
       id: "description",
       header: "描述",
-      cell: (row) => (
-        <span className="text-xs text-slate-500 dark:text-slate-400">{row.description || "—"}</span>
-      ),
-    },
-    {
+      cell: ({ row }) =>
+        row.original.description ? (
+          <TruncatedCell
+            className="max-w-[24rem] text-xs text-slate-500 dark:text-slate-400"
+            title={row.original.description}
+          >
+            {row.original.description}
+          </TruncatedCell>
+        ) : (
+          <EmptyValue />
+        ),
+    }),
+    column.display({
       id: "range_count",
       header: "区间上报量",
-      className: "text-right font-mono tabular-nums",
-      cell: (row) => formatNumber(row.range_count),
-    },
-    {
+      cell: ({ row }) => formatNumber(row.original.range_count),
+      meta: { className: "text-right font-mono tabular-nums" },
+    }),
+    column.display({
       id: "first_seen",
       header: "首次出现",
-      defaultHidden: true,
-      cell: (row) => (
-        <span className="text-xs text-slate-500">{formatTimestamp(row.first_seen_time, "—")}</span>
+      cell: ({ row }) => (
+        <span className="text-xs text-slate-500">
+          {formatTimestamp(row.original.first_seen_time, "—")}
+        </span>
       ),
-    },
-    {
+      meta: { defaultHidden: true },
+    }),
+    column.display({
       id: "last_seen",
       header: "最近出现",
-      cell: (row) => (
-        <span className="text-xs text-slate-500">{formatTimestamp(row.last_seen_time, "—")}</span>
+      cell: ({ row }) => (
+        <span className="text-xs text-slate-500">
+          {formatTimestamp(row.original.last_seen_time, "—")}
+        </span>
       ),
-    },
-    {
+    }),
+    column.display({
       id: "status",
       header: "状态",
-      cell: (row) =>
-        row.archived ? (
+      cell: ({ row }) =>
+        row.original.archived ? (
           <span className="rounded-full bg-slate-500/15 px-2 py-0.5 text-xs text-slate-400">
             已归档
           </span>
@@ -186,23 +207,29 @@ function DefinitionsBody({
             使用中
           </span>
         ),
-    },
-    {
+      meta: { label: "状态（是否归档）" },
+    }),
+    column.display({
       id: "actions",
       header: "操作",
-      alwaysVisible: true,
-      cell: (row) => (
+      enableHiding: false,
+      cell: ({ row }) => (
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" aria-label="编辑" onClick={() => setEditing(row)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label="编辑"
+            onClick={() => setEditing(row.original)}
+          >
             <Pencil className="size-3.5" />
           </Button>
           <Button
             variant="ghost"
             size="sm"
-            aria-label={row.archived ? "取消归档" : "归档"}
-            onClick={() => void toggleArchived(row)}
+            aria-label={row.original.archived ? "取消归档" : "归档"}
+            onClick={() => void toggleArchived(row.original)}
           >
-            {row.archived ? (
+            {row.original.archived ? (
               <ArchiveRestore className="size-3.5" />
             ) : (
               <Archive className="size-3.5" />
@@ -212,13 +239,14 @@ function DefinitionsBody({
             variant="ghost"
             size="sm"
             aria-label="删除定义"
-            onClick={() => void removeDefinition(row)}
+            onClick={() => void removeDefinition(row.original)}
           >
             <Trash2 className="size-3.5" />
           </Button>
         </div>
       ),
-    },
+      meta: { hideInDetail: true, pin: "end" },
+    }),
   ]
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -265,6 +293,7 @@ function DefinitionsBody({
           </label>
         }
         emptyMessage="没有匹配的事件。"
+        detailTitle={(row) => row.display_name || row.name}
         pagination={{
           total,
           page: page + 1,

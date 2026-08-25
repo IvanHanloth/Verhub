@@ -179,7 +179,11 @@ Webhook 鉴权（Project）：
 - 通用请求封装在 `web/lib/api-client.ts`
 - 共享错误处理在 `web/lib/error-utils.ts`（`getErrorMessage`）
 - 共享分页逻辑在 `web/hooks/use-pagination.ts`（`usePagination` hook）
-- 后台列表统一用 `web/components/common/data-table.tsx`（`DataTable`）：一字段一列、列显隐（按 `storageKey` 持久化到 localStorage）、搜索框与筛选控件插槽、加载/空/错误态、可展开行。组件本身不做任何过滤——列表是服务端分页的，只在当前页里过滤会让人把「不在这一页」误读成「没搜到」，所以搜索与筛选一律由页面带进请求
+- 后台列表统一用 `web/components/common/data-table.tsx`（`DataTable`），底座是 TanStack Table v9：一字段一列、列显隐（按 `storageKey` 持久化到 localStorage）、列宽拖拽、固定列、搜索框与筛选控件插槽、加载/空/错误态、行详情抽屉。只注册 `columnVisibilityFeature` / `columnSizingFeature` / `columnResizingFeature` / `columnPinningFeature` 四个特性——**不注册排序与过滤**：组件本身不做任何过滤，列表是服务端分页的，只在当前页里过滤或排序会让人把「不在这一页」误读成「没搜到」，所以搜索与筛选一律由页面带进请求；契约里也没有列表排序参数
+- 列定义用 TanStack 原生 `ColumnDef`，由 `createDataTableColumns<T>()` 拿到绑好特性集的 helper，一律是 `helper.display`。列的展示元数据放 `meta`：`label`（列显隐菜单与抽屉字段名）、`defaultHidden`、`hideInDetail`、`pin`、`className` / `headerClassName`；能否隐藏走原生 `enableHiding`。列显隐存的是「隐藏列 id 数组」这个换底座之前就在用的格式，换格式会把用户已调好的偏好清空
+- 行详情抽屉在 `web/components/common/data-table-detail.tsx`（基于 `@workspace/ui/components/sheet`）：字段由 `row.getAllCells()` 自动生成，**含默认隐藏的列**，另可用 `renderDetail` 补列覆盖不到的内容。抽屉是列表里唯一能读全长文本的地方——单元格一律截成一行，反馈/日志正文上限 4096 字，塞进行内没有任何读法
+- `TruncatedCell` / `JsonCell` / `MarkdownCell` 靠 `data-table-cell-context.tsx` 分辨自己渲染在表格里还是抽屉里：表格里截断成一行，抽屉里分别展开成保留换行的全文、可折叠 JSON 树、渲染后的 Markdown。列定义因此只写一遍
+- 列宽是首帧按内容自然排版实测出来后钉住的，之后才切 `table-layout: fixed`：既不用为七十来个列手写宽度魔数，翻页时也不会因为这页内容更长而整体跳一次；只有用户手工拖过的列宽才写进 localStorage
 - 列表查询参数的拼装在 `web/lib/api-client.ts`（`buildListQuery`）：空串与 undefined 一律不落进 URL，否则后端会收到 `platform=` 这类空值参数并按非法取值拒绝
 - 跨页面项目选择同步在 `web/hooks/use-shared-project-selection.ts`
 - 路由切换过渡在 `web/components/route-transition.tsx`（`RouteTransition`）：由后台布局、文档布局与各独立页面分别包裹内容区，不放在根布局，避免整页淡入影响常驻侧栏

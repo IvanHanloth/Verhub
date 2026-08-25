@@ -21,8 +21,9 @@ import {
   DataTable,
   DataTableSelectFilter,
   EmptyValue,
+  MarkdownCell,
   TruncatedCell,
-  type DataTableColumn,
+  createDataTableColumns,
 } from "@/components/common/data-table"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
 import { SegmentedButton, SegmentedGroup } from "@/components/github/ui"
@@ -434,6 +435,8 @@ function AnnouncementFormFields({
   )
 }
 
+const column = createDataTableColumns<AnnouncementItem>()
+
 export function AnnouncementsDashboard() {
   const confirm = useConfirm()
   const [token, setToken] = React.useState(() => getSessionToken().trim())
@@ -716,126 +719,136 @@ export function AnnouncementsDashboard() {
   }
 
   // 不做 memo：操作按钮闭包了当前页数据，缓存下来会让编辑/删除作用在上一轮的行上。
-  const columns: Array<DataTableColumn<AnnouncementItem>> = [
-    {
+  const columns = [
+    column.display({
       id: "title",
       header: "标题",
-      label: "标题",
-      alwaysVisible: true,
-      className: "font-medium",
-      cell: (item) => (
+      enableHiding: false,
+      cell: ({ row }) => (
         <span className="inline-flex items-center gap-1.5">
-          <TruncatedCell className="max-w-[20rem]" title={item.title}>
-            {item.title}
+          <TruncatedCell className="max-w-[20rem]" title={row.original.title}>
+            {row.original.title}
           </TruncatedCell>
-          {item.translations && item.translations.length > 0 ? (
+          {row.original.translations && row.original.translations.length > 0 ? (
             <span
               className="inline-flex shrink-0 items-center gap-0.5 rounded-md bg-slate-900/8 px-1.5 py-0.5 text-[11px] font-normal text-slate-600 dark:bg-white/15 dark:text-slate-300"
-              title={`已录入译文：${item.translations.map((tr) => tr.locale).join("、")}`}
+              title={`已录入译文：${row.original.translations.map((tr) => tr.locale).join("、")}`}
             >
               <Languages className="size-3" />
-              {item.translations.length}
+              {row.original.translations.length}
             </span>
           ) : null}
         </span>
       ),
-    },
-    {
+      meta: { className: "font-medium" },
+    }),
+    column.display({
       id: "version_range",
       header: "版本范围",
-      label: "可见版本范围",
-      className: "font-mono text-xs whitespace-nowrap text-slate-600 dark:text-slate-300",
-      cell: (item) =>
-        item.min_comparable_version || item.max_comparable_version ? (
-          `${item.min_comparable_version ?? "*"} ~ ${item.max_comparable_version ?? "*"}`
+      cell: ({ row }) =>
+        row.original.min_comparable_version || row.original.max_comparable_version ? (
+          `${row.original.min_comparable_version ?? "*"} ~ ${row.original.max_comparable_version ?? "*"}`
         ) : (
           <EmptyValue>不限</EmptyValue>
         ),
-    },
-    {
+      meta: {
+        label: "可见版本范围",
+        className: "font-mono text-xs whitespace-nowrap text-slate-600 dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "content",
       header: "正文",
-      label: "正文",
-      className: "min-w-64 text-xs text-slate-600 dark:text-slate-300",
-      cell: (item) => (
-        <TruncatedCell className="max-w-[26rem]" title={item.content}>
-          {item.content}
-        </TruncatedCell>
-      ),
-    },
-    {
+      cell: ({ row }) => <MarkdownCell value={row.original.content} />,
+      meta: { className: "min-w-64 text-xs text-slate-600 dark:text-slate-300" },
+    }),
+    column.display({
       id: "is_pinned",
       header: "置顶",
-      label: "置顶",
-      className: "text-xs",
-      cell: (item) =>
-        item.is_pinned ? (
+      cell: ({ row }) =>
+        row.original.is_pinned ? (
           <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-300">
             <Pin className="size-3" />是
           </span>
         ) : (
           <EmptyValue>否</EmptyValue>
         ),
-    },
-    {
+      meta: { className: "text-xs" },
+    }),
+    column.display({
       id: "is_hidden",
       header: "隐藏",
-      label: "隐藏",
-      className: "text-xs",
-      cell: (item) =>
-        item.is_hidden ? (
+      cell: ({ row }) =>
+        row.original.is_hidden ? (
           <span className="text-amber-600 dark:text-amber-300">是</span>
         ) : (
           <EmptyValue>否</EmptyValue>
         ),
-    },
-    {
+      meta: { className: "text-xs" },
+    }),
+    column.display({
       id: "platforms",
       header: "平台",
-      label: "平台",
-      className: "text-xs text-slate-600 dark:text-slate-300",
-      cell: (item) =>
-        item.platforms.length > 0 ? item.platforms.join(", ") : <EmptyValue>全部</EmptyValue>,
-    },
-    {
+      cell: ({ row }) =>
+        row.original.platforms.length > 0 ? (
+          row.original.platforms.join(", ")
+        ) : (
+          <EmptyValue>全部</EmptyValue>
+        ),
+      meta: { className: "text-xs text-slate-600 dark:text-slate-300" },
+    }),
+    column.display({
       id: "author",
       header: "作者",
-      label: "作者",
-      className: "text-xs text-slate-600 dark:text-slate-300",
-      cell: (item) => item.author ?? <EmptyValue />,
-    },
-    {
+      cell: ({ row }) => row.original.author ?? <EmptyValue />,
+      meta: { className: "text-xs text-slate-600 dark:text-slate-300" },
+    }),
+    column.display({
       id: "published_at",
       header: "发布时间",
-      label: "发布时间",
-      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
-      cell: (item) => formatTimestamp(item.published_at, "—"),
-    },
-    {
+      cell: ({ row }) => formatTimestamp(row.original.published_at, "—"),
+      meta: {
+        className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      },
+    }),
+    column.display({
       id: "updated_at",
       header: "更新时间",
-      label: "更新时间",
-      defaultHidden: true,
-      className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
-      cell: (item) => formatTimestamp(item.updated_at, "—"),
-    },
-    {
+      cell: ({ row }) => formatTimestamp(row.original.updated_at, "—"),
+      meta: {
+        defaultHidden: true,
+        className: "whitespace-nowrap text-xs text-slate-600 tabular-nums dark:text-slate-300",
+      },
+    }),
+    column.display({
+      id: "translations",
+      header: "译文",
+      cell: ({ row }) =>
+        row.original.translations && row.original.translations.length > 0 ? (
+          <span className="text-xs text-slate-600 dark:text-slate-300">
+            {row.original.translations.map((item) => item.locale).join("、")}
+          </span>
+        ) : (
+          <EmptyValue>无</EmptyValue>
+        ),
+      meta: { label: "已录入译文", defaultHidden: true },
+    }),
+    column.display({
       id: "id",
       header: "ID",
-      label: "公告 ID",
-      defaultHidden: true,
-      className: "font-mono text-xs text-slate-500 dark:text-slate-400",
-      cell: (item) => item.id,
-    },
-    {
+      cell: ({ row }) => row.original.id,
+      meta: {
+        label: "公告 ID",
+        defaultHidden: true,
+        className: "font-mono text-xs text-slate-500 dark:text-slate-400",
+      },
+    }),
+    column.display({
       id: "actions",
       header: "操作",
-      label: "操作",
-      alwaysVisible: true,
-      headerClassName: "text-right",
-      className: "text-right",
-      cell: (item) => (
-        // 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。
+      enableHiding: false,
+      // 图标按钮：名字挂在 aria-label / title 上，读屏与悬停都拿得到。
+      cell: ({ row }) => (
         <div className="flex justify-end gap-1.5">
           <Button
             type="button"
@@ -843,7 +856,7 @@ export function AnnouncementsDashboard() {
             variant="outline"
             title="复制配置"
             aria-label="复制配置"
-            onClick={() => copyFromAnnouncement(item)}
+            onClick={() => copyFromAnnouncement(row.original)}
           >
             <Copy className="size-4" />
           </Button>
@@ -853,7 +866,7 @@ export function AnnouncementsDashboard() {
             variant="outline"
             title="编辑"
             aria-label="编辑"
-            onClick={() => beginEdit(item)}
+            onClick={() => beginEdit(row.original)}
           >
             <PencilLine className="size-4" />
           </Button>
@@ -863,13 +876,19 @@ export function AnnouncementsDashboard() {
             variant="destructive"
             title="删除"
             aria-label="删除"
-            onClick={() => void handleDelete(item.id)}
+            onClick={() => void handleDelete(row.original.id)}
           >
             <Trash2 className="size-4" />
           </Button>
         </div>
       ),
-    },
+      meta: {
+        hideInDetail: true,
+        pin: "end",
+        headerClassName: "text-right",
+        className: "text-right",
+      },
+    }),
   ]
 
   return (
@@ -945,11 +964,7 @@ export function AnnouncementsDashboard() {
             </>
           }
           onResetFilters={resetFilters}
-          renderExpanded={(item) => (
-            <p className="text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-300">
-              {item.content}
-            </p>
-          )}
+          detailTitle={(item) => item.title}
           pagination={{ total, page, totalPages, hasPrev, hasNext, onPrev, onNext }}
         />
       </AdminCard>

@@ -3,6 +3,9 @@
 import * as React from "react"
 
 import { MarkdownEditor } from "@/components/markdown/markdown-editor"
+import { SegmentedButton, SegmentedGroup } from "@/components/common/settings-fields"
+import { TranslateButton } from "@/components/common/translate-button"
+import type { ProjectLocaleItem } from "@/lib/projects-api"
 
 import { platformOptions, type VersionFormState } from "./version-form-utils"
 
@@ -21,6 +24,11 @@ type VersionFormFieldsProps = {
   onExtractComparableVersion?: () => void
   /** 版本号输入框下方的补充操作，如从 GitHub Release 拉取。 */
   versionFieldAction?: React.ReactNode
+  /** 项目注册的语言。为空时不显示语言页签，表单退化成单一默认内容。 */
+  locales?: ProjectLocaleItem[]
+  /** AI 翻译按钮要按项目校验目标语言，没有项目就不显示按钮。 */
+  projectKey?: string | null
+  translationEnabled?: boolean
 }
 
 /**
@@ -32,9 +40,98 @@ export function VersionFormFields({
   comparableVersionError,
   onExtractComparableVersion,
   versionFieldAction,
+  locales = [],
+  projectKey = null,
+  translationEnabled = false,
 }: VersionFormFieldsProps) {
+  // 默认内容页用空串标识，与任何真实 locale 都不会撞。
+  const [activeLocale, setActiveLocale] = React.useState("")
+
+  // 注销语言后表单里可能还停在那一页，回落到默认内容页而不是渲染一个空壳。
+  const currentLocale = locales.some((item) => item.locale === activeLocale) ? activeLocale : ""
+  const draft = form.translations[currentLocale] ?? { title: "", content: "" }
+
+  function updateTranslation(patch: { title?: string; content?: string }) {
+    setForm((prev) => {
+      const previous = prev.translations[currentLocale] ?? { title: "", content: "" }
+      return {
+        ...prev,
+        translations: { ...prev.translations, [currentLocale]: { ...previous, ...patch } },
+      }
+    })
+  }
+
+  const localeTabs =
+    locales.length > 0 ? (
+      <SegmentedGroup role="tablist" className="flex w-full flex-wrap text-sm">
+        <SegmentedButton
+          role="tab"
+          grow
+          active={currentLocale === ""}
+          onClick={() => setActiveLocale("")}
+          label="默认内容"
+        />
+        {locales.map((item) => (
+          <SegmentedButton
+            key={item.locale}
+            role="tab"
+            grow
+            active={currentLocale === item.locale}
+            onClick={() => setActiveLocale(item.locale)}
+            label={item.label ? `${item.label}（${item.locale}）` : item.locale}
+          />
+        ))}
+      </SegmentedGroup>
+    ) : null
+
+  if (currentLocale) {
+    return (
+      <>
+        {localeTabs}
+
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <p className="flex-1 text-xs text-slate-500 dark:text-slate-400">
+            标题与更新内容各自留空即沿用默认内容。其余字段（版本号、下载地址、平台、开关等）
+            只在默认内容页设置，对所有语言生效。
+          </p>
+          <TranslateButton
+            enabled={translationEnabled}
+            projectKey={projectKey}
+            kind="version"
+            targetLocale={currentLocale}
+            source={{ title: form.title, content: form.content }}
+            hasDraft={Boolean(draft.title.trim() || draft.content.trim())}
+            onTranslated={(fields) => updateTranslation(fields)}
+          />
+        </div>
+
+        <label className="space-y-1 text-sm">
+          <span className="text-slate-700 dark:text-slate-300">译文标题</span>
+          <input
+            type="text"
+            value={draft.title}
+            onChange={(event) => updateTranslation({ title: event.target.value })}
+            className={FIELD_CLASS}
+            maxLength={128}
+          />
+        </label>
+
+        <MarkdownEditor
+          key={`content-${currentLocale}`}
+          label="译文更新内容"
+          value={draft.content}
+          onChange={(value) => updateTranslation({ content: value })}
+          rows={4}
+          className={FIELD_CLASS}
+        />
+      </>
+    )
+  }
+
   return (
     <>
+      {localeTabs}
+
       <label className="space-y-1 text-sm">
         <span className="text-slate-700 dark:text-slate-300">版本号</span>
         <input
@@ -125,7 +222,6 @@ export function VersionFormFields({
         onChange={(value) => setForm((prev) => ({ ...prev, content: value }))}
         rows={4}
         className={FIELD_CLASS}
-        maxLength={4096}
       />
 
       <label className="space-y-1 text-sm">

@@ -11,16 +11,54 @@ import { Platform, Prisma } from "@prisma/client"
 import { fromPlatform, fromPlatforms, type PlatformValue } from "../common/platform"
 import type { VersionItem, VersionRecord } from "./types"
 
-/** Convert a Prisma Version record to the API-facing VersionItem shape. */
-export function toVersionItem(version: VersionRecord): VersionItem {
+/**
+ * 公开端只取请求语言那一份译文。语言没命中注册表时用一个恒假的 where，
+ * 让 Prisma 返回空数组——比在结果里再过滤一遍少一次遍历，也少一条分支。
+ *
+ * 凡是查出来要进响应的版本记录都得带上它，漏掉的话语言回落会静默失效。
+ */
+export function translationInclude(locale: string | null): {
+  translations: { where: { locale: string } }
+} {
+  return { translations: { where: { locale: locale ?? "" } } }
+}
+
+/**
+ * Convert a Prisma Version record to the API-facing VersionItem shape.
+ *
+ * @param options.locale 公开端请求的语言（已归一到主标签）。译文按字段覆盖：
+ *   标题与更新说明各自留空就回落版本自身的值，所以永远有东西可返回。
+ * @param options.includeTranslations 后台接口带出全部译文供编辑；公开端不带。
+ */
+export function toVersionItem(
+  version: VersionRecord,
+  options: { locale?: string | null; includeTranslations?: boolean } = {},
+): VersionItem {
   const normalizedLinks = parseDownloadLinks(version.downloadLinks)
+  const translations = version.translations ?? []
+  const translation = options.locale
+    ? translations.find((item) => item.locale === options.locale)
+    : undefined
+  const title = translation?.title ?? null
+  const content = translation?.content ?? null
 
   return {
     id: version.id,
     version: version.version,
     comparable_version: version.comparableVersion ?? version.version,
-    title: version.title,
-    content: version.content,
+    title: title ?? version.title,
+    content: content ?? version.content,
+    // 只有真的覆盖了内容才算「返回的是该语言的译文」，与公告同一口径。
+    locale: title || content ? (translation?.locale ?? null) : null,
+    ...(options.includeTranslations
+      ? {
+          translations: translations.map((item) => ({
+            locale: item.locale,
+            title: item.title,
+            content: item.content,
+          })),
+        }
+      : {}),
     download_url: version.downloadUrl,
     download_links:
       normalizedLinks.length > 0

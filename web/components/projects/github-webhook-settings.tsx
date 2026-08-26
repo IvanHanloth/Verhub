@@ -6,7 +6,7 @@ import { KeyRound } from "lucide-react"
 import { resolveApiUrl } from "@/lib/api-client"
 import { LoadingLine } from "@/components/common/skeleton"
 import { formatTimestamp } from "@/lib/format"
-import { CopyableUrl } from "@/components/github/ui"
+import { CopyableUrl } from "@/components/common/settings-fields"
 import {
   WebhookSecretField,
   type WebhookSecretState,

@@ -57,12 +57,8 @@ export type FeedbackIssueTemplate = {
   labels?: string[]
 }
 
-/** 极简 {{variable}} 替换。未知变量原样保留，方便在 Issue 里发现模板笔误。 */
-export function renderTemplate(template: string, variables: Record<string, string>): string {
-  return template.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (match, name: string) => {
-    return name in variables ? (variables[name] ?? match) : match
-  })
-}
+// 模板渲染与 AI 翻译的提示词共用一份实现，见 common/template。
+export { renderTemplate } from "../common/template"
 
 /**
  * 解析仓库里的模板文件。

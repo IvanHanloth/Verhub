@@ -42,9 +42,10 @@ describe("ApiReferenceDrawer", () => {
     expect(within(dialog).getByRole("heading", { name: "响应示例" })).toBeInTheDocument()
     expect(within(dialog).getByRole("heading", { name: "Try It Out" })).toBeInTheDocument()
 
-    // 首个接口是公开的版本列表，projectKey 由当前页选中项目带入
+    // 首个接口是公开的版本列表，projectKey 由当前页选中项目带入，
+    // 带 example 的查询参数（含语言偏好）一并预填
     expect(
-      within(dialog).getByText("/api/v1/public/verhub/versions?limit=20&offset=0"),
+      within(dialog).getByText("/api/v1/public/verhub/versions?limit=20&offset=0&locale=en-US"),
     ).toBeVisible()
   })
 

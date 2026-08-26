@@ -4,6 +4,8 @@ import { Save } from "lucide-react"
 import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
 import { validateComparableVersion } from "@/lib/comparable-version"
 
+import type { ProjectLocaleItem } from "@/lib/projects-api"
+
 import { VersionFormFields } from "./version-form-fields"
 import { type VersionFormState } from "./version-form-utils"
 
@@ -15,6 +17,10 @@ interface VersionEditDialogProps {
   saving: boolean
   editingVersionId: string | null
   onSave: () => void
+  /** 项目注册的语言，决定是否显示译文页签。 */
+  locales?: ProjectLocaleItem[]
+  projectKey?: string | null
+  translationEnabled?: boolean
 }
 
 export function VersionEditDialog({
@@ -25,6 +31,9 @@ export function VersionEditDialog({
   saving,
   editingVersionId,
   onSave,
+  locales,
+  projectKey,
+  translationEnabled,
 }: VersionEditDialogProps) {
   return (
     <AdminFormDialog
@@ -43,6 +52,9 @@ export function VersionEditDialog({
         form={form}
         setForm={setForm}
         comparableVersionError={validateComparableVersion(form.comparable_version)}
+        locales={locales}
+        projectKey={projectKey}
+        translationEnabled={translationEnabled}
       />
     </AdminFormDialog>
   )

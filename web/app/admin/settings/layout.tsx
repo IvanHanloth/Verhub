@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { FileText, Github, UserCog } from "lucide-react"
+import { FileText, Github, Languages, UserCog } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
@@ -12,6 +12,7 @@ import { usePathname } from "next/navigation"
 const settingsNavItems = [
   { href: "/admin/settings", label: "管理员设置", icon: UserCog },
   { href: "/admin/settings/github-app", label: "GitHub APP 设置", icon: Github },
+  { href: "/admin/settings/translation", label: "AI 翻译设置", icon: Languages },
   { href: "/admin/settings/terms", label: "条款设置", icon: FileText },
 ]
 

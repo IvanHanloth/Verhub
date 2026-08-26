@@ -59,6 +59,11 @@ import type {
   TermsDocumentConfigListResponse,
   TermsDocumentConfigView,
   TermsDocumentSlug,
+  TranslateInput,
+  TranslationConfig,
+  TranslationResult,
+  TranslationTestResult,
+  UpdateTranslationConfigInput,
   UpdateAnnouncementInput,
   UpdateFeedbackInput,
   UpdateGithubAppConfigInput,
@@ -905,6 +910,60 @@ export class AdminApi {
   resetTermsDocument(slug: TermsDocumentSlug): Promise<TermsDocumentConfigView> {
     return this.http.request("DELETE", "/admin/terms/documents/{slug}", {
       pathParams: { slug },
+      auth: true,
+    })
+  }
+
+  // ---- AI 翻译 ----
+
+  /**
+   * 实例级 AI 翻译配置。仅管理员 JWT 可访问，API key 会得到 401 ——
+   * 这是一份能直接产生上游账单的出站凭据。
+   *
+   * @returns 配置状态；API Key 永不回读，只有指纹
+   */
+  getTranslationConfig(): Promise<TranslationConfig> {
+    return this.http.request("GET", "/admin/translation", { auth: true })
+  }
+
+  /**
+   * @param input 要改的字段；api_key 传空串表示清除
+   */
+  updateTranslationConfig(input: UpdateTranslationConfigInput): Promise<TranslationConfig> {
+    return this.http.request("PUT", "/admin/translation", {
+      body: compact({ ...input }),
+      auth: true,
+    })
+  }
+
+  /**
+   * @returns 清空后的配置；总闸一并关闭
+   */
+  clearTranslationConfig(): Promise<TranslationConfig> {
+    return this.http.request("DELETE", "/admin/translation", { auth: true })
+  }
+
+  /**
+   * 用当前配置译一句样例，验证地址、凭据与模型是否配得通。
+   *
+   * @returns 测试结果；上游失败不抛异常，原因在 error 里
+   */
+  testTranslation(): Promise<TranslationTestResult> {
+    return this.http.request("POST", "/admin/translation/test", { auth: true })
+  }
+
+  /**
+   * 把绑定项目下一条内容的若干字段译成目标语言，一次往返翻完整条。
+   *
+   * 结果**只返回不入库**：调用方拿它填草稿，由人确认后再走各自的保存接口。
+   *
+   * @param input 内容类型、目标语言与待译字段
+   * @returns 译文；AI 翻译未启用或配置不全时抛 400
+   */
+  translate(input: TranslateInput): Promise<TranslationResult> {
+    return this.http.request("POST", "/admin/projects/{projectKey}/translate", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact({ ...input }),
       auth: true,
     })
   }

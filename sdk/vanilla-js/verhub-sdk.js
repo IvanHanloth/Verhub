@@ -1120,39 +1120,47 @@ class PublicApi {
   }
 
   /**
-   * @param {{limit?: number, offset?: number}} [options] 分页参数
+   * @param {{limit?: number, offset?: number, locale?: string}} [options] 分页参数与语言偏好。
+   *   `locale` 命中项目注册的语言且该版本有译文时，`title` / `content` 返回译文，
+   *   返回项的 `locale` 标出实际语言；否则回落版本自身的内容（`locale` 为 null）。
    */
   listVersions(options = {}) {
     return this.http.request("GET", "/public/{projectKey}/versions", {
       pathParams: { projectKey: this.http.requireProjectKey() },
-      query: { limit: options.limit, offset: options.offset },
+      query: { limit: options.limit, offset: options.offset, locale: options.locale },
     })
   }
 
   /**
+   * @param {{locale?: string}} [options] 语言偏好，语义同 `listVersions`
    * @returns 最新正式版本
    */
-  getLatestVersion() {
+  getLatestVersion(options = {}) {
     return this.http.request("GET", "/public/{projectKey}/versions/latest", {
       pathParams: { projectKey: this.http.requireProjectKey() },
+      query: { locale: options.locale },
     })
   }
 
   /**
+   * @param {{locale?: string}} [options] 语言偏好，语义同 `listVersions`
    * @returns 最新 preview 版本；没有则为 null
    */
-  getLatestPreviewVersion() {
+  getLatestPreviewVersion(options = {}) {
     return this.http.request("GET", "/public/{projectKey}/versions/latest-preview", {
       pathParams: { projectKey: this.http.requireProjectKey() },
+      query: { locale: options.locale },
     })
   }
 
   /**
    * @param {string} version 版本号，如 `1.2.0`
+   * @param {{locale?: string}} [options] 语言偏好，语义同 `listVersions`
    */
-  getVersion(version) {
+  getVersion(version, options = {}) {
     return this.http.request("GET", "/public/{projectKey}/versions/by-version/{version}", {
       pathParams: { projectKey: this.http.requireProjectKey(), version },
+      query: { locale: options.locale },
     })
   }
 
@@ -1163,7 +1171,9 @@ class PublicApi {
    * current_version 时服务端按版本号查库取其登记的可比较版本号，该版本未登记
    * 会返回 400；两者都给时以 current_comparable_version 为准。
    *
-   * @param {{current_version?: string, current_comparable_version?: string, include_preview?: boolean}} options 当前版本与比较选项
+   * @param {{current_version?: string, current_comparable_version?: string, include_preview?: boolean, locale?: string}} options 当前版本与比较选项。
+   *   `locale` 命中项目注册的语言时，响应里 latest_version / latest_preview_version /
+   *   target_version 三个版本对象的 title 与 content 都返回对应译文。
    */
   checkUpdate(options) {
     return this.http.request("POST", "/public/{projectKey}/versions/check-update", {
@@ -1600,7 +1610,9 @@ class AdminApi {
   }
 
   /**
-   * @param {object} input 版本字段，version 与 comparable_version 必填
+   * @param {object} input 版本字段，version 与 comparable_version 必填。
+   *   `translations` 是标题与更新说明的译文数组（`{locale, title?, content?}`），
+   *   传了即整体替换全部译文、空数组即清空；语言须先在项目里注册。
    */
   createVersion(input) {
     return this.http.request("POST", "/admin/projects/{projectKey}/versions", {
@@ -1709,7 +1721,7 @@ class AdminApi {
   }
 
   /**
-   * @param {{title: string, content: string, is_pinned?: boolean, is_hidden?: boolean, platforms?: string[], author?: string, min_comparable_version?: string|null, max_comparable_version?: string|null, translations?: Array<{locale: string, title: string, content: string}>, published_at?: number}} input
+   * @param {{title: string, content: string, is_pinned?: boolean, is_hidden?: boolean, platforms?: string[], author?: string, min_comparable_version?: string|null, max_comparable_version?: string|null, translations?: Array<{locale: string, title?: string|null, content?: string|null, is_hidden?: boolean}>, published_at?: number}} input
    *   公告字段。`min/max_comparable_version` 是可见版本范围（闭区间，留空即该端不限）；
    *   `translations` 传了即整体替换全部译文，语言必须先在项目里注册。
    */
@@ -2244,6 +2256,58 @@ class AdminApi {
   resetTermsDocument(slug) {
     return this.http.request("DELETE", "/admin/terms/documents/{slug}", {
       pathParams: { slug },
+      auth: true,
+    })
+  }
+
+  // ---- AI 翻译 ----
+
+  /**
+   * 实例级 AI 翻译配置。仅管理员 JWT 可访问，API key 会得到 401 ——
+   * 这是一份能直接产生上游账单的出站凭据。API Key 永不回读，只返回指纹。
+   */
+  getTranslationConfig() {
+    return this.http.request("GET", "/admin/translation", { auth: true })
+  }
+
+  /**
+   * 部分更新实例级 AI 翻译配置。api_key 传空串表示清除。
+   *
+   * base_url 只填路径前缀（如 https://api.openai.com/v1），后缀按 provider 固定拼接。
+   *
+   * @param {{enabled?: boolean, provider?: "openai"|"anthropic", base_url?: string, api_key?: string, model?: string, custom_prompt?: boolean, system_prompt?: string}} input 要改的字段
+   */
+  updateTranslationConfig(input) {
+    return this.http.request("PUT", "/admin/translation", {
+      body: compact(Object.assign({}, input)),
+      auth: true,
+    })
+  }
+
+  /** 清空实例级 AI 翻译配置，总闸一并关闭。 */
+  clearTranslationConfig() {
+    return this.http.request("DELETE", "/admin/translation", { auth: true })
+  }
+
+  /**
+   * 用当前配置译一句样例，验证地址、凭据与模型是否配得通。
+   * 上游失败不抛异常，原因在结果的 error 里。
+   */
+  testTranslation() {
+    return this.http.request("POST", "/admin/translation/test", { auth: true })
+  }
+
+  /**
+   * 把绑定项目下一条内容的若干字段译成目标语言，一次往返翻完整条。
+   *
+   * 结果只返回不入库：调用方拿它填草稿，由人确认后再走各自的保存接口。
+   *
+   * @param {{kind: "announcement"|"project", target_locale: string, source_locale?: string, fields: Record<string, string>}} input 内容类型、目标语言与待译字段
+   */
+  translate(input) {
+    return this.http.request("POST", "/admin/projects/{projectKey}/translate", {
+      pathParams: { projectKey: this.http.requireProjectKey() },
+      body: compact(Object.assign({}, input)),
       auth: true,
     })
   }

@@ -70,12 +70,25 @@ class ProjectItem(_ProjectItemBase, total=False):
     translations: List["ProjectTranslation"]
 
 
+class VersionTranslation(TypedDict):
+    """一份版本译文，留空的字段回落版本自身的值。没有 is_hidden，理由见契约。"""
+
+    locale: str
+    title: Optional[str]
+    content: Optional[str]
+
+
 class VersionItem(TypedDict):
     id: str
     version: str
     comparable_version: str
     title: Optional[str]
     content: Optional[str]
+    #: 本次返回的 title / content 来自哪个语言；None = 版本自身的默认内容
+    #: （没提语言偏好、语言未注册，或该版本没有这个语言的译文）。
+    locale: Optional[str]
+    #: 该版本的全部译文，只有管理接口会返回；公开接口的响应里没有这个键。
+    translations: List[VersionTranslation]
     download_url: Optional[str]
     download_links: List[VersionDownloadLink]
     forced: bool
@@ -747,3 +760,60 @@ class TermsDocumentConfigView(TypedDict):
 
 class TermsDocumentConfigListResponse(TypedDict):
     data: List[TermsDocumentConfigView]
+
+
+#: AI 翻译的上游协议："openai"（POST {base_url}/chat/completions，各类中转、
+#: Ollama、vLLM 同格式）/ "anthropic"（POST {base_url}/v1/messages）。
+TranslationProvider = str
+
+#: 可翻译的内容类型："announcement"（title / content）/ "project"（name / description）。
+TranslationKind = str
+
+
+class TranslationConfig(TypedDict):
+    """实例级 AI 翻译配置视图。API Key 永不回读，仅返回指纹。"""
+
+    #: base_url 与 model 齐全即为 True；API Key 不是必需（自建服务常无鉴权）。
+    configured: bool
+    #: 总闸。关闭时翻译端点一律 400。
+    enabled: bool
+    provider: TranslationProvider
+    base_url: Optional[str]
+    model: Optional[str]
+    has_api_key: bool
+    api_key_fingerprint: Optional[str]
+    api_key_updated_at: Optional[int]
+    #: 关闭时忽略 system_prompt，使用内置提示词。
+    custom_prompt: bool
+    system_prompt: Optional[str]
+    #: 内置提示词原文，可直接作为自定义提示词编辑器的初值。
+    builtin_system_prompt: str
+    #: 提示词可用变量名清单。
+    prompt_variables: List[str]
+    #: 按当前协议拼出的完整请求地址，供核对 base_url 的填法。
+    request_url: Optional[str]
+    updated_at: Optional[int]
+
+
+class TranslationTestResult(TypedDict):
+    """测试连接的结果。上游失败也是 200，原因在 error 里。"""
+
+    ok: bool
+    provider: TranslationProvider
+    model: Optional[str]
+    request_url: Optional[str]
+    #: 成功时为样例句子的译文。
+    sample: Optional[str]
+    latency_ms: int
+    error: Optional[str]
+
+
+class TranslationResult(TypedDict):
+    """翻译结果。不入库，由调用方决定怎么用。"""
+
+    #: 命中的注册语言主标签，未必等于请求里的写法。
+    locale: str
+    provider: TranslationProvider
+    model: str
+    #: 译文，键与请求中非空的字段一一对应。
+    fields: Dict[str, str]

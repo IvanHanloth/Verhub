@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { listProjectLocales, listProjects } from "@/lib/projects-api"
+import { getTranslationConfig, translateContent } from "@/lib/translation-api"
 import {
   createAnnouncement,
   deleteAnnouncement,
@@ -29,11 +30,23 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
+vi.mock("@/lib/translation-api", () => ({
+  getTranslationConfig: vi.fn(),
+  translateContent: vi.fn(),
+}))
+
 const mockedListProjects = vi.mocked(listProjects)
 const mockedListProjectLocales = vi.mocked(listProjectLocales)
 const mockedListAnnouncements = vi.mocked(listAnnouncements)
 const mockedCreateAnnouncement = vi.mocked(createAnnouncement)
 const mockedUpdateAnnouncement = vi.mocked(updateAnnouncement)
+const mockedGetTranslationConfig = vi.mocked(getTranslationConfig)
+const mockedTranslateContent = vi.mocked(translateContent)
+
+/** 只有翻译按钮读这份配置，其余字段用不到。 */
+function translationConfig(enabled: boolean) {
+  return { enabled, configured: enabled } as never
+}
 
 function buildAnnouncement(overrides: Record<string, unknown> = {}) {
   return {
@@ -91,6 +104,67 @@ describe("AnnouncementsDashboard", () => {
     mockedListAnnouncements.mockResolvedValue({ total: 1, data: [buildAnnouncement()] } as never)
     mockedCreateAnnouncement.mockResolvedValue(buildAnnouncement() as never)
     mockedUpdateAnnouncement.mockResolvedValue(buildAnnouncement() as never)
+
+    mockedGetTranslationConfig.mockReset()
+    mockedTranslateContent.mockReset()
+    mockedGetTranslationConfig.mockResolvedValue(translationConfig(false))
+  })
+
+  it("AI 翻译没启用时译文页不显示翻译按钮", async () => {
+    mockedListProjectLocales.mockResolvedValue({
+      data: [{ locale: "en-US", aliases: [], label: "English", created_at: 1 }],
+    })
+
+    const user = userEvent.setup()
+    render(React.createElement(AnnouncementsDashboard))
+
+    await screen.findAllByText("维护通知")
+    await user.click(screen.getByRole("button", { name: "新增公告" }))
+
+    const dialog = await screen.findByRole("dialog")
+    await user.click(within(dialog).getByRole("tab", { name: "English（en-US）" }))
+
+    // 点了才被告知没配置最烦人，所以没配就干脆不渲染按钮
+    expect(within(dialog).queryByRole("button", { name: /AI 翻译/ })).not.toBeInTheDocument()
+  })
+
+  it("AI 翻译把默认内容译进当前语言的草稿，不直接保存", async () => {
+    mockedListProjectLocales.mockResolvedValue({
+      data: [{ locale: "en-US", aliases: [], label: "English", created_at: 1 }],
+    })
+    mockedGetTranslationConfig.mockResolvedValue(translationConfig(true))
+    mockedTranslateContent.mockResolvedValue({
+      locale: "en-US",
+      provider: "openai",
+      model: "gpt-4o-mini",
+      fields: { title: "Maintenance", content: "Down on Saturday" },
+    })
+
+    const user = userEvent.setup()
+    render(React.createElement(AnnouncementsDashboard))
+
+    await screen.findAllByText("维护通知")
+    await user.click(screen.getByRole("button", { name: "新增公告" }))
+
+    const dialog = await screen.findByRole("dialog")
+    await user.type(within(dialog).getByLabelText("公告标题"), "维护通知")
+    await user.type(within(dialog).getByLabelText("公告内容"), "本周六停机维护")
+    await user.click(within(dialog).getByRole("tab", { name: "English（en-US）" }))
+    await user.click(await within(dialog).findByRole("button", { name: /AI 翻译/ }))
+
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText("译文标题")).toHaveValue("Maintenance")
+    })
+    expect(within(dialog).getByLabelText("译文内容")).toHaveValue("Down on Saturday")
+
+    // 默认内容整条一起送出，标题与正文的用词才对得上
+    expect(mockedTranslateContent).toHaveBeenCalledWith("valid-token", "verhub", {
+      kind: "announcement",
+      target_locale: "en-US",
+      fields: { title: "维护通知", content: "本周六停机维护" },
+    })
+    // 译文只进草稿，保存仍要人点
+    expect(mockedCreateAnnouncement).not.toHaveBeenCalled()
   })
 
   it("项目没注册语言时不显示语言页签", async () => {

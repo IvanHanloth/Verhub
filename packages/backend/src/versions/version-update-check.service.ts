@@ -13,13 +13,14 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 
 import { PrismaService } from "../database/prisma.service"
 import { ProjectResolverService } from "../database/project-resolver.service"
+import { matchRegisteredLocale } from "../common/locale"
 import { CheckVersionUpdateDto } from "./dto/check-version-update.dto"
 import {
   compareComparableVersions,
   isComparableVersionInRange,
   parseComparableVersion,
 } from "./version-comparator"
-import { toVersionItem } from "./version-mapping"
+import { toVersionItem, translationInclude } from "./version-mapping"
 import type { CheckVersionUpdateResponse, VersionRecord } from "./types"
 
 @Injectable()
@@ -28,6 +29,26 @@ export class VersionUpdateCheckService {
     private readonly prisma: PrismaService,
     private readonly projectResolver: ProjectResolverService,
   ) {}
+
+  /**
+   * 语言偏好 -> 项目注册表里的主标签；没注册过就返回 null（等同没提偏好）。
+   * 与 VersionsService 里同名方法同一套规则，两处都要用而模块间不互相注入。
+   */
+  private async resolveRegisteredLocale(
+    projectKey: string,
+    locale: string | undefined,
+  ): Promise<string | null> {
+    if (!locale?.trim()) {
+      return null
+    }
+
+    const registered = await this.prisma.projectLocale.findMany({
+      where: { projectKey },
+      select: { locale: true, aliases: true },
+    })
+
+    return matchRegisteredLocale(registered, locale)
+  }
 
   /** Evaluate whether a client should update, and to which version. */
   async checkUpdateByProjectKey(
@@ -41,6 +62,7 @@ export class VersionUpdateCheckService {
     }
 
     const normalizedKey = await this.projectResolver.resolveCanonicalKeyOrThrow(projectKey)
+    const locale = await this.resolveRegisteredLocale(normalizedKey, dto.locale)
     const project = await this.prisma.project.findUniqueOrThrow({
       where: { projectKey: normalizedKey },
       select: {
@@ -54,6 +76,7 @@ export class VersionUpdateCheckService {
     const { latestCandidate, latestPreview } = await this.resolveLatestCandidates(
       normalizedKey,
       dto.include_preview ?? false,
+      locale,
     )
     if (!latestCandidate) {
       throw new NotFoundException("Version not found")
@@ -97,6 +120,7 @@ export class VersionUpdateCheckService {
         normalizedKey,
         currentComparableVersion,
         latestComparableVersion,
+        locale,
       )
       targetVersion = milestoneTarget ?? latestCandidate
     }
@@ -122,9 +146,11 @@ export class VersionUpdateCheckService {
       reason_codes: reasons,
       current_version: currentRecord?.version ?? dto.current_version?.trim() ?? null,
       current_comparable_version: currentComparableVersion,
-      latest_version: toVersionItem(latestCandidate),
-      latest_preview_version: latestPreview ? toVersionItem(latestPreview) : null,
-      target_version: targetVersion ? toVersionItem(targetVersion) : null,
+      // 三个版本对象都按同一个语言回落：客户端把它们并排显示，
+      // 只译其中一个会得到中英混排的更新弹窗。
+      latest_version: toVersionItem(latestCandidate, { locale }),
+      latest_preview_version: latestPreview ? toVersionItem(latestPreview, { locale }) : null,
+      target_version: targetVersion ? toVersionItem(targetVersion, { locale }) : null,
       milestone: {
         current: currentRecord?.isMilestone ?? false,
         latest: latestCandidate.isMilestone,
@@ -135,10 +161,17 @@ export class VersionUpdateCheckService {
 
   // ── Private helpers ──
 
+  /**
+   * @param locale 已归一到主标签的请求语言。这三处查询的结果都会经 toVersionItem
+   *   进响应，不 include 译文的话语言回落永远命不中。
+   */
   private async resolveLatestCandidates(
     projectKey: string,
     includePreview: boolean,
+    locale: string | null,
   ): Promise<{ latestCandidate: VersionRecord | null; latestPreview: VersionRecord | null }> {
+    const include = translationInclude(locale)
+
     const latestStable = await this.prisma.version.findFirst({
       where: {
         projectKey,
@@ -148,6 +181,7 @@ export class VersionUpdateCheckService {
         comparableVersionSort: { not: null },
       },
       orderBy: [{ comparableVersionSort: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
+      include,
     })
     const latestPreview = await this.prisma.version.findFirst({
       where: {
@@ -156,6 +190,7 @@ export class VersionUpdateCheckService {
         comparableVersionSort: { not: null },
       },
       orderBy: [{ comparableVersionSort: "desc" }, { publishedAt: "desc" }, { createdAt: "desc" }],
+      include,
     })
 
     const latestCandidate = includePreview
@@ -245,6 +280,7 @@ export class VersionUpdateCheckService {
     projectKey: string,
     currentComparableVersion: string,
     latestComparableVersion: string,
+    locale: string | null,
   ): Promise<VersionRecord | null> {
     const milestoneCandidatesRaw = await this.prisma.version.findMany({
       where: {
@@ -254,11 +290,16 @@ export class VersionUpdateCheckService {
         isDeprecated: false,
         comparableVersion: { not: null },
       },
+      include: translationInclude(locale),
     })
     const milestoneCandidates = Array.isArray(milestoneCandidatesRaw) ? milestoneCandidatesRaw : []
 
+    // 谓词类型取自查询结果本身：查询带 include 后行类型比 VersionRecord 宽，
+    // 写死 VersionRecord 会让谓词不可赋回参数类型。
+    type MilestoneCandidate = (typeof milestoneCandidates)[number]
+
     const blockers = milestoneCandidates
-      .filter((item): item is VersionRecord & { comparableVersion: string } =>
+      .filter((item): item is MilestoneCandidate & { comparableVersion: string } =>
         Boolean(item.comparableVersion),
       )
       .filter(

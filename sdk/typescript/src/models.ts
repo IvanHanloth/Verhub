@@ -64,12 +64,26 @@ export type ProjectItem = {
   updated_at: number
 }
 
+/** 一份版本译文，留空的字段回落版本自身的值。没有 is_hidden，理由见契约。 */
+export type VersionTranslation = {
+  locale: string
+  title: string | null
+  content: string | null
+}
+
 export type VersionItem = {
   id: string
   version: string
   comparable_version: string
   title: string | null
   content: string | null
+  /**
+   * 本次返回的 title / content 来自哪个语言；null = 版本自身的默认内容
+   * （没提语言偏好、语言未注册，或该版本没有这个语言的译文）。
+   */
+  locale: string | null
+  /** 该版本的全部译文，只有管理接口会返回。 */
+  translations?: VersionTranslation[]
   download_url: string | null
   download_links: VersionDownloadLink[]
   forced: boolean
@@ -291,6 +305,90 @@ export type UpdateTermsDocumentInput = {
   custom?: boolean
   /** 自定义正文（Markdown），最长 65536；传空串清除草稿。 */
   content?: string
+}
+
+/**
+ * AI 翻译的上游协议。
+ * - `openai`：`POST {base_url}/chat/completions`，各类中转、Ollama、vLLM 同格式
+ * - `anthropic`：`POST {base_url}/v1/messages`
+ */
+export type TranslationProvider = "openai" | "anthropic"
+
+/**
+ * 可翻译的内容类型，决定允许的字段。
+ * - `announcement`：title / content
+ * - `project`：name / description
+ */
+export type TranslationKind = "announcement" | "project"
+
+/** 实例级 AI 翻译配置视图。API Key 永不回读，仅返回指纹。 */
+export type TranslationConfig = {
+  /** base_url 与 model 齐全即为 true；API Key 不是必需（自建服务常无鉴权）。 */
+  configured: boolean
+  /** 总闸。关闭时翻译端点一律 400。 */
+  enabled: boolean
+  provider: TranslationProvider
+  base_url: string | null
+  model: string | null
+  has_api_key: boolean
+  api_key_fingerprint: string | null
+  api_key_updated_at: number | null
+  /** 关闭时忽略 system_prompt，使用内置提示词。 */
+  custom_prompt: boolean
+  system_prompt: string | null
+  /** 内置提示词原文，可直接作为自定义提示词编辑器的初值。 */
+  builtin_system_prompt: string
+  /** 提示词可用变量名清单。 */
+  prompt_variables: string[]
+  /** 按当前协议拼出的完整请求地址，供核对 base_url 的填法。 */
+  request_url: string | null
+  updated_at: number | null
+}
+
+/** 部分更新实例级 AI 翻译配置。api_key 传空串表示清除。 */
+export type UpdateTranslationConfigInput = {
+  enabled?: boolean
+  provider?: TranslationProvider
+  /** 路径前缀，如 https://api.openai.com/v1；后缀按协议固定拼接。 */
+  base_url?: string
+  /** 只写不读。留空即请求不带鉴权头。 */
+  api_key?: string
+  model?: string
+  custom_prompt?: boolean
+  system_prompt?: string
+}
+
+/** 测试连接的结果。上游失败也是 200，原因在 error 里。 */
+export type TranslationTestResult = {
+  ok: boolean
+  provider: TranslationProvider
+  model: string | null
+  request_url: string | null
+  /** 成功时为样例句子的译文。 */
+  sample: string | null
+  latency_ms: number
+  error: string | null
+}
+
+/** 一次翻译请求。fields 的键取自 kind 的字段清单。 */
+export type TranslateInput = {
+  kind: TranslationKind
+  /** 必须是项目已注册的语言，同义标签同样算命中，大小写不敏感。 */
+  target_locale: string
+  /** 原文语言，只作为提示词里的一句说明。 */
+  source_locale?: string | null
+  /** 待译字段，值为空的会被丢弃。所有值合计上限 32000 字符。 */
+  fields: Record<string, string>
+}
+
+/** 翻译结果。不入库，由调用方决定怎么用。 */
+export type TranslationResult = {
+  /** 命中的注册语言主标签，未必等于请求里的写法。 */
+  locale: string
+  provider: TranslationProvider
+  model: string
+  /** 译文，键与请求中非空的字段一一对应。 */
+  fields: Record<string, string>
 }
 
 export type ListResponse<T> = {
@@ -581,6 +679,20 @@ export type CheckUpdateOptions = {
   current_comparable_version?: string
   /** 是否把 preview 版本纳入比较候选。 */
   include_preview?: boolean
+  /**
+   * 语言偏好。命中项目注册的语言时，响应里三个版本对象的 title / content
+   * 都返回对应译文；未注册或该版本无译文时回落默认内容。
+   */
+  locale?: string
+}
+
+/** 公开版本列表的可选项。 */
+export type ListVersionsOptions = PageOptions & {
+  /**
+   * 语言偏好。命中项目注册的语言且该版本有译文时返回译文，
+   * 否则回落版本自身的内容；返回项的 `locale` 标出实际语言。
+   */
+  locale?: string
 }
 
 export type ListAnnouncementsOptions = PageOptions & {

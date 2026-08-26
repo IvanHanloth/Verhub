@@ -54,6 +54,9 @@ export const openApiDocument: OpenApiDocument = {
     {
       name: "Terms",
     },
+    {
+      name: "Translation",
+    },
   ],
   paths: {
     "/health": {
@@ -3394,6 +3397,175 @@ export const openApiDocument: OpenApiDocument = {
         },
       },
     },
+    "/admin/translation": {
+      get: {
+        tags: ["Translation"],
+        summary: "查询实例级 AI 翻译配置",
+        description:
+          "返回上游模型的配置状态（API Key 永不回读，仅返回 SHA-256 指纹）、内置提示词原文\n与按当前协议拼出的完整请求地址。仅接受管理员 JWT，不开放给 API Key ——\n这是一份能直接产生上游账单的出站凭据。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/TranslationConfigView",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+      put: {
+        tags: ["Translation"],
+        summary: "更新实例级 AI 翻译配置",
+        description:
+          "部分更新：只修改请求中出现的字段。`api_key` 传空字符串表示清除，\n以 AES-256-GCM 加密落库，密钥派生自实例的 JWT_SECRET。\n\n`base_url` 只填路径前缀，后缀按协议固定拼接：\n- `openai`：`{base_url}/chat/completions`，例如填 `https://api.openai.com/v1`\n- `anthropic`：`{base_url}/v1/messages`，例如填 `https://api.anthropic.com`\n\n`api_key` 可以留空：自建的 Ollama / vLLM 常常无鉴权，此时请求不带鉴权头。\n`custom_prompt` 关闭时 `system_prompt` 一律被忽略，使用内置提示词。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateTranslationConfigDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/TranslationConfigView",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+      delete: {
+        tags: ["Translation"],
+        summary: "清空实例级 AI 翻译配置",
+        description: "清除地址、凭据、模型与提示词，总闸一并关闭。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/TranslationConfigView",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/translation/test": {
+      post: {
+        tags: ["Translation"],
+        summary: "测试 AI 翻译配置",
+        description:
+          "用当前配置把一句样例译成英文，验证地址、凭据与模型是否配得通。\n上游失败也返回 200，原因写在 `error` 里 —— 管理员正在设置页上调参数，\n看到原因比拿到一个 5xx 有用。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/TranslationTestResult",
+                },
+              },
+            },
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+        },
+      },
+    },
+    "/admin/projects/{projectKey}/translate": {
+      parameters: [
+        {
+          $ref: "#/components/parameters/ProjectKeyByPath",
+        },
+      ],
+      post: {
+        tags: ["Translation"],
+        summary: "AI 翻译内容",
+        description:
+          "把一条内容的若干字段译成目标语言，一次往返翻完整条 —— 标题与正文一起给模型，\n术语才对得上。\n\n结果**只返回，不入库**：后台用它填译文草稿，由人过一眼、改完再照常保存。\n\n`target_locale` 必须是该项目已注册的语言（同义标签同样算命中，大小写不敏感），\n返回的 `locale` 是注册表里的主标签。`fields` 的键取自 `kind` 的字段清单\n（`announcement`：title / content；`project`：name / description），\n空值字段会被丢弃、不发给模型。\n\nAI 翻译未启用或配置不全时返回 400；上游不可达或回包不是预期的 JSON 时返回 502/503。\n",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/TranslateDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/TranslationResult",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+        },
+      },
+    },
     "/public/{projectKey}": {
       parameters: [
         {
@@ -3492,6 +3664,9 @@ export const openApiDocument: OpenApiDocument = {
           {
             $ref: "#/components/parameters/ListPlatform",
           },
+          {
+            $ref: "#/components/parameters/VersionLocale",
+          },
         ],
         responses: {
           "200": {
@@ -3532,6 +3707,11 @@ export const openApiDocument: OpenApiDocument = {
         summary: "获取最新公开版本",
         description: "用于客户端启动时快速获取最新稳定版本。",
         "x-verhub-doc": true,
+        parameters: [
+          {
+            $ref: "#/components/parameters/VersionLocale",
+          },
+        ],
         responses: {
           "200": {
             content: {
@@ -3571,6 +3751,11 @@ export const openApiDocument: OpenApiDocument = {
         summary: "获取最新 preview 版本",
         description: "用于客户端测试通道获取最新预发布版本；没有预发布版本时返回 null。",
         "x-verhub-doc": true,
+        parameters: [
+          {
+            $ref: "#/components/parameters/VersionLocale",
+          },
+        ],
         responses: {
           "200": {
             content: {
@@ -3626,6 +3811,11 @@ export const openApiDocument: OpenApiDocument = {
         summary: "按版本号获取指定版本信息",
         description: "支持根据语义化版本号或可比较版本号读取单个版本详情。",
         "x-verhub-doc": true,
+        parameters: [
+          {
+            $ref: "#/components/parameters/VersionLocale",
+          },
+        ],
         responses: {
           "200": {
             content: {
@@ -5896,6 +6086,19 @@ export const openApiDocument: OpenApiDocument = {
           pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
         },
       },
+      VersionLocale: {
+        name: "locale",
+        in: "query",
+        required: false,
+        description:
+          "语言偏好。命中该项目注册过的语言（匹配大小写不敏感）且该版本存有对应译文时，\n`title` / `content` 返回译文，`locale` 字段标出实际语言；\n\n以下三种情况一律返回版本的默认内容且 `locale` 为 `null`：不传本参数、\n传了项目未注册的语言、该版本没有这个语言的译文。回落是逐字段的：\n只译了标题的版本，更新说明仍返回默认内容。\n",
+        example: "en-US",
+        schema: {
+          type: "string",
+          maxLength: 35,
+          pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+        },
+      },
       EntityId: {
         name: "id",
         in: "path",
@@ -7056,7 +7259,7 @@ export const openApiDocument: OpenApiDocument = {
               },
               body: {
                 type: "string",
-                description: "Release 说明，超过 4096 字符会被截断",
+                description: "Release 说明，原样入库，不做长度截断",
               },
               draft: {
                 type: "boolean",
@@ -7510,6 +7713,220 @@ export const openApiDocument: OpenApiDocument = {
         example: {
           custom: true,
           content: "# 隐私政策\n\n...\n",
+        },
+      },
+      TranslationProvider: {
+        type: "string",
+        enum: ["openai", "anthropic"],
+        description:
+          "上游协议，决定请求体形状、鉴权头与 `base_url` 之后拼接的路径。\n- `openai`：`POST {base_url}/chat/completions`，`Authorization: Bearer`。\n  各类中转、Ollama、vLLM 都是这个格式\n- `anthropic`：`POST {base_url}/v1/messages`，`x-api-key` + `anthropic-version`\n",
+      },
+      TranslationKind: {
+        type: "string",
+        enum: ["announcement", "project"],
+        description:
+          "待译内容的类型，决定允许的字段以及提示词里对内容形态的说明。\n- `announcement`：title（短标题）、content（Markdown 正文）\n- `project`：name（简短名称）、description（一句简介）\n",
+      },
+      TranslationConfigView: {
+        type: "object",
+        required: [
+          "configured",
+          "enabled",
+          "provider",
+          "base_url",
+          "model",
+          "has_api_key",
+          "api_key_fingerprint",
+          "api_key_updated_at",
+          "custom_prompt",
+          "system_prompt",
+          "builtin_system_prompt",
+          "prompt_variables",
+          "request_url",
+          "updated_at",
+        ],
+        properties: {
+          configured: {
+            type: "boolean",
+            description:
+              "`base_url` 与 `model` 齐全即为 true。API Key 不是必需 ——\n自建推理服务常常无鉴权，缺它不算配置不全。\n",
+          },
+          enabled: {
+            type: "boolean",
+            description: "总闸。关闭时翻译端点一律返回 400，后台也不显示翻译按钮。",
+          },
+          provider: {
+            $ref: "#/components/schemas/TranslationProvider",
+          },
+          base_url: {
+            type: ["string", "null"],
+            description: "路径前缀，如 `https://api.openai.com/v1`",
+          },
+          model: {
+            type: ["string", "null"],
+          },
+          has_api_key: {
+            type: "boolean",
+          },
+          api_key_fingerprint: {
+            type: ["string", "null"],
+            description: "已存 Key 的 SHA-256 前 16 位，用于区分是否换过 Key 而不暴露内容",
+          },
+          api_key_updated_at: {
+            type: ["integer", "null"],
+          },
+          custom_prompt: {
+            type: "boolean",
+            description: "关闭时忽略 `system_prompt`，一律使用内置提示词",
+          },
+          system_prompt: {
+            type: ["string", "null"],
+          },
+          builtin_system_prompt: {
+            type: "string",
+            description: "内置提示词原文，供管理端做「自定义提示词」输入框的初值与对照",
+          },
+          prompt_variables: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+            description: "提示词可用变量（`{{target_locale}}` 等），UI 直接渲染这份清单",
+          },
+          request_url: {
+            type: ["string", "null"],
+            description: "按当前协议与 `base_url` 拼出的完整请求地址，供管理员核对填法",
+          },
+          updated_at: {
+            type: ["integer", "null"],
+          },
+        },
+      },
+      UpdateTranslationConfigDto: {
+        type: "object",
+        description: "部分更新：只修改出现的字段。`api_key` 传空字符串表示清除。",
+        properties: {
+          enabled: {
+            type: "boolean",
+          },
+          provider: {
+            $ref: "#/components/schemas/TranslationProvider",
+          },
+          base_url: {
+            type: "string",
+            maxLength: 512,
+          },
+          api_key: {
+            type: "string",
+            maxLength: 512,
+            description: "只写不读，回读只给指纹。留空即请求不带鉴权头。",
+          },
+          model: {
+            type: "string",
+            maxLength: 128,
+          },
+          custom_prompt: {
+            type: "boolean",
+          },
+          system_prompt: {
+            type: "string",
+            maxLength: 8192,
+          },
+        },
+        example: {
+          enabled: true,
+          provider: "openai",
+          base_url: "https://api.openai.com/v1",
+          api_key: "sk-...",
+          model: "gpt-4o-mini",
+        },
+      },
+      TranslationTestResult: {
+        type: "object",
+        required: ["ok", "provider", "model", "request_url", "sample", "latency_ms", "error"],
+        properties: {
+          ok: {
+            type: "boolean",
+          },
+          provider: {
+            $ref: "#/components/schemas/TranslationProvider",
+          },
+          model: {
+            type: ["string", "null"],
+          },
+          request_url: {
+            type: ["string", "null"],
+          },
+          sample: {
+            type: ["string", "null"],
+            description: "成功时为样例句子的译文，失败时为 null",
+          },
+          latency_ms: {
+            type: "integer",
+          },
+          error: {
+            type: ["string", "null"],
+            description: "失败原因，含上游返回的片段，便于判断是地址填错还是模型不听话",
+          },
+        },
+      },
+      TranslateDto: {
+        type: "object",
+        required: ["kind", "target_locale", "fields"],
+        properties: {
+          kind: {
+            $ref: "#/components/schemas/TranslationKind",
+          },
+          target_locale: {
+            type: "string",
+            maxLength: 35,
+            description: "必须是该项目已注册的语言，同义标签同样算命中，大小写不敏感",
+          },
+          source_locale: {
+            type: ["string", "null"],
+            maxLength: 35,
+            description: "原文语言，只作为提示词里的一句说明；留空即让模型自行判断",
+          },
+          fields: {
+            type: "object",
+            additionalProperties: {
+              type: "string",
+            },
+            description:
+              "待译字段，键取自 `kind` 的字段清单，值为原文。\n出现清单外的键返回 400；值为空的字段会被丢弃，全空同样返回 400。\n所有值加起来超过 32000 字符返回 400 —— 这是往外发的付费请求的护栏，\n与公告正文本身不限长度是两回事。\n",
+          },
+        },
+        example: {
+          kind: "announcement",
+          target_locale: "en",
+          source_locale: "zh-CN",
+          fields: {
+            title: "新版本发布",
+            content: "本次更新修复了若干问题。",
+          },
+        },
+      },
+      TranslationResult: {
+        type: "object",
+        required: ["locale", "provider", "model", "fields"],
+        properties: {
+          locale: {
+            type: "string",
+            description: "命中的注册语言主标签，未必等于请求里的写法",
+          },
+          provider: {
+            $ref: "#/components/schemas/TranslationProvider",
+          },
+          model: {
+            type: "string",
+          },
+          fields: {
+            type: "object",
+            additionalProperties: {
+              type: "string",
+            },
+            description: "译文，键与请求中非空的字段一一对应",
+          },
         },
       },
       FeedbackIssueTemplateSource: {
@@ -8612,7 +9029,6 @@ export const openApiDocument: OpenApiDocument = {
           },
           content: {
             type: "string",
-            maxLength: 4096,
           },
           download_url: {
             type: ["string", "null"],
@@ -8652,6 +9068,15 @@ export const openApiDocument: OpenApiDocument = {
           custom_data: {
             type: "object",
             additionalProperties: true,
+          },
+          translations: {
+            type: "array",
+            maxItems: 32,
+            items: {
+              $ref: "#/components/schemas/VersionTranslationDto",
+            },
+            description:
+              "版本标题与更新说明的译文。传了即整体替换全部译文，空数组即清空； 语言必须先在项目里注册，否则整个请求 400。",
           },
         },
         example: {
@@ -8708,7 +9133,6 @@ export const openApiDocument: OpenApiDocument = {
           },
           content: {
             type: "string",
-            maxLength: 4096,
           },
           download_url: {
             type: ["string", "null"],
@@ -8750,6 +9174,15 @@ export const openApiDocument: OpenApiDocument = {
             type: "object",
             additionalProperties: true,
           },
+          translations: {
+            type: "array",
+            maxItems: 32,
+            items: {
+              $ref: "#/components/schemas/VersionTranslationDto",
+            },
+            description:
+              "传了就整体替换该版本的全部译文，空数组即清空；不传则保持原样。 语言必须先在项目里注册，否则整个请求 400。",
+          },
         },
         example: {
           title: "稳定版-修订",
@@ -8767,6 +9200,35 @@ export const openApiDocument: OpenApiDocument = {
         description:
           "全部字段可选。目标版本号取自路径，`version` 可以省略；若提交则必须与路径一致。 更新已有版本时，省略的字段保持原值，显式提交 null 的字段被置空。 新建时 `comparable_version` 省略则由版本号推导（去掉前导 v）。\n",
       },
+      VersionTranslationDto: {
+        type: "object",
+        required: ["locale"],
+        description:
+          "某个语言下的覆盖设置：title 留空即用版本自身的标题、content 留空即用版本自身的 更新说明。两者至少要有一项，全空的译文会被拒。读取时（VersionItem.translations） 两个字段一定存在，未设置的为 null。\n与公告译文的区别是没有 is_hidden：版本是分发对象，「对某个语言藏掉某个版本」 会让那批用户收不到更新提示却仍能下到包。要停发用 is_deprecated，它对所有人生效。",
+        properties: {
+          locale: {
+            type: "string",
+            maxLength: 35,
+            pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+            description:
+              "语言标签，必须是该项目已注册的语言（主标签或同义标签均可，见 /admin/projects/{projectKey}/locales），未注册则整个请求 400。 匹配大小写不敏感，存储时归一到注册的主标签。",
+          },
+          title: {
+            type: ["string", "null"],
+            maxLength: 128,
+            description: "留空即该语言沿用版本自身的标题。",
+          },
+          content: {
+            type: ["string", "null"],
+            description: "留空即该语言沿用版本自身的更新说明。",
+          },
+        },
+        example: {
+          locale: "en-US",
+          title: "Bug fixes and performance improvements",
+          content: "- Fixed a crash on startup\n- Reduced memory usage",
+        },
+      },
       VersionItem: {
         type: "object",
         required: [
@@ -8775,6 +9237,7 @@ export const openApiDocument: OpenApiDocument = {
           "comparable_version",
           "title",
           "content",
+          "locale",
           "download_url",
           "download_links",
           "forced",
@@ -8803,6 +9266,19 @@ export const openApiDocument: OpenApiDocument = {
           },
           content: {
             type: ["string", "null"],
+          },
+          locale: {
+            type: ["string", "null"],
+            description:
+              "本次返回的 title / content 实际是哪个语言的译文；null 表示返回的是默认内容 （没提语言偏好、语言未注册，或该版本没有这个语言的译文）。",
+          },
+          translations: {
+            type: "array",
+            items: {
+              $ref: "#/components/schemas/VersionTranslationDto",
+            },
+            description:
+              "该版本的全部译文，仅管理接口返回。公开接口不带这个字段， 以免把客户端没请求的语言一并推下去。",
           },
           download_url: {
             type: ["string", "null"],
@@ -9073,11 +9549,19 @@ export const openApiDocument: OpenApiDocument = {
             type: "boolean",
             description: "是否将 preview 版本纳入“是否有更新”的比较候选",
           },
+          locale: {
+            type: "string",
+            maxLength: 35,
+            pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+            description:
+              "语言偏好。命中该项目注册过的语言时，响应里 latest_version / latest_preview_version / target_version 三个版本对象的 title 与 content 都返回对应译文（逐字段回落），各自的 locale 字段标出实际语言。 没命中或该版本没有译文时返回默认内容，locale 为 null。",
+          },
         },
         example: {
           current_version: "v1.20.326",
           current_comparable_version: "1.20.326",
           include_preview: false,
+          locale: "en-US",
         },
       },
       CheckVersionUpdateResponse: {
@@ -9177,7 +9661,6 @@ export const openApiDocument: OpenApiDocument = {
           },
           content: {
             type: ["string", "null"],
-            maxLength: 4096,
             description: "留空即该语言沿用公告的默认正文。",
           },
           is_hidden: {
@@ -9203,7 +9686,6 @@ export const openApiDocument: OpenApiDocument = {
           },
           content: {
             type: "string",
-            maxLength: 4096,
           },
           is_pinned: {
             type: "boolean",
@@ -9291,7 +9773,6 @@ export const openApiDocument: OpenApiDocument = {
           },
           content: {
             type: "string",
-            maxLength: 4096,
           },
           is_pinned: {
             type: "boolean",

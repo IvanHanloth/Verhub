@@ -8,11 +8,11 @@ import { Button } from "@workspace/ui/components/button"
 import { copyToClipboard } from "@/lib/clipboard"
 
 /**
- * GitHub 集成相关界面的公共零件。
+ * 后台设置类界面的公共零件。
  *
- * 实例级设置页、项目级集成弹窗、两个 secret 面板长得几乎一样，之前各写各的
+ * GitHub 集成、AI 翻译两个实例级设置页与项目级集成弹窗长得几乎一样，之前各写各的
  * label + input + 类名字符串，改一处样式要翻四个文件。这里只收真正重复的部分，
- * 不做通用设计系统 —— 别处的表单用的是另一套 rounded-xl 风格，不在这里统一。
+ * 不做通用设计系统 —— 列表与内容表单用的是另一套 rounded-xl 风格，不在这里统一。
  */
 
 export const FIELD_CLASS =

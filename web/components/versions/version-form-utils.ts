@@ -1,4 +1,8 @@
-import type { CreateVersionInput, VersionDownloadLink } from "@/lib/versions-api"
+import type {
+  CreateVersionInput,
+  VersionDownloadLink,
+  VersionTranslation,
+} from "@/lib/versions-api"
 import { PLATFORM_OPTIONS, type Platform } from "@/lib/platform"
 
 export const platformOptions = PLATFORM_OPTIONS
@@ -17,6 +21,11 @@ export type VersionFormState = {
   published_at: string
   platforms: Platform[]
   custom_data: string
+  /**
+   * 按语言存的译文草稿。标题与更新说明都为空的语言不会提交，
+   * 等同该语言没有任何覆盖设置。
+   */
+  translations: Record<string, { title: string; content: string }>
 }
 
 export type VersionRuleCandidate = {
@@ -40,6 +49,7 @@ export const emptyVersionForm: VersionFormState = {
   published_at: "",
   platforms: [],
   custom_data: "",
+  translations: {},
 }
 
 export function toDateTimeLocal(timestampSeconds: number): string {
@@ -118,8 +128,37 @@ export function toCreateInput(form: VersionFormState): CreateVersionInput {
     platforms: form.platforms,
     platform: form.platforms[0],
     custom_data: parseJsonInput(form.custom_data),
+    translations: toTranslationList(form.translations),
     published_at: toTimestampSeconds(form.published_at),
   }
+}
+
+/**
+ * 只提交有意义的语言：标题或更新说明任一有值即算配过。
+ * 两项全空的行后端会拒——存下来只会让人以为配过什么。
+ */
+export function toTranslationList(
+  translations: VersionFormState["translations"],
+): VersionTranslation[] {
+  return Object.entries(translations)
+    .filter(([, value]) => value.title.trim() || value.content.trim())
+    .map(([locale, value]) => ({
+      locale,
+      title: value.title.trim() || null,
+      content: value.content.trim() || null,
+    }))
+}
+
+/** 已保存的译文 → 表单草稿。 */
+export function toFormTranslations(
+  translations: VersionTranslation[] | undefined,
+): VersionFormState["translations"] {
+  return Object.fromEntries(
+    (translations ?? []).map((item) => [
+      item.locale,
+      { title: item.title ?? "", content: item.content ?? "" },
+    ]),
+  )
 }
 
 type ParsedComparableVersion = {

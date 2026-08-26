@@ -40,9 +40,9 @@ const SYNCED_ACTIONS = new Set(["published", "released", "prereleased", "created
 
 // Mirrors the CreateVersionDto constraints. The webhook builds its payload in
 // code and so never passes through ValidationPipe; exceeding these would store
-// a record the admin UI can no longer submit back.
+// a record the admin UI can no longer submit back. Release 正文没有对应常量：
+// CreateVersionDto 不再限制 content 长度，截断只会平白砍掉 Release 说明。
 const MAX_TITLE_LENGTH = 128
-const MAX_CONTENT_LENGTH = 4096
 const MAX_DOWNLOAD_LINKS = 32
 
 @Injectable()
@@ -150,7 +150,7 @@ export class GithubWebhookService {
       version,
       comparable_version: version,
       title: truncate(release.name?.trim(), MAX_TITLE_LENGTH) ?? null,
-      content: truncate(release.body?.trim(), MAX_CONTENT_LENGTH) ?? null,
+      content: release.body?.trim() || null,
       download_url: downloadLinks[0]?.url ?? fallbackUrl ?? null,
       download_links: downloadLinks.length > 0 ? downloadLinks : undefined,
       is_latest: isLatest,

@@ -15,6 +15,7 @@ import { LogsModule } from "./logs/logs.module"
 import { ProjectsModule } from "./projects/projects.module"
 import { StatsModule } from "./stats/stats.module"
 import { TermsModule } from "./terms/terms.module"
+import { TranslationModule } from "./translation/translation.module"
 import { VersionsModule } from "./versions/versions.module"
 import { WebhooksModule } from "./webhooks/webhooks.module"
 
@@ -54,6 +55,7 @@ function publicRateLimit(): number {
     WebhooksModule,
     GithubAppModule,
     TermsModule,
+    TranslationModule,
   ],
 })
 export class AppModule {}

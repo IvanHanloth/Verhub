@@ -58,10 +58,14 @@ import {
 import {
   emptyVersionForm,
   toCreateInput,
+  toFormTranslations,
   toDateTimeLocal,
   validateVersionRules,
   type VersionFormState,
 } from "./version-form-utils"
+import { TranslateButton, useTranslationEnabled } from "@/components/common/translate-button"
+import { listProjectLocales, type ProjectLocaleItem } from "@/lib/projects-api"
+
 import { VersionEditDialog } from "./version-edit-dialog"
 import { VersionFormFields } from "./version-form-fields"
 
@@ -177,6 +181,8 @@ export function VersionsDashboard() {
   const [editingVersionId, setEditingVersionId] = React.useState<string | null>(null)
   const [editForm, setEditForm] = React.useState<VersionFormState>(emptyVersionForm)
   const [savingEdit, setSavingEdit] = React.useState(false)
+  const [locales, setLocales] = React.useState<ProjectLocaleItem[]>([])
+  const translationEnabled = useTranslationEnabled(token)
   const [simulationCurrentVersion, setSimulationCurrentVersion] = React.useState("")
   const [simulationCurrentComparableVersion, setSimulationCurrentComparableVersion] =
     React.useState("")
@@ -250,6 +256,27 @@ export function VersionsDashboard() {
   React.useEffect(() => {
     resetVersionsOffset()
   }, [selectedProjectKey, resetVersionsOffset])
+
+  // 项目注册的语言决定译文页签。拉不到只是没有页签可编辑，不该拦住整个版本页——静默退化。
+  React.useEffect(() => {
+    if (!token || !selectedProjectKey) {
+      setLocales([])
+      return
+    }
+
+    const controller = new AbortController()
+    listProjectLocales(token, selectedProjectKey, controller.signal)
+      .then((result) => setLocales(result.data))
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setLocales([])
+        }
+      })
+
+    return () => {
+      controller.abort()
+    }
+  }, [token, selectedProjectKey])
 
   /** 改任何一个筛选条件都回到第一页：留在第 5 页看新条件的结果没有意义。 */
   const updateFilter = React.useCallback(
@@ -351,6 +378,7 @@ export function VersionsDashboard() {
             ? [version.platform]
             : [],
       custom_data: version.custom_data ? JSON.stringify(version.custom_data, null, 2) : "",
+      translations: toFormTranslations(version.translations),
     })
     setEditDialogOpen(true)
   }
@@ -420,6 +448,9 @@ export function VersionsDashboard() {
             ? [version.platform]
             : [],
       custom_data: version.custom_data ? JSON.stringify(version.custom_data, null, 2) : "",
+      // 译文写的是那个版本的变更，跟着复制过来只会得到一份描述旧版本的说明，
+      // 而且很容易忘了改。宁可空着。
+      translations: {},
     })
     setCreateDialogOpen(true)
     toast.success("已复制配置到表单，可直接发布新版本。")
@@ -1001,6 +1032,9 @@ export function VersionsDashboard() {
           setForm={setForm}
           comparableVersionError={comparableVersionError}
           onExtractComparableVersion={handleExtractComparableVersion}
+          locales={locales}
+          projectKey={selectedProjectKey}
+          translationEnabled={translationEnabled}
           versionFieldAction={
             selectedProject?.repo_url ? (
               <Button
@@ -1022,6 +1056,9 @@ export function VersionsDashboard() {
       </AdminFormDialog>
 
       <VersionEditDialog
+        locales={locales}
+        projectKey={selectedProjectKey}
+        translationEnabled={translationEnabled}
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
         form={editForm}

@@ -28,7 +28,7 @@ import {
 import { getErrorMessage } from "@/lib/error-utils"
 import { LoadingLine } from "@/components/common/skeleton"
 import { useUnsavedChangesGuard } from "@/components/common/unsaved-changes-guard"
-import { FeaturePanel } from "@/components/github/feature-panel"
+import { FeaturePanel } from "@/components/common/feature-panel"
 import { IssueTemplateEditor } from "@/components/github/issue-template-editor"
 import {
   FIELD_CLASS,
@@ -37,7 +37,7 @@ import {
   SegmentedGroup,
   StatusBadge,
   TextField,
-} from "@/components/github/ui"
+} from "@/components/common/settings-fields"
 import {
   EMPTY_SECRET_STATE,
   hasSecretChange,

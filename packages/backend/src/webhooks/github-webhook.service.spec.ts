@@ -176,19 +176,18 @@ describe("GithubWebhookService", () => {
     )
   })
 
-  it("truncates a release body past the length the version DTO accepts", async () => {
+  it("stores a long release body verbatim", async () => {
     const { service, versionsService } = createService()
 
     await service.handleDelivery(
       delivery({
         ...RELEASE_EVENT,
-        release: { ...RELEASE_EVENT.release, body: "x".repeat(5000) },
+        release: { ...RELEASE_EVENT.release, body: "x".repeat(50000) },
       }),
     )
 
     const [, , dto] = versionsService.upsertByVersion.mock.calls[0]
-    expect(dto.content).toHaveLength(4096)
-    expect(dto.content.endsWith("…")).toBe(true)
+    expect(dto.content).toHaveLength(50000)
   })
 
   it.each([

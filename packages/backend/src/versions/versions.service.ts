@@ -17,7 +17,8 @@ import { Prisma } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
 import { ProjectResolverService } from "../database/project-resolver.service"
-import { CreateVersionDto } from "./dto/create-version.dto"
+import { matchRegisteredLocale } from "../common/locale"
+import { CreateVersionDto, VersionTranslationDto } from "./dto/create-version.dto"
 import { QueryVersionsDto } from "./dto/query-versions.dto"
 import { UpdateVersionDto } from "./dto/update-version.dto"
 import { UpsertVersionDto } from "./dto/upsert-version.dto"
@@ -33,6 +34,7 @@ import {
   resolveDownloadData,
   toPlatforms,
   toVersionItem,
+  translationInclude,
 } from "./version-mapping"
 import { toPlatform, type PlatformValue } from "../common/platform"
 import { searchContains } from "../common/query-filters"
@@ -137,9 +139,9 @@ export class VersionsService {
 
   // ── Queries ──
 
+  /** 管理端列表：带出全部译文供后台编辑，不做语言回落。 */
   async findAll(projectKey: string, query: QueryVersionsDto): Promise<VersionListResponse> {
     const normalizedKey = await this.resolveProjectKey(projectKey)
-
     const where = buildVersionListWhere(normalizedKey, query)
 
     const [total, data] = await this.prisma.$transaction([
@@ -155,12 +157,13 @@ export class VersionsService {
           { publishedAt: "desc" },
           { createdAt: "desc" },
         ],
+        include: { translations: true },
       }),
     ])
 
     return {
       total,
-      data: data.map((version) => toVersionItem(version)),
+      data: data.map((version) => toVersionItem(version, { includeTranslations: true })),
     }
   }
 
@@ -168,59 +171,95 @@ export class VersionsService {
     const normalizedKey = await this.resolveProjectKey(projectKey)
     const version = await this.prisma.version.findFirst({
       where: { id, projectKey: normalizedKey },
+      include: { translations: true },
     })
     if (!version) {
       throw new NotFoundException("Version not found")
     }
-    return toVersionItem(version)
+    return toVersionItem(version, { includeTranslations: true })
   }
 
   async findOneById(id: string): Promise<VersionItem> {
-    const version = await this.prisma.version.findUnique({ where: { id } })
+    const version = await this.prisma.version.findUnique({
+      where: { id },
+      include: { translations: true },
+    })
     if (!version) {
       throw new NotFoundException("Version not found")
     }
-    return toVersionItem(version)
+    return toVersionItem(version, { includeTranslations: true })
   }
 
+  /** 公开端列表：按请求语言回落，不带出其它语言的译文。 */
   async findAllByProjectKey(
     projectKey: string,
     query: QueryVersionsDto,
   ): Promise<VersionListResponse> {
-    return this.findAll(projectKey, query)
+    const normalizedKey = await this.resolveProjectKey(projectKey)
+    const locale = await this.resolveRegisteredLocale(normalizedKey, query.locale)
+    const where = buildVersionListWhere(normalizedKey, query)
+
+    const [total, data] = await this.prisma.$transaction([
+      this.prisma.version.count({ where }),
+      this.prisma.version.findMany({
+        where,
+        take: query.limit,
+        skip: query.offset,
+        orderBy: [
+          { comparableVersionSort: { sort: "desc", nulls: "last" } },
+          { publishedAt: "desc" },
+          { createdAt: "desc" },
+        ],
+        include: translationInclude(locale),
+      }),
+    ])
+
+    return {
+      total,
+      data: data.map((version) => toVersionItem(version, { locale })),
+    }
   }
 
-  async findLatestByProjectKey(projectKey: string): Promise<VersionItem> {
+  async findLatestByProjectKey(projectKey: string, wantedLocale?: string): Promise<VersionItem> {
     const normalizedKey = await this.resolveProjectKey(projectKey)
+    const locale = await this.resolveRegisteredLocale(normalizedKey, wantedLocale)
+    const include = translationInclude(locale)
 
     const latest = await this.prisma.version.findFirst({
       where: { projectKey: normalizedKey, isLatest: true },
       orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+      include,
     })
     if (latest) {
-      return toVersionItem(latest)
+      return toVersionItem(latest, { locale })
     }
 
     const fallbackStable = await this.prisma.version.findFirst({
       where: { projectKey: normalizedKey, isPreview: false },
       orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+      include,
     })
     if (fallbackStable) {
-      return toVersionItem(fallbackStable)
+      return toVersionItem(fallbackStable, { locale })
     }
 
     const fallbackAny = await this.prisma.version.findFirst({
       where: { projectKey: normalizedKey },
       orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+      include,
     })
     if (!fallbackAny) {
       throw new NotFoundException("Version not found")
     }
-    return toVersionItem(fallbackAny)
+    return toVersionItem(fallbackAny, { locale })
   }
 
-  async findLatestPreviewByProjectKey(projectKey: string): Promise<VersionItem | null> {
+  async findLatestPreviewByProjectKey(
+    projectKey: string,
+    wantedLocale?: string,
+  ): Promise<VersionItem | null> {
     const normalizedKey = await this.resolveProjectKey(projectKey)
+    const locale = await this.resolveRegisteredLocale(normalizedKey, wantedLocale)
 
     const latestPreview = await this.prisma.version.findFirst({
       where: { projectKey: normalizedKey, isPreview: true },
@@ -229,12 +268,18 @@ export class VersionsService {
         { publishedAt: "desc" },
         { createdAt: "desc" },
       ],
+      include: translationInclude(locale),
     })
-    return latestPreview ? toVersionItem(latestPreview) : null
+    return latestPreview ? toVersionItem(latestPreview, { locale }) : null
   }
 
-  async findByVersionNumber(projectKey: string, version: string): Promise<VersionItem> {
+  async findByVersionNumber(
+    projectKey: string,
+    version: string,
+    wantedLocale?: string,
+  ): Promise<VersionItem> {
     const normalizedKey = await this.resolveProjectKey(projectKey)
+    const locale = await this.resolveRegisteredLocale(normalizedKey, wantedLocale)
 
     const trimmedVersion = version.trim()
 
@@ -244,9 +289,10 @@ export class VersionsService {
         OR: [{ version: trimmedVersion }, { comparableVersion: trimmedVersion }],
       },
       orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+      include: translationInclude(locale),
     })
     if (found) {
-      return toVersionItem(found)
+      return toVersionItem(found, { locale })
     }
 
     throw new NotFoundException("Version not found")
@@ -259,6 +305,7 @@ export class VersionsService {
 
     // Validate business rules
     await this.validateVersionRules(normalizedKey, dto)
+    const translations = await this.resolveTranslations(normalizedKey, dto.translations)
 
     try {
       const isPreview = dto.is_preview ?? false
@@ -289,7 +336,9 @@ export class VersionsService {
             platform: toPlatform(dto.platform),
             customData: dto.custom_data as Prisma.InputJsonValue | undefined,
             publishedAt,
+            ...(translations ? { translations: { create: translations } } : {}),
           },
+          include: { translations: true },
         })
 
         if (row.isLatest) {
@@ -306,7 +355,7 @@ export class VersionsService {
         return row
       })
 
-      return toVersionItem(created)
+      return toVersionItem(created, { includeTranslations: true })
     } catch (error: unknown) {
       if (isUniqueViolation(error)) {
         throw new ConflictException("version already exists in this project")
@@ -396,6 +445,8 @@ export class VersionsService {
       isDeprecated: version.isDeprecated,
     })
 
+    const translations = await this.resolveTranslations(normalizedKey, dto.translations)
+
     try {
       const nextDownloadData = resolveDownloadData(
         dto.download_url,
@@ -442,7 +493,10 @@ export class VersionsService {
             platform: toPlatform(dto.platform),
             customData: dto.custom_data as Prisma.InputJsonValue | undefined,
             publishedAt: nextPublishedAt,
+            // 传了就整体替换，不传则不动——与公告译文同一套语义。
+            ...(translations ? { translations: { deleteMany: {}, create: translations } } : {}),
           },
+          include: { translations: true },
         })
 
         if (row.isLatest) {
@@ -461,7 +515,7 @@ export class VersionsService {
         return row
       })
 
-      return toVersionItem(updated)
+      return toVersionItem(updated, { includeTranslations: true })
     } catch (error: unknown) {
       if (isUniqueViolation(error)) {
         throw new ConflictException("version already exists in this project")
@@ -502,6 +556,74 @@ export class VersionsService {
   }
 
   // ── Private helpers ──
+
+  /**
+   * 语言偏好 → 项目注册表里的主标签；没注册过就返回 null（等同没提偏好）。
+   * 主标签与同义标签一视同仁地匹配，都忽略大小写，命中同义标签也返回主标签。
+   */
+  private async resolveRegisteredLocale(
+    projectKey: string,
+    locale: string | undefined,
+  ): Promise<string | null> {
+    if (!locale?.trim()) {
+      return null
+    }
+
+    const registered = await this.prisma.projectLocale.findMany({
+      where: { projectKey },
+      select: { locale: true, aliases: true },
+    })
+
+    return matchRegisteredLocale(registered, locale)
+  }
+
+  /**
+   * 校验并归一化提交的译文集合。返回 undefined 表示「这次不动译文」。
+   *
+   * 三条硬性规则：语言必须先在项目里注册过（同义标签同样算命中），同一请求里不能
+   * 重复提交同一个语言，以及一行至少要有标题或更新说明——两项全空的译文行存下来
+   * 只会让人以为配过什么。都直接 400，静默丢弃会让人以为存上了。
+   */
+  private async resolveTranslations(
+    projectKey: string,
+    translations: VersionTranslationDto[] | undefined,
+  ): Promise<Array<{ locale: string; title: string | null; content: string | null }> | undefined> {
+    if (!translations) {
+      return undefined
+    }
+    if (translations.length === 0) {
+      return []
+    }
+
+    const registered = await this.prisma.projectLocale.findMany({
+      where: { projectKey },
+      select: { locale: true, aliases: true },
+    })
+
+    const seen = new Set<string>()
+    return translations.map((item) => {
+      const canonical = matchRegisteredLocale(registered, item.locale)
+      if (!canonical) {
+        throw new BadRequestException(
+          `Locale "${item.locale}" is not registered for this project. Register it first.`,
+        )
+      }
+      if (seen.has(canonical)) {
+        throw new BadRequestException(`Duplicate translation for locale "${item.locale}"`)
+      }
+      seen.add(canonical)
+
+      const title = item.title?.trim() || null
+      const content = item.content?.trim() || null
+      if (!title && !content) {
+        throw new BadRequestException(
+          `Translation for locale "${item.locale}" sets nothing. Provide a title or a content.`,
+        )
+      }
+
+      return { locale: canonical, title, content }
+    })
+  }
 
   private async validateVersionRules(
     projectKey: string,

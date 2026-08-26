@@ -4,7 +4,7 @@ import { PublicEndpoint } from "@prisma/client"
 import { ClientIpThrottlerGuard } from "../common/client-ip-throttler.guard"
 import { TrackEndpoint } from "../stats/track-endpoint.decorator"
 import { CheckVersionUpdateDto } from "./dto/check-version-update.dto"
-import { QueryVersionsDto } from "./dto/query-versions.dto"
+import { QueryVersionLocaleDto, QueryVersionsDto } from "./dto/query-versions.dto"
 import { VersionUpdateCheckService } from "./version-update-check.service"
 import { VersionsService } from "./versions.service"
 
@@ -26,14 +26,20 @@ export class VersionsPublicController {
 
   @Get("latest")
   @TrackEndpoint(PublicEndpoint.VERSION_LATEST)
-  async findLatestByProjectKey(@Param("projectKey") projectKey: string) {
-    return this.versionsService.findLatestByProjectKey(projectKey)
+  async findLatestByProjectKey(
+    @Param("projectKey") projectKey: string,
+    @Query() query: QueryVersionLocaleDto,
+  ) {
+    return this.versionsService.findLatestByProjectKey(projectKey, query.locale)
   }
 
   @Get("latest-preview")
   @TrackEndpoint(PublicEndpoint.VERSION_LATEST_PREVIEW)
-  async findLatestPreviewByProjectKey(@Param("projectKey") projectKey: string) {
-    return this.versionsService.findLatestPreviewByProjectKey(projectKey)
+  async findLatestPreviewByProjectKey(
+    @Param("projectKey") projectKey: string,
+    @Query() query: QueryVersionLocaleDto,
+  ) {
+    return this.versionsService.findLatestPreviewByProjectKey(projectKey, query.locale)
   }
 
   @Get("by-version/:version")
@@ -41,8 +47,13 @@ export class VersionsPublicController {
   async findOneByVersion(
     @Param("projectKey") projectKey: string,
     @Param("version") version: string,
+    @Query() query: QueryVersionLocaleDto,
   ) {
-    return this.versionsService.findByVersionNumber(projectKey, decodeURIComponent(version))
+    return this.versionsService.findByVersionNumber(
+      projectKey,
+      decodeURIComponent(version),
+      query.locale,
+    )
   }
 
   @Post("check-update")

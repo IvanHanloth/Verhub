@@ -29,30 +29,39 @@ describe("VersionsPublicController", () => {
     expect(mockVersionsService.findAllByProjectKey).toHaveBeenCalledWith("proj", { limit: 10 })
   })
 
-  it("findLatestByProjectKey delegates projectKey", async () => {
+  it("findLatestByProjectKey delegates projectKey and locale", async () => {
     const version = { version: "2.0.0" }
     mockVersionsService.findLatestByProjectKey.mockResolvedValue(version)
-    expect(await controller.findLatestByProjectKey("proj")).toBe(version)
+    expect(await controller.findLatestByProjectKey("proj", { locale: "en" })).toBe(version)
+    expect(mockVersionsService.findLatestByProjectKey).toHaveBeenCalledWith("proj", "en")
   })
 
-  it("findLatestPreviewByProjectKey delegates projectKey", async () => {
+  it("findLatestPreviewByProjectKey delegates projectKey and locale", async () => {
     const version = { version: "3.0.0-rc.1" }
     mockVersionsService.findLatestPreviewByProjectKey.mockResolvedValue(version)
-    expect(await controller.findLatestPreviewByProjectKey("proj")).toBe(version)
+    expect(await controller.findLatestPreviewByProjectKey("proj", {})).toBe(version)
+    expect(mockVersionsService.findLatestPreviewByProjectKey).toHaveBeenCalledWith(
+      "proj",
+      undefined,
+    )
   })
 
   it("findOneByVersion decodes URI component and delegates", async () => {
     const version = { version: "1.0.0" }
     mockVersionsService.findByVersionNumber.mockResolvedValue(version)
 
-    expect(await controller.findOneByVersion("proj", "1.0.0")).toBe(version)
-    expect(mockVersionsService.findByVersionNumber).toHaveBeenCalledWith("proj", "1.0.0")
+    expect(await controller.findOneByVersion("proj", "1.0.0", { locale: "ja" })).toBe(version)
+    expect(mockVersionsService.findByVersionNumber).toHaveBeenCalledWith("proj", "1.0.0", "ja")
   })
 
   it("findOneByVersion decodes encoded version strings", async () => {
     mockVersionsService.findByVersionNumber.mockResolvedValue({})
-    await controller.findOneByVersion("proj", "1.0.0%2Bbuild")
-    expect(mockVersionsService.findByVersionNumber).toHaveBeenCalledWith("proj", "1.0.0+build")
+    await controller.findOneByVersion("proj", "1.0.0%2Bbuild", {})
+    expect(mockVersionsService.findByVersionNumber).toHaveBeenCalledWith(
+      "proj",
+      "1.0.0+build",
+      undefined,
+    )
   })
 
   it("checkUpdate delegates projectKey and dto", async () => {

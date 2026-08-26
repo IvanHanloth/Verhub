@@ -14,6 +14,8 @@
 //! };
 //! ```
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -154,6 +156,15 @@ pub struct VersionItem {
     pub comparable_version: String,
     pub title: Option<String>,
     pub content: Option<String>,
+    /// 本次返回的 title / content 来自哪个语言；None 表示版本自身的默认内容
+    /// （没提语言偏好、语言未注册，或该版本没有这个语言的译文）。
+    ///
+    /// `serde(default)` 让本 SDK 也能解析未支持多语言的旧服务端的响应。
+    #[serde(default)]
+    pub locale: Option<String>,
+    /// 该版本的全部译文，仅管理接口返回；公开接口不带这个字段。
+    #[serde(default)]
+    pub translations: Option<Vec<VersionTranslation>>,
     pub download_url: Option<String>,
     #[serde(default)]
     pub download_links: Vec<VersionDownloadLink>,
@@ -751,6 +762,29 @@ pub struct VersionImportResult {
 // ---- 请求 ----
 
 /// 分页参数。
+/// 一份版本译文，留空的字段回落版本自身的值。
+///
+/// 没有 `is_hidden`：版本是分发对象，「对某个语言藏掉某个版本」会让那批用户
+/// 收不到更新提示却仍能下到包。要停发用 `is_deprecated`，它对所有人生效。
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct VersionTranslation {
+    pub locale: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+}
+
+/// 公开版本列表的分页与语言筛选。
+#[derive(Debug, Clone, Default)]
+pub struct ListVersionsOptions {
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+    /// 语言偏好。命中项目注册的语言且该版本有译文时返回译文，否则回落版本自身的内容；
+    /// 返回项的 `locale` 字段标出实际语言（None 即默认内容）。
+    pub locale: Option<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct PageOptions {
     /// 分页大小，1..=100，默认 20。
@@ -815,6 +849,11 @@ pub struct CheckUpdateInput {
     /// 是否把 preview 版本纳入比较候选。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include_preview: Option<bool>,
+    /// 语言偏好。命中项目注册的语言时，响应里 `latest_version` /
+    /// `latest_preview_version` / `target_version` 三个版本对象的 title 与 content
+    /// 都返回对应译文；未注册或无译文时回落默认内容。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -1463,4 +1502,90 @@ pub struct UpdateDashboardCardInput {
     pub layout: Option<JsonObject>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sort_order: Option<i64>,
+}
+
+/// 实例级 AI 翻译配置视图。API Key 永不回读，仅返回指纹。
+#[derive(Debug, Clone, Deserialize)]
+pub struct TranslationConfig {
+    /// `base_url` 与 `model` 齐全即为 true；API Key 不是必需（自建服务常无鉴权）。
+    pub configured: bool,
+    /// 总闸。关闭时翻译端点一律 400。
+    pub enabled: bool,
+    /// 上游协议："openai"（`{base_url}/chat/completions`）/ "anthropic"（`{base_url}/v1/messages`）。
+    pub provider: String,
+    pub base_url: Option<String>,
+    pub model: Option<String>,
+    pub has_api_key: bool,
+    pub api_key_fingerprint: Option<String>,
+    pub api_key_updated_at: Option<i64>,
+    /// 关闭时忽略 `system_prompt`，使用内置提示词。
+    pub custom_prompt: bool,
+    pub system_prompt: Option<String>,
+    /// 内置提示词原文，可直接作为自定义提示词编辑器的初值。
+    pub builtin_system_prompt: String,
+    /// 提示词可用变量名清单。
+    pub prompt_variables: Vec<String>,
+    /// 按当前协议拼出的完整请求地址，供核对 `base_url` 的填法。
+    pub request_url: Option<String>,
+    pub updated_at: Option<i64>,
+}
+
+/// 部分更新实例级 AI 翻译配置。`api_key` 传空串表示清除。
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct UpdateTranslationConfigInput {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    /// "openai" 或 "anthropic"。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// 路径前缀，如 `https://api.openai.com/v1`；后缀按协议固定拼接。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    /// 只写不读。留空即请求不带鉴权头。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub custom_prompt: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
+}
+
+/// 测试连接的结果。上游失败也是 200，原因在 `error` 里。
+#[derive(Debug, Clone, Deserialize)]
+pub struct TranslationTestResult {
+    pub ok: bool,
+    pub provider: String,
+    pub model: Option<String>,
+    pub request_url: Option<String>,
+    /// 成功时为样例句子的译文。
+    pub sample: Option<String>,
+    pub latency_ms: i64,
+    pub error: Option<String>,
+}
+
+/// 一次翻译请求。`fields` 的键取自 `kind` 的字段清单。
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct TranslateInput {
+    /// 内容类型："announcement"（title / content）/ "project"（name / description）。
+    pub kind: String,
+    /// 目标语言，必须是项目已注册的（同义标签同样算命中，大小写不敏感）。
+    pub target_locale: String,
+    /// 原文语言，只作为提示词里的一句说明。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_locale: Option<String>,
+    /// 待译字段，值为空的会被丢弃；所有值合计上限 32000 字符。
+    pub fields: HashMap<String, String>,
+}
+
+/// 翻译结果。不入库，由调用方决定怎么用。
+#[derive(Debug, Clone, Deserialize)]
+pub struct TranslationResult {
+    /// 命中的注册语言主标签，未必等于请求里的写法。
+    pub locale: String,
+    pub provider: String,
+    pub model: String,
+    /// 译文，键与请求中非空的字段一一对应。
+    pub fields: HashMap<String, String>,
 }

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ._http import BaseHttpClient, compact
 from ._unset import UNSET
@@ -46,6 +46,9 @@ from .models import (
     TermsDocumentConfigListResponse,
     TermsDocumentConfigView,
     TermsDocumentSlug,
+    TranslationConfig,
+    TranslationResult,
+    TranslationTestResult,
     VersionImportResult,
     VersionItem,
     VersionListResponse,
@@ -410,7 +413,7 @@ class AdminApi:
         :param version: 展示用版本号，如 ``v1.2.0``
         :param comparable_version: 可比较版本号，如 ``1.2.0`` / ``1.2.0-rc.2``
         :param title: 版本标题
-        :param content: 更新说明，最长 4096
+        :param content: 更新说明，不限长度
         :param download_url: 单一下载地址
         :param download_links: 多平台下载链接，元素形如 ``{"url", "name", "platform"}``
         :param is_latest: 是否置为 latest
@@ -667,7 +670,7 @@ class AdminApi:
     ) -> AnnouncementItem:
         """
         :param title: 公告标题，最长 128
-        :param content: 公告内容，最长 4096
+        :param content: 公告内容，不限长度
         :param is_pinned: 是否置顶
         :param is_hidden: 是否隐藏，隐藏后公开接口取不到
         :param platforms: 投放平台，最多 8 个；留空表示全平台
@@ -1740,5 +1743,106 @@ class AdminApi:
             "DELETE",
             "/admin/terms/documents/{slug}",
             path_params={"slug": slug},
+            auth=True,
+        )
+
+    # ---- AI 翻译 ----
+
+    def get_translation_config(self) -> TranslationConfig:
+        """
+        实例级 AI 翻译配置。仅管理员 JWT 可访问，API key 会得到 401 ——
+        这是一份能直接产生上游账单的出站凭据。
+
+        :return: 配置状态；API Key 永不回读，只有指纹
+        """
+        return self._http.request("GET", "/admin/translation", auth=True)
+
+    def update_translation_config(
+        self,
+        *,
+        enabled: Any = UNSET,
+        provider: Any = UNSET,
+        base_url: Any = UNSET,
+        api_key: Any = UNSET,
+        model: Any = UNSET,
+        custom_prompt: Any = UNSET,
+        system_prompt: Any = UNSET,
+    ) -> TranslationConfig:
+        """
+        部分更新，只修改传入的字段。
+
+        :param enabled: 总闸；关闭时翻译端点一律 400
+        :param provider: 上游协议，``openai`` 或 ``anthropic``
+        :param base_url: 路径前缀，如 ``https://api.openai.com/v1``；后缀按协议固定拼接
+        :param api_key: 只写不读，传空串表示清除；留空即请求不带鉴权头
+        :param model: 模型名
+        :param custom_prompt: 是否启用自定义提示词；关闭时 system_prompt 被忽略
+        :param system_prompt: 自定义系统提示词
+        :return: 更新后的配置
+        """
+        return self._http.request(
+            "PUT",
+            "/admin/translation",
+            body=compact(
+                {
+                    "enabled": enabled,
+                    "provider": provider,
+                    "base_url": base_url,
+                    "api_key": api_key,
+                    "model": model,
+                    "custom_prompt": custom_prompt,
+                    "system_prompt": system_prompt,
+                }
+            ),
+            auth=True,
+        )
+
+    def clear_translation_config(self) -> TranslationConfig:
+        """
+        :return: 清空后的配置；总闸一并关闭
+        """
+        return self._http.request("DELETE", "/admin/translation", auth=True)
+
+    def test_translation(self) -> TranslationTestResult:
+        """
+        用当前配置译一句样例，验证地址、凭据与模型是否配得通。
+
+        :return: 测试结果；上游失败不抛异常，原因在 ``error`` 里
+        """
+        return self._http.request("POST", "/admin/translation/test", auth=True)
+
+    def translate(
+        self,
+        *,
+        kind: str,
+        target_locale: str,
+        fields: Dict[str, str],
+        source_locale: Any = UNSET,
+    ) -> TranslationResult:
+        """
+        把绑定项目下一条内容的若干字段译成目标语言，一次往返翻完整条。
+
+        结果**只返回不入库**：调用方拿它填草稿，由人确认后再走各自的保存接口。
+
+        :param kind: 内容类型，``announcement``（title / content）或
+            ``project``（name / description）
+        :param target_locale: 目标语言，必须是项目已注册的（同义标签同样算命中）
+        :param fields: 待译字段，键取自 kind 的字段清单；值为空的会被丢弃，
+            所有值合计上限 32000 字符
+        :param source_locale: 原文语言，只作为提示词里的一句说明
+        :return: 译文；AI 翻译未启用或配置不全时抛 400
+        """
+        return self._http.request(
+            "POST",
+            "/admin/projects/{projectKey}/translate",
+            path_params={"projectKey": self._http.require_project_key()},
+            body=compact(
+                {
+                    "kind": kind,
+                    "target_locale": target_locale,
+                    "source_locale": source_locale,
+                    "fields": fields,
+                }
+            ),
             auth=True,
         )

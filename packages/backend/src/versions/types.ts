@@ -9,6 +9,13 @@ import { Prisma, Platform } from "@prisma/client"
 
 import type { PlatformValue } from "../common/platform"
 
+/** 一份版本译文，语义同公告译文：留空的字段回落版本自身的值。 */
+export type VersionTranslationItem = {
+  locale: string
+  title: string | null
+  content: string | null
+}
+
 /** API-facing version item with snake_case fields. */
 export type VersionItem = {
   id: string
@@ -16,6 +23,13 @@ export type VersionItem = {
   comparable_version: string
   title: string | null
   content: string | null
+  /**
+   * 本次返回的 title / content 实际来自哪个语言，`null` = 版本自身的默认内容。
+   * 让客户端一眼看出有没有发生回落。管理端与公开端都返回，与 AnnouncementItem 同口径。
+   */
+  locale: string | null
+  /** 全部译文，只在管理接口返回，供后台编辑。 */
+  translations?: VersionTranslationItem[]
   download_url: string | null
   download_links: Array<{ url: string; name?: string; platform?: string }>
   forced: boolean
@@ -82,6 +96,11 @@ export type VersionRecord = {
   downloadLinks: Prisma.JsonValue | null
   publishedAt: number
   createdAt: number
+  /**
+   * 随记录一起查出来的译文。公开端只 include 请求的那一个语言，管理端 include 全部；
+   * 没 include 时是 undefined，与「这个版本没有译文」（空数组）不同。
+   */
+  translations?: Array<{ locale: string; title: string | null; content: string | null }>
 }
 
 /** Update check response returned to clients. */

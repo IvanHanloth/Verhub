@@ -34,9 +34,9 @@ export class AnnouncementTranslationDto {
   @MaxLength(128)
   title?: string | null
 
+  /** 不设长度上限，理由同默认正文。 */
   @IsOptional()
   @IsString()
-  @MaxLength(4096)
   content?: string | null
 
   /** 该语言下不返回这条公告。与公告自身的 is_hidden 是两层：那个对所有人生效。 */
@@ -50,8 +50,11 @@ export class CreateAnnouncementDto {
   @MaxLength(128)
   title!: string
 
+  /**
+   * 不设长度上限：正文是运营写的长文，卡一个数字只会在写到一半时把人拦住。
+   * 兜底交给 main.ts 的请求体上限，那是一条对所有端点统一的防线。
+   */
   @IsString()
-  @MaxLength(4096)
   content!: string
 
   @IsOptional()

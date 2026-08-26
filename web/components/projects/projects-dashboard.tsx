@@ -47,7 +47,8 @@ import { MarkdownEditor } from "@/components/markdown/markdown-editor"
 import { GithubIntegrationDialog } from "@/components/projects/github-integration-dialog"
 import { ProjectAliasesSettings } from "@/components/projects/project-aliases-settings"
 import { ProjectLocalesSettings } from "@/components/projects/project-locales-settings"
-import { SegmentedButton, SegmentedGroup } from "@/components/github/ui"
+import { SegmentedButton, SegmentedGroup } from "@/components/common/settings-fields"
+import { TranslateButton, useTranslationEnabled } from "@/components/common/translate-button"
 import { validateComparableVersion } from "@/lib/comparable-version"
 import { formatTimestamp } from "@/lib/format"
 import {
@@ -257,20 +258,39 @@ function ProjectTranslationFields({
   locale,
   draft,
   onChange,
+  projectKey = null,
+  translationEnabled = false,
+  source,
 }: {
   locale: string
   draft: { name: string; description: string }
   onChange: (patch: { name?: string; description?: string }) => void
+  /** AI 翻译按钮要按项目校验目标语言，没有项目就不显示按钮。 */
+  projectKey?: string | null
+  translationEnabled?: boolean
+  /** 项目自身的名称与描述，即待译的默认内容。 */
+  source: { name: string; description: string }
 }) {
   const inputClassName =
     "w-full rounded-xl border border-slate-900/20 bg-white/80 px-3 py-2 text-sm dark:border-white/20 dark:bg-white/10"
 
   return (
     <>
-      <p className="text-xs text-slate-500 dark:text-slate-400">
-        两项各自留空即沿用项目自身的值；都留空就等于没为 {locale}{" "}
-        配过内容。其余字段只在默认内容页设置，对所有语言生效。
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="flex-1 text-xs text-slate-500 dark:text-slate-400">
+          两项各自留空即沿用项目自身的值；都留空就等于没为 {locale}{" "}
+          配过内容。其余字段只在默认内容页设置，对所有语言生效。
+        </p>
+        <TranslateButton
+          enabled={translationEnabled}
+          projectKey={projectKey}
+          kind="project"
+          targetLocale={locale}
+          source={source}
+          hasDraft={Boolean(draft.name.trim() || draft.description.trim())}
+          onTranslated={(fields) => onChange(fields)}
+        />
+      </div>
 
       <label className="space-y-1 text-sm">
         <span className="text-slate-700 dark:text-slate-300">项目名称（{locale}）</span>
@@ -549,6 +569,7 @@ export function ProjectsDashboard() {
   const [githubLoading, setGithubLoading] = React.useState(false)
   const [editDialogOpen, setEditDialogOpen] = React.useState(false)
   const [editingProjectKey, setEditingProjectKey] = React.useState<string | null>(null)
+  const translationEnabled = useTranslationEnabled(token)
   const [githubDialogOpen, setGithubDialogOpen] = React.useState(false)
   const [githubProjectKey, setGithubProjectKey] = React.useState<string | null>(null)
   // 目标仓库默认跟项目自己的仓库走，开弹窗时一并带过去。
@@ -1167,6 +1188,9 @@ export function ProjectsDashboard() {
               {editLocale ? (
                 <ProjectTranslationFields
                   locale={editLocale}
+                  projectKey={editingProjectKey}
+                  translationEnabled={translationEnabled}
+                  source={{ name: editForm.name, description: editForm.description }}
                   draft={editForm.translations[editLocale] ?? { name: "", description: "" }}
                   onChange={(patch) =>
                     setEditForm((prev) => {

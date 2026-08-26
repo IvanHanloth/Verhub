@@ -7,12 +7,23 @@ export type VersionDownloadLink = {
   platform?: string
 }
 
+/** 一份版本译文，留空的字段回落版本自身的值。没有 is_hidden：版本是分发对象。 */
+export type VersionTranslation = {
+  locale: string
+  title: string | null
+  content: string | null
+}
+
 export type VersionItem = {
   id: string
   version: string
   comparable_version?: string
   title: string | null
   content: string | null
+  /** 本次返回的 title / content 来自哪个语言；null 即版本自身的默认内容。 */
+  locale?: string | null
+  /** 该版本的全部译文，只有管理接口返回。 */
+  translations?: VersionTranslation[]
   download_url: string | null
   download_links: VersionDownloadLink[]
   forced: boolean
@@ -37,6 +48,8 @@ export type CreateVersionInput = {
   comparable_version: string
   title?: string
   content?: string
+  /** 传了即整体替换全部译文，空数组即清空；不传则不动。 */
+  translations?: VersionTranslation[]
   download_url?: string
   download_links?: VersionDownloadLink[]
   is_latest?: boolean

@@ -62,48 +62,58 @@ class PublicApi:
         *,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
+        locale: Optional[str] = None,
     ) -> VersionListResponse:
         """
         :param limit: 分页大小，1..100，默认 20
         :param offset: 分页偏移，默认 0
+        :param locale: 语言偏好。命中项目注册的语言（主标签或同义标签，大小写不敏感）
+            且该版本有译文时，``title`` / ``content`` 返回译文；否则回落版本自身的内容。
+            返回项的 ``locale`` 字段标出实际语言（None 即默认内容）
         :return: 版本列表
         """
         return self._http.request(
             "GET",
             "/public/{projectKey}/versions",
             path_params={"projectKey": self._http.require_project_key()},
-            query={"limit": limit, "offset": offset},
+            query={"limit": limit, "offset": offset, "locale": locale},
         )
 
-    def get_latest_version(self) -> VersionItem:
+    def get_latest_version(self, *, locale: Optional[str] = None) -> VersionItem:
         """
+        :param locale: 语言偏好，语义同 :meth:`list_versions`
         :return: 最新正式版本
         """
         return self._http.request(
             "GET",
             "/public/{projectKey}/versions/latest",
             path_params={"projectKey": self._http.require_project_key()},
+            query={"locale": locale},
         )
 
-    def get_latest_preview_version(self) -> Optional[VersionItem]:
+    def get_latest_preview_version(self, *, locale: Optional[str] = None) -> Optional[VersionItem]:
         """
+        :param locale: 语言偏好，语义同 :meth:`list_versions`
         :return: 最新 preview 版本；没有则为 None
         """
         return self._http.request(
             "GET",
             "/public/{projectKey}/versions/latest-preview",
             path_params={"projectKey": self._http.require_project_key()},
+            query={"locale": locale},
         )
 
-    def get_version(self, version: str) -> VersionItem:
+    def get_version(self, version: str, *, locale: Optional[str] = None) -> VersionItem:
         """
         :param version: 版本号，如 ``1.2.0``
+        :param locale: 语言偏好，语义同 :meth:`list_versions`
         :return: 指定版本信息
         """
         return self._http.request(
             "GET",
             "/public/{projectKey}/versions/by-version/{version}",
             path_params={"projectKey": self._http.require_project_key(), "version": version},
+            query={"locale": locale},
         )
 
     def check_update(
@@ -112,6 +122,7 @@ class PublicApi:
         current_version: Optional[str] = None,
         current_comparable_version: Optional[str] = None,
         include_preview: Optional[bool] = None,
+        locale: Optional[str] = None,
     ) -> CheckUpdateResponse:
         """
         提交当前版本并检查更新。
@@ -123,6 +134,9 @@ class PublicApi:
         :param current_version: 当前语义化版本号
         :param current_comparable_version: 当前可比较版本号，如 ``1.20.326``
         :param include_preview: 是否把 preview 版本纳入比较候选
+        :param locale: 语言偏好。命中项目注册的语言时，响应里 ``latest_version`` /
+            ``latest_preview_version`` / ``target_version`` 三个版本对象的 title 与
+            content 都返回对应译文；未注册或无译文时回落默认内容
         :return: 更新判定结果
         """
         return self._http.request(
@@ -136,6 +150,7 @@ class PublicApi:
                         current_comparable_version if current_comparable_version else UNSET
                     ),
                     "include_preview": include_preview if include_preview is not None else UNSET,
+                    "locale": locale if locale else UNSET,
                 }
             ),
         )

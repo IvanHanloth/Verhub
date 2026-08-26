@@ -6,7 +6,7 @@ import { Copy, RefreshCcw, Undo2, X } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 
 import { copyToClipboard } from "@/lib/clipboard"
-import { LabeledField, MONO_FIELD_CLASS } from "@/components/github/ui"
+import { LabeledField, MONO_FIELD_CLASS } from "@/components/common/settings-fields"
 
 /**
  * Webhook secret 输入框。项目级 Release Webhook 与实例级 GitHub App 共用一份，

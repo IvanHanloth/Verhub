@@ -13,6 +13,7 @@ import type {
   IngestEventsResponse,
   LatestAnnouncementOptions,
   ListAnnouncementsOptions,
+  ListVersionsOptions,
   LogItem,
   PageOptions,
   ProjectItem,
@@ -54,39 +55,46 @@ export class PublicApi {
   }
 
   /**
-   * @param options 分页参数
+   * @param options 分页参数与语言偏好
    */
-  listVersions(options: PageOptions = {}): Promise<VersionListResponse> {
+  listVersions(options: ListVersionsOptions = {}): Promise<VersionListResponse> {
     return this.http.request("GET", "/public/{projectKey}/versions", {
       pathParams: { projectKey: this.http.requireProjectKey() },
-      query: { limit: options.limit, offset: options.offset },
+      query: { limit: options.limit, offset: options.offset, locale: options.locale },
     })
   }
 
   /**
+   * @param options 语言偏好。命中项目注册的语言且该版本有译文时，`title` / `content`
+   *   返回译文，`locale` 标出实际语言；否则回落版本自身的内容。
    * @returns 最新正式版本
    */
-  getLatestVersion(): Promise<VersionItem> {
+  getLatestVersion(options: { locale?: string } = {}): Promise<VersionItem> {
     return this.http.request("GET", "/public/{projectKey}/versions/latest", {
       pathParams: { projectKey: this.http.requireProjectKey() },
+      query: { locale: options.locale },
     })
   }
 
   /**
+   * @param options 语言偏好，语义同 `getLatestVersion`
    * @returns 最新 preview 版本；没有则为 null
    */
-  getLatestPreviewVersion(): Promise<VersionItem | null> {
+  getLatestPreviewVersion(options: { locale?: string } = {}): Promise<VersionItem | null> {
     return this.http.request("GET", "/public/{projectKey}/versions/latest-preview", {
       pathParams: { projectKey: this.http.requireProjectKey() },
+      query: { locale: options.locale },
     })
   }
 
   /**
    * @param version 版本号，如 `1.2.0`
+   * @param options 语言偏好，语义同 `getLatestVersion`
    */
-  getVersion(version: string): Promise<VersionItem> {
+  getVersion(version: string, options: { locale?: string } = {}): Promise<VersionItem> {
     return this.http.request("GET", "/public/{projectKey}/versions/by-version/{version}", {
       pathParams: { projectKey: this.http.requireProjectKey(), version },
+      query: { locale: options.locale },
     })
   }
 

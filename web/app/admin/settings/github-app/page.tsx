@@ -13,7 +13,7 @@ import { useConfirm } from "@/components/common/confirm-dialog"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
 import { LoadingLine } from "@/components/common/skeleton"
-import { FeaturePanel, SectionHeading } from "@/components/github/feature-panel"
+import { FeaturePanel, SectionHeading } from "@/components/common/feature-panel"
 import { IssueTemplateEditor } from "@/components/github/issue-template-editor"
 import {
   CopyableUrl,
@@ -21,7 +21,7 @@ import {
   MONO_FIELD_CLASS,
   StatusBadge,
   TextField,
-} from "@/components/github/ui"
+} from "@/components/common/settings-fields"
 import {
   EMPTY_SECRET_STATE,
   hasSecretChange,

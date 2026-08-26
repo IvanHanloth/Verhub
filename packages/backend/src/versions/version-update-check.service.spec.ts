@@ -18,6 +18,11 @@ function createPrismaMock() {
       delete: jest.fn(),
       updateMany: jest.fn(),
     },
+    projectLocale: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue([{ locale: "en", aliases: ["en-US"], label: "English" }]),
+    },
     $transaction: jest.fn(),
   }
 }
@@ -410,6 +415,8 @@ describe("VersionUpdateCheckService", () => {
         isDeprecated: false,
         comparableVersion: { not: null },
       },
+      // 里程碑目标也会进响应，所以同样要带上译文；没提语言时是一个恒假的 where。
+      include: { translations: { where: { locale: "" } } },
     })
     expect(result.target_version?.version).toBe("2.0.0")
   })
@@ -544,5 +551,119 @@ describe("VersionUpdateCheckService", () => {
     expect(result.latest_version.version).toBe("3.0.0-rc.1")
     expect(result.should_update).toBe(true)
     expect(result.target_version?.version).toBe("3.0.0-rc.1")
+  })
+  // -- 多语言 --
+
+  it("三个版本对象都按同一个语言返回译文", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
+      projectKey: "project-1",
+      optionalUpdateMinComparableVersion: null,
+      optionalUpdateMaxComparableVersion: null,
+    })
+    const translated = {
+      translations: [{ locale: "en", title: "Stable release", content: "Bug fixes" }],
+    }
+    prisma.version.findFirst
+      // latest stable
+      .mockResolvedValueOnce(
+        makeVersionRecord({
+          id: "latest",
+          version: "3.0.0",
+          comparableVersion: "3.0.0",
+          title: "稳定版",
+          content: "修了几个问题",
+          isLatest: true,
+          ...translated,
+        }),
+      )
+      // latest preview
+      .mockResolvedValueOnce(null)
+      // current record
+      .mockResolvedValueOnce({
+        version: "1.0.0",
+        comparableVersion: "1.0.0",
+        isMilestone: false,
+        isDeprecated: false,
+      })
+
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
+    const result = await service.checkUpdateByProjectKey(
+      "project-1",
+      createDto({ current_version: "1.0.0", locale: "en" }),
+    )
+
+    expect(result.latest_version.title).toBe("Stable release")
+    expect(result.latest_version.content).toBe("Bug fixes")
+    expect(result.latest_version.locale).toBe("en")
+    expect(result.target_version?.title).toBe("Stable release")
+  })
+
+  it("查最新版时带上译文，否则语言回落永远命不中", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
+      projectKey: "project-1",
+      optionalUpdateMinComparableVersion: null,
+      optionalUpdateMaxComparableVersion: null,
+    })
+    prisma.version.findFirst
+      .mockResolvedValueOnce(
+        makeVersionRecord({ id: "latest", version: "3.0.0", comparableVersion: "3.0.0" }),
+      )
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        version: "1.0.0",
+        comparableVersion: "1.0.0",
+        isMilestone: false,
+        isDeprecated: false,
+      })
+
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
+    await service.checkUpdateByProjectKey(
+      "project-1",
+      createDto({ current_version: "1.0.0", locale: "en-US" }),
+    )
+
+    // 同义标签归一成主标签后才拿去 include
+    expect(prisma.version.findFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ include: { translations: { where: { locale: "en" } } } }),
+    )
+  })
+
+  it("没提语言偏好时不查注册表，直接返回默认内容", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUniqueOrThrow.mockResolvedValueOnce({
+      projectKey: "project-1",
+      optionalUpdateMinComparableVersion: null,
+      optionalUpdateMaxComparableVersion: null,
+    })
+    prisma.version.findFirst
+      .mockResolvedValueOnce(
+        makeVersionRecord({
+          id: "latest",
+          version: "3.0.0",
+          comparableVersion: "3.0.0",
+          title: "稳定版",
+          translations: [{ locale: "en", title: "Stable release", content: null }],
+        }),
+      )
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        version: "1.0.0",
+        comparableVersion: "1.0.0",
+        isMilestone: false,
+        isDeprecated: false,
+      })
+
+    const service = new VersionUpdateCheckService(prisma as never, makeResolver(prisma))
+    const result = await service.checkUpdateByProjectKey(
+      "project-1",
+      createDto({ current_version: "1.0.0" }),
+    )
+
+    expect(result.latest_version.title).toBe("稳定版")
+    expect(result.latest_version.locale).toBeNull()
+    expect(prisma.projectLocale.findMany).not.toHaveBeenCalled()
   })
 })

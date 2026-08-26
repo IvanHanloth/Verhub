@@ -1,6 +1,17 @@
 import { Transform } from "class-transformer"
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator"
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+} from "class-validator"
 
+import { LOCALE_PATTERN, MAX_LOCALE_LENGTH, NormalizeLocale } from "../../common/locale"
 import { NormalizePlatform, PLATFORM_VALUES, type PlatformValue } from "../../common/platform"
 import {
   MAX_SEARCH_LENGTH,
@@ -54,4 +65,28 @@ export class QueryVersionsDto {
   @NormalizeOptionalBoolean()
   @IsBoolean()
   forced?: boolean
+
+  /**
+   * 语言偏好。命中项目注册的语言（大小写不敏感）且该版本有对应译文时返回译文，
+   * 否则一律回落版本的默认内容。后台列表不受影响，永远返回默认内容与全部译文。
+   */
+  @IsOptional()
+  @NormalizeLocale()
+  @IsString()
+  @MaxLength(MAX_LOCALE_LENGTH)
+  @Matches(LOCALE_PATTERN, { message: "locale format is invalid" })
+  locale?: string
+}
+
+/**
+ * 只带语言偏好的查询串，给 latest / latest-preview / by-version 三个单条端点用。
+ * 它们没有分页与筛选，套完整的 QueryVersionsDto 会凭空多出一堆可传参数。
+ */
+export class QueryVersionLocaleDto {
+  @IsOptional()
+  @NormalizeLocale()
+  @IsString()
+  @MaxLength(MAX_LOCALE_LENGTH)
+  @Matches(LOCALE_PATTERN, { message: "locale format is invalid" })
+  locale?: string
 }

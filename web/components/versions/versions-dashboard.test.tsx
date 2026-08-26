@@ -4,7 +4,8 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { toast } from "sonner"
 
-import { listProjects } from "@/lib/projects-api"
+import { listProjects, listProjectLocales } from "@/lib/projects-api"
+import { getTranslationConfig, translateContent } from "@/lib/translation-api"
 import {
   checkVersionUpdate,
   listVersions,
@@ -20,6 +21,12 @@ import { VersionsDashboard } from "./versions-dashboard"
 
 vi.mock("@/lib/projects-api", () => ({
   listProjects: vi.fn(),
+  listProjectLocales: vi.fn(),
+}))
+
+vi.mock("@/lib/translation-api", () => ({
+  getTranslationConfig: vi.fn(),
+  translateContent: vi.fn(),
 }))
 
 vi.mock("@/lib/versions-api", () => ({
@@ -41,6 +48,14 @@ vi.mock("sonner", () => ({
 }))
 
 const mockedListProjects = vi.mocked(listProjects)
+const mockedListProjectLocales = vi.mocked(listProjectLocales)
+const mockedGetTranslationConfig = vi.mocked(getTranslationConfig)
+const mockedTranslateContent = vi.mocked(translateContent)
+
+/** 只有翻译按钮读这份配置，其余字段用不到。 */
+function translationConfig(enabled: boolean) {
+  return { enabled, configured: enabled } as never
+}
 const mockedCheckVersionUpdate = vi.mocked(checkVersionUpdate)
 const mockedListVersions = vi.mocked(listVersions)
 const mockedCreateVersion = vi.mocked(createVersion)
@@ -68,6 +83,12 @@ describe("VersionsDashboard", () => {
     mockedUpsertVersionByVersion.mockReset()
     mockedToastSuccess.mockReset()
     mockedToastError.mockReset()
+    mockedListProjectLocales.mockReset()
+    mockedGetTranslationConfig.mockReset()
+    mockedTranslateContent.mockReset()
+
+    mockedListProjectLocales.mockResolvedValue({ data: [] })
+    mockedGetTranslationConfig.mockResolvedValue(translationConfig(false))
 
     mockedListProjects.mockResolvedValue({
       total: 1,
@@ -556,5 +577,112 @@ describe("VersionsDashboard", () => {
     await waitFor(() => {
       expect(mockedToastError).toHaveBeenCalledWith("GitHub Release 获取失败：HTTP 404")
     })
+  })
+  it("项目没注册语言时不显示语言页签", async () => {
+    const user = userEvent.setup()
+    render(React.createElement(VersionsDashboard))
+
+    await screen.findAllByText("1.0.0")
+    await user.click(screen.getByRole("button", { name: "新增版本" }))
+
+    const dialog = await screen.findByRole("dialog")
+    expect(within(dialog).queryByRole("tab", { name: "默认内容" })).not.toBeInTheDocument()
+    expect(within(dialog).getByLabelText("版本标题")).toBeInTheDocument()
+  })
+
+  it("注册了语言时按语言列出页签，并把译文一并提交", async () => {
+    mockedListProjectLocales.mockResolvedValue({
+      data: [{ locale: "en-US", aliases: [], label: "English", created_at: 1 }],
+    })
+    mockedCreateVersion.mockResolvedValue({} as never)
+
+    const user = userEvent.setup()
+    render(React.createElement(VersionsDashboard))
+
+    await screen.findAllByText("1.0.0")
+    await user.click(screen.getByRole("button", { name: "新增版本" }))
+
+    const dialog = await screen.findByRole("dialog")
+    await user.type(within(dialog).getByLabelText("版本号"), "3.0.0")
+    await user.type(within(dialog).getByLabelText(/可比较版本号/), "3.0.0")
+    await user.type(within(dialog).getByLabelText("版本标题"), "稳定版")
+
+    await user.click(within(dialog).getByRole("tab", { name: "English（en-US）" }))
+    await user.type(within(dialog).getByLabelText("译文标题"), "Stable release")
+
+    await user.click(within(dialog).getByRole("button", { name: "发布版本" }))
+
+    await waitFor(() => {
+      expect(mockedCreateVersion).toHaveBeenCalled()
+    })
+    const payload = mockedCreateVersion.mock.calls[0]?.[2] as Record<string, unknown>
+    expect(payload.translations).toEqual([
+      { locale: "en-US", title: "Stable release", content: null },
+    ])
+  })
+
+  it("译文两项都空的语言不提交", async () => {
+    mockedListProjectLocales.mockResolvedValue({
+      data: [{ locale: "en-US", aliases: [], label: "English", created_at: 1 }],
+    })
+    mockedCreateVersion.mockResolvedValue({} as never)
+
+    const user = userEvent.setup()
+    render(React.createElement(VersionsDashboard))
+
+    await screen.findAllByText("1.0.0")
+    await user.click(screen.getByRole("button", { name: "新增版本" }))
+
+    const dialog = await screen.findByRole("dialog")
+    await user.type(within(dialog).getByLabelText("版本号"), "3.0.0")
+    await user.type(within(dialog).getByLabelText(/可比较版本号/), "3.0.0")
+    // 切到语言页看一眼但什么都没填
+    await user.click(within(dialog).getByRole("tab", { name: "English（en-US）" }))
+    await user.click(within(dialog).getByRole("tab", { name: "默认内容" }))
+    await user.click(within(dialog).getByRole("button", { name: "发布版本" }))
+
+    await waitFor(() => {
+      expect(mockedCreateVersion).toHaveBeenCalled()
+    })
+    expect(
+      (mockedCreateVersion.mock.calls[0]?.[2] as Record<string, unknown>).translations,
+    ).toEqual([])
+  })
+
+  it("AI 翻译把默认内容译进当前语言的草稿，不直接保存", async () => {
+    mockedListProjectLocales.mockResolvedValue({
+      data: [{ locale: "en-US", aliases: [], label: "English", created_at: 1 }],
+    })
+    mockedGetTranslationConfig.mockResolvedValue(translationConfig(true))
+    mockedTranslateContent.mockResolvedValue({
+      locale: "en-US",
+      provider: "openai",
+      model: "gpt-4o-mini",
+      fields: { title: "Stable release", content: "Bug fixes" },
+    })
+
+    const user = userEvent.setup()
+    render(React.createElement(VersionsDashboard))
+
+    await screen.findAllByText("1.0.0")
+    await user.click(screen.getByRole("button", { name: "新增版本" }))
+
+    const dialog = await screen.findByRole("dialog")
+    await user.type(within(dialog).getByLabelText("版本标题"), "稳定版")
+    await user.type(within(dialog).getByLabelText("更新内容"), "修了几个问题")
+    await user.click(within(dialog).getByRole("tab", { name: "English（en-US）" }))
+    await user.click(await within(dialog).findByRole("button", { name: /AI 翻译/ }))
+
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText("译文标题")).toHaveValue("Stable release")
+    })
+    expect(within(dialog).getByLabelText("译文更新内容")).toHaveValue("Bug fixes")
+
+    expect(mockedTranslateContent).toHaveBeenCalledWith("valid-token", "verhub", {
+      kind: "version",
+      target_locale: "en-US",
+      fields: { title: "稳定版", content: "修了几个问题" },
+    })
+    expect(mockedCreateVersion).not.toHaveBeenCalled()
   })
 })

@@ -34,6 +34,10 @@ import { ContentStatsController } from "./stats/content-stats.controller"
 import { RequestStatsController } from "./stats/request-stats.controller"
 import { TermsController } from "./terms/terms.controller"
 import { TermsPublicController } from "./terms/terms-public.controller"
+import {
+  ProjectTranslationController,
+  TranslationConfigController,
+} from "./translation/translation.controller"
 import { VersionsCompatController } from "./versions/versions-compat.controller"
 import { VersionsPublicController } from "./versions/versions-public.controller"
 import { VersionsStatsController } from "./versions/versions-stats.controller"
@@ -64,6 +68,8 @@ const CONTROLLERS = [
   RequestStatsController,
   TermsController,
   TermsPublicController,
+  TranslationConfigController,
+  ProjectTranslationController,
   VersionsCompatController,
   VersionsController,
   VersionsPublicController,

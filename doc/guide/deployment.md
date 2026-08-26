@@ -237,6 +237,10 @@ docker compose --env-file .env -f docker-compose.yml logs -f backend frontend
 - 前端容器通过 Nginx 暴露服务入口
 - 后端容器端口仅在内部网络暴露
 - 数据持久化由 PostgreSQL 卷负责，首次启动会自动创建数据库与表结构，可以尝试复用已有数据库，但需自行确保兼容性
+- 公告正文与版本更新说明不限字数，请求体上限由后端统一兜底（1mb）。自带的 nginx
+  网关已把 `/api/` 的 `client_max_body_size` 放到 2m，留在后端上限之上，超长内容
+  由后端给出可读的错误。**自建反代请对齐这一条**，否则长正文会先在反代那里撞上
+  一个默认 1m 的 413
 
 ### 套 CDN 上线
 

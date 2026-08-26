@@ -1145,6 +1145,57 @@ impl AdminApi<'_> {
             )
             .await
     }
+
+    // ---- AI 翻译 ----
+
+    /// 查实例级 AI 翻译配置。仅管理员 JWT 可访问，API key 会得到 401 ——
+    /// 这是一份能直接产生上游账单的出站凭据。
+    pub async fn get_translation_config(&self) -> Result<TranslationConfig> {
+        self.inner
+            .request::<_, ()>(Method::GET, "/admin/translation", &[], None, true)
+            .await
+    }
+
+    /// 部分更新实例级 AI 翻译配置。`api_key` 传空串表示清除。
+    pub async fn update_translation_config(
+        &self,
+        input: &UpdateTranslationConfigInput,
+    ) -> Result<TranslationConfig> {
+        self.inner
+            .request(Method::PUT, "/admin/translation", &[], Some(input), true)
+            .await
+    }
+
+    /// 清空实例级 AI 翻译配置，总闸一并关闭。
+    pub async fn clear_translation_config(&self) -> Result<TranslationConfig> {
+        self.inner
+            .request::<_, ()>(Method::DELETE, "/admin/translation", &[], None, true)
+            .await
+    }
+
+    /// 用当前配置译一句样例，验证地址、凭据与模型是否配得通。
+    /// 上游失败不返回 Err，原因在结果的 `error` 里。
+    pub async fn test_translation(&self) -> Result<TranslationTestResult> {
+        self.inner
+            .request::<_, ()>(Method::POST, "/admin/translation/test", &[], None, true)
+            .await
+    }
+
+    /// 把绑定项目下一条内容的若干字段译成目标语言，一次往返翻完整条。
+    ///
+    /// 结果**只返回不入库**：调用方拿它填草稿，由人确认后再走各自的保存接口。
+    pub async fn translate(&self, input: &TranslateInput) -> Result<TranslationResult> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request(
+                Method::POST,
+                &format!("/admin/projects/{}/translate", segment(&key)),
+                &[],
+                Some(input),
+                true,
+            )
+            .await
+    }
 }
 
 fn page(options: &PageOptions) -> [(&'static str, Option<String>); 2] {

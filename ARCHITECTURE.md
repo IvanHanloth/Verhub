@@ -154,9 +154,13 @@ Webhook 鉴权（Project）：
 公告的可见版本范围与多语言：
 
 - **可见版本范围**（`Announcement.minComparableVersion` / `maxComparableVersion`，闭区间、两端各自可空）。过滤发生在 SQL 层：范围两端各存一个定长排序键（`min/maxComparableVersionSort`，与 `Version.comparableVersionSort` 同一个生成函数），定长纯数字串的字典序即版本序，`lte` / `gte` 直接可用——不必把公告全量拉进内存过滤，分页也不会因此错位。公开端的 `version` 参数先当可比较版本号解析，解析不了再按 `version` 去版本表换算一次。**客户端没报版本号（或两条路都换算不出）时，带范围的公告一律不返回**：判断不了范围就不展示，把「仅限 2.x」推给不知道自己版本的客户端只会造成困惑。
-- **多语言**（`AnnouncementTranslation` + `ProjectTranslation` + `ProjectLocale`）。默认内容始终在公告/项目自身，译文只是覆盖层，所以永远有兜底可返回。译文行是「某个语言下的覆盖设置」，各维度**逐字段独立**：公告的 `title` / `content` 与项目的 `name` / `description` 各自留空即回落默认值，公告另有 `isHidden` 表示该语言下整条不返回（与全局 `isHidden` 是两层，后者对所有人生效）。三项全空的译文行会被拒——存下来只会让人以为配过什么。回落链路只有一级，不做 `zh-CN → zh` 这类父语言回退。
+- **多语言**（`AnnouncementTranslation` + `ProjectTranslation` + `VersionTranslation` + `ProjectLocale`）。默认内容始终在公告/项目/版本自身，译文只是覆盖层，所以永远有兜底可返回。译文行是「某个语言下的覆盖设置」，各维度**逐字段独立**：公告与版本的 `title` / `content` 与项目的 `name` / `description` 各自留空即回落默认值，公告另有 `isHidden` 表示该语言下整条不返回（与全局 `isHidden` 是两层，后者对所有人生效）。所有字段都空的译文行会被拒——存下来只会让人以为配过什么。回落链路只有一级，不做 `zh-CN → zh` 这类父语言回退。
+- **版本译文没有 `isHidden`**，与公告不同：版本是分发对象，「对某个语言藏掉某个版本」会让那批用户收不到更新提示却仍能下到包，是个说不清的状态。要停发用 `isDeprecated`，它对所有人生效。
+- 版本的语言回落覆盖全部公开读路径：列表、`latest`、`latest-preview`、`by-version`，以及 `check-update`。更新检查里 `latest_version` / `latest_preview_version` / `target_version` **按同一个语言**回落——客户端把它们并排显示在一个更新弹窗里，只译其中一个会得到中英混排。凡是查出来要进响应的版本记录都必须带上 `translationInclude(locale)`，漏掉的话语言回落会静默失效（返回默认内容且 `locale` 为 `null`，看起来像「这个版本没译文」）。
 - **语言注册**（`ProjectLocale`）。译文语言与客户端的语言偏好都必须命中这张白名单——没有它，客户端传什么语言都会命中库里的任意脏数据。`aliases` 提供多对一：主标签 `en` 列出 `en-US` / `en-GB` 后三种写法取到同一份译文，但返回体的 `locale` 始终是**主标签**（译文按主标签存，报出变体会让调用方以为存在一份独立译文）。只认显式列出的同义标签，不做 `en-*` 前缀自动回退：那样无法单独给某个地区变体做不同处理，出问题时也说不清为什么命中了这个语言。注册与匹配大小写不敏感，但保留录入时的原样写法——语言由项目自己定，服务端不替它猜 BCP 47 标准写法。注销语言**不删译文**，译文只是暂时不可达，重新注册即恢复。
 - 响应里的 `locale` 字段标出这次返回的内容实际来自哪个语言（`null` = 默认内容），让客户端一眼看出有没有发生回落；只设了隐藏、没覆盖任何内容的译文不算「返回了译文」，`locale` 仍为 `null`。全量 `translations` 只在管理接口返回。
+- **AI 翻译**（`TranslationConfig` + `POST /admin/projects/{projectKey}/translate`）。译文靠人手填，运营覆盖不了所有语言，所以后台的译文页签上有一个「AI 翻译」按钮，把默认内容整条译进当前语言。**译文只回不入库**：接口返回的字段被填进表单草稿，仍由人过一眼、改完再走原有的保存路径——机器译文直接落库等于没人为内容负责。整条一起译（标题与正文一次往返）而不是逐字段：模型看不到上下文时，标题与正文的用词会对不上。目标语言必须命中 `ProjectLocale`，语言的 `label` 一并喂给提示词（模型看「简体中文」比看 `zh-CN` 准）。
+- 上游凭据由部署方自己填，实例级单例，不内置任何厂商的地址与 key。支持 OpenAI 兼容（`/chat/completions`）与 Anthropic Messages（`/v1/messages`）两种协议，`base_url` 只填路径前缀、后缀按协议固定拼接——不替管理员猜写法，理由同语言标签不做 BCP 47 规范化。API key 经 `secret-box` 加密落库、只回读指纹，端点只收管理员 JWT 不开放 API key scope：这是一份能直接产生上游账单的出站凭据。提示词沿用「开关 + 内置模板兜底」的既有约定（同 `GithubAppConfig` 的模板与 `TermsDocument` 的正文）。
 
 列表搜索：`search` 参数在各列表接口上语义一致——不区分大小写的子串匹配，命中字段由各 service 指定（见 OpenAPI 中每个端点的说明）。JSON 列（`custom_data` / `device_info` / `http`）一律不参与匹配：既慢又无从解释命中在哪。
 

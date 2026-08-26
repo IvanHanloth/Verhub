@@ -10,7 +10,7 @@ import {
   MONO_FIELD_CLASS,
   SegmentedButton,
   SegmentedGroup,
-} from "@/components/github/ui"
+} from "@/components/common/settings-fields"
 
 /**
  * 反馈 Issue 模板编辑器。

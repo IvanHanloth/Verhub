@@ -26,7 +26,8 @@ import {
   createDataTableColumns,
 } from "@/components/common/data-table"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
-import { SegmentedButton, SegmentedGroup } from "@/components/github/ui"
+import { SegmentedButton, SegmentedGroup } from "@/components/common/settings-fields"
+import { TranslateButton, useTranslationEnabled } from "@/components/common/translate-button"
 import { MarkdownEditor } from "@/components/markdown/markdown-editor"
 import {
   createAnnouncement,
@@ -186,12 +187,17 @@ function AnnouncementFormFields({
   setForm,
   locales = [],
   theme = "dark",
+  projectKey = null,
+  translationEnabled = false,
 }: {
   form: AnnouncementFormState
   setForm: React.Dispatch<React.SetStateAction<AnnouncementFormState>>
   /** 项目注册的语言。为空时不显示语言页签，表单退化成单一默认内容。 */
   locales?: ProjectLocaleItem[]
   theme?: "dark" | "light"
+  /** AI 翻译按钮要按项目校验目标语言，没有项目就不显示按钮。 */
+  projectKey?: string | null
+  translationEnabled?: boolean
 }) {
   // 默认内容页用空串标识，与任何真实 locale 都不会撞。
   const [activeLocale, setActiveLocale] = React.useState("")
@@ -255,10 +261,21 @@ function AnnouncementFormFields({
 
       {currentLocale ? (
         <>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            标题与正文各自留空即沿用默认内容。
-            其余字段（平台、置顶、时间、版本范围等）只在默认内容页设置，对所有语言生效。
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <p className="flex-1 text-xs text-slate-500 dark:text-slate-400">
+              标题与正文各自留空即沿用默认内容。
+              其余字段（平台、置顶、时间、版本范围等）只在默认内容页设置，对所有语言生效。
+            </p>
+            <TranslateButton
+              enabled={translationEnabled}
+              projectKey={projectKey}
+              kind="announcement"
+              targetLocale={currentLocale}
+              source={{ title: form.title, content: form.content }}
+              hasDraft={Boolean(draft.title.trim() || draft.content.trim())}
+              onTranslated={(fields) => updateTranslation(fields)}
+            />
+          </div>
 
           <label
             className={`inline-flex items-center gap-2 text-sm ${textClassName}`}
@@ -290,7 +307,6 @@ function AnnouncementFormFields({
             onChange={(value) => updateTranslation({ content: value })}
             rows={6}
             className={inputClassName}
-            maxLength={4096}
           />
         </>
       ) : (
@@ -314,7 +330,6 @@ function AnnouncementFormFields({
             rows={6}
             className={inputClassName}
             required
-            maxLength={4096}
           />
 
           <label className="space-y-1 text-sm">
@@ -472,6 +487,7 @@ export function AnnouncementsDashboard() {
   const [savingEdit, setSavingEdit] = React.useState(false)
   // 项目注册的语言，决定公告弹窗里出现哪些语言页签。
   const [locales, setLocales] = React.useState<ProjectLocaleItem[]>([])
+  const translationEnabled = useTranslationEnabled(token)
   const handleEditOpenChange = useUnsavedChangesGuard({
     open: editDialogOpen,
     onOpenChange: setEditDialogOpen,
@@ -981,7 +997,14 @@ export function AnnouncementsDashboard() {
         onSubmit={() => void handleCreate()}
         formValue={form}
       >
-        <AnnouncementFormFields form={form} setForm={setForm} locales={locales} theme="light" />
+        <AnnouncementFormFields
+          form={form}
+          setForm={setForm}
+          locales={locales}
+          theme="light"
+          projectKey={selectedProjectKey}
+          translationEnabled={translationEnabled}
+        />
       </AdminFormDialog>
 
       <Dialog open={editDialogOpen} onOpenChange={handleEditOpenChange}>
@@ -998,6 +1021,8 @@ export function AnnouncementsDashboard() {
                 setForm={setEditForm}
                 locales={locales}
                 theme="light"
+                projectKey={selectedProjectKey}
+                translationEnabled={translationEnabled}
               />
             </div>
           </DialogBody>

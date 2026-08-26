@@ -34,7 +34,10 @@ impl PublicApi<'_> {
     }
 
     /// 取公开版本列表。
-    pub async fn list_versions(&self, options: &PageOptions) -> Result<VersionListResponse> {
+    pub async fn list_versions(
+        &self,
+        options: &ListVersionsOptions,
+    ) -> Result<VersionListResponse> {
         let key = self.inner.require_project_key()?;
         self.inner
             .request::<_, ()>(
@@ -43,6 +46,7 @@ impl PublicApi<'_> {
                 &[
                     ("limit", options.limit.map(|v| v.to_string())),
                     ("offset", options.offset.map(|v| v.to_string())),
+                    ("locale", options.locale.clone()),
                 ],
                 None,
                 false,
@@ -51,35 +55,42 @@ impl PublicApi<'_> {
     }
 
     /// 取最新正式版本。
-    pub async fn get_latest_version(&self) -> Result<VersionItem> {
+    ///
+    /// `locale` 命中项目注册的语言（主标签或同义标签，大小写不敏感）且该版本有对应
+    /// 译文时，`title` / `content` 返回译文，返回体的 `locale` 标出实际语言；
+    /// 否则回落版本自身的内容。
+    pub async fn get_latest_version(&self, locale: Option<&str>) -> Result<VersionItem> {
         let key = self.inner.require_project_key()?;
         self.inner
             .request::<_, ()>(
                 Method::GET,
                 &format!("/public/{}/versions/latest", segment(&key)),
-                &[],
+                &[("locale", locale.map(str::to_string))],
                 None,
                 false,
             )
             .await
     }
 
-    /// 取最新 preview 版本；没有则为 `None`。
-    pub async fn get_latest_preview_version(&self) -> Result<Option<VersionItem>> {
+    /// 取最新 preview 版本；没有则为 `None`。`locale` 语义同 `get_latest_version`。
+    pub async fn get_latest_preview_version(
+        &self,
+        locale: Option<&str>,
+    ) -> Result<Option<VersionItem>> {
         let key = self.inner.require_project_key()?;
         self.inner
             .request::<_, ()>(
                 Method::GET,
                 &format!("/public/{}/versions/latest-preview", segment(&key)),
-                &[],
+                &[("locale", locale.map(str::to_string))],
                 None,
                 false,
             )
             .await
     }
 
-    /// 按版本号取指定版本。
-    pub async fn get_version(&self, version: &str) -> Result<VersionItem> {
+    /// 按版本号取指定版本。`locale` 语义同 `get_latest_version`。
+    pub async fn get_version(&self, version: &str, locale: Option<&str>) -> Result<VersionItem> {
         let key = self.inner.require_project_key()?;
         self.inner
             .request::<_, ()>(
@@ -89,7 +100,7 @@ impl PublicApi<'_> {
                     segment(&key),
                     segment(version)
                 ),
-                &[],
+                &[("locale", locale.map(str::to_string))],
                 None,
                 false,
             )

@@ -20,6 +20,11 @@ function createPrismaMock() {
       delete: jest.fn(),
       updateMany: jest.fn(),
     },
+    projectLocale: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue([{ locale: "en", aliases: ["en-US"], label: "English" }]),
+    },
     $transaction: jest.fn(),
   }
 
@@ -124,6 +129,7 @@ describe("VersionsService", () => {
         isPreview: false,
         publishedAt: expect.any(Number),
       },
+      include: { translations: true },
     })
 
     expect(result.platform).toBe("ios")
@@ -222,6 +228,7 @@ describe("VersionsService", () => {
         isPreview: false,
         publishedAt: expect.any(Number),
       },
+      include: { translations: true },
     })
     expect(result.download_url).toBeNull()
     expect(result.download_links).toEqual([])
@@ -1065,5 +1072,231 @@ describe("VersionsService.upsertByVersion", () => {
     expect(prisma.version.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "v1" } }),
     )
+  })
+  // ── 多语言 ──
+
+  it("公开列表按请求语言覆盖标题与更新说明，locale 标出译文来源", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.$transaction.mockResolvedValueOnce([
+      1,
+      [
+        buildVersionRecord({
+          title: "新版本",
+          content: "修了几个问题",
+          translations: [{ locale: "en", title: "New release", content: "Bug fixes" }],
+        }),
+      ],
+    ])
+
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
+    const result = await service.findAllByProjectKey("proj", {
+      limit: 10,
+      offset: 0,
+      locale: "en",
+    } as never)
+
+    expect(result.data[0]?.title).toBe("New release")
+    expect(result.data[0]?.content).toBe("Bug fixes")
+    expect(result.data[0]?.locale).toBe("en")
+    // 公开端不带出全部译文，那是后台编辑才需要的
+    expect(result.data[0]?.translations).toBeUndefined()
+  })
+
+  it("译文只覆盖标题时，更新说明回落默认内容", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.version.findFirst.mockResolvedValueOnce(
+      buildVersionRecord({
+        title: "新版本",
+        content: "修了几个问题",
+        isLatest: true,
+        translations: [{ locale: "en", title: "New release", content: null }],
+      }),
+    )
+
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
+    const result = await service.findLatestByProjectKey("proj", "en")
+
+    expect(result.title).toBe("New release")
+    expect(result.content).toBe("修了几个问题")
+    expect(result.locale).toBe("en")
+  })
+
+  it("同义标签命中主标签的译文，locale 报的是主标签", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.version.findFirst.mockResolvedValueOnce(
+      buildVersionRecord({
+        isLatest: true,
+        translations: [{ locale: "en", title: "New release", content: null }],
+      }),
+    )
+
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
+    const result = await service.findLatestByProjectKey("proj", "EN-us")
+
+    expect(result.locale).toBe("en")
+    // include 里用的是主标签，不是客户端报的写法
+    expect(prisma.version.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ include: { translations: { where: { locale: "en" } } } }),
+    )
+  })
+
+  it("没提语言偏好时不查译文，直接返回默认内容", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.version.findFirst.mockResolvedValueOnce(
+      buildVersionRecord({ title: "新版本", isLatest: true }),
+    )
+
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
+    const result = await service.findLatestByProjectKey("proj")
+
+    expect(result.title).toBe("新版本")
+    expect(result.locale).toBeNull()
+    expect(prisma.projectLocale.findMany).not.toHaveBeenCalled()
+  })
+
+  it("未注册的语言等同没提偏好，回落默认内容", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.version.findFirst.mockResolvedValueOnce(
+      buildVersionRecord({ title: "新版本", isLatest: true }),
+    )
+
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
+    const result = await service.findLatestByProjectKey("proj", "ja")
+
+    expect(result.title).toBe("新版本")
+    expect(result.locale).toBeNull()
+  })
+
+  it("管理端列表带出全部译文，且不做语言回落", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.$transaction.mockResolvedValueOnce([
+      1,
+      [
+        buildVersionRecord({
+          title: "新版本",
+          translations: [{ locale: "en", title: "New release", content: null }],
+        }),
+      ],
+    ])
+
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
+    const result = await service.findAll("proj", { limit: 10, offset: 0 } as never)
+
+    expect(result.data[0]?.title).toBe("新版本")
+    expect(result.data[0]?.translations).toEqual([
+      { locale: "en", title: "New release", content: null },
+    ])
+  })
+
+  it("拒绝未注册语言的译文", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
+
+    await expect(
+      service.create("proj", {
+        version: "1.0.1",
+        comparable_version: "1.0.1",
+        translations: [{ locale: "ja", title: "新リリース" }],
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException)
+    expect(prisma.version.create).not.toHaveBeenCalled()
+  })
+
+  it("拒绝标题与更新说明都为空的译文行", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
+
+    await expect(
+      service.create("proj", {
+        version: "1.0.1",
+        comparable_version: "1.0.1",
+        translations: [{ locale: "en", title: "  ", content: "" }],
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it("拒绝同一请求里重复提交同一个语言", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
+
+    await expect(
+      service.create("proj", {
+        version: "1.0.1",
+        comparable_version: "1.0.1",
+        translations: [
+          { locale: "en", title: "New release" },
+          // en-US 是 en 的同义标签，归一后与上一行相撞
+          { locale: "en-US", title: "Another" },
+        ],
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it("译文按主标签落库，同义标签写法被归一", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.version.create.mockResolvedValue(buildVersionRecord({ translations: [] }))
+
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
+    await service.create("proj", {
+      version: "1.0.1",
+      comparable_version: "1.0.1",
+      translations: [{ locale: "EN-US", title: "New release" }],
+    } as never)
+
+    expect(prisma.version.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          translations: { create: [{ locale: "en", title: "New release", content: null }] },
+        }),
+      }),
+    )
+  })
+
+  it("更新时传译文即整体替换，空数组即清空", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.version.findFirst.mockResolvedValue(
+      buildVersionRecord({ id: "v1", isLatest: false, isDeprecated: false }),
+    )
+    prisma.version.update.mockResolvedValue(buildVersionRecord({ translations: [] }))
+
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
+    await service.update("proj", "v1", { translations: [] } as never)
+
+    expect(prisma.version.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          translations: { deleteMany: {}, create: [] },
+        }),
+      }),
+    )
+  })
+
+  it("更新时不传译文则完全不动它", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.version.findFirst.mockResolvedValue(
+      buildVersionRecord({ id: "v1", isLatest: false, isDeprecated: false }),
+    )
+    prisma.version.update.mockResolvedValue(buildVersionRecord({ translations: [] }))
+
+    const service = new VersionsService(prisma as never, makeResolver(prisma))
+    await service.update("proj", "v1", { title: "改标题" } as never)
+
+    const data = prisma.version.update.mock.calls[0]?.[0].data as Record<string, unknown>
+    expect(data).not.toHaveProperty("translations")
   })
 })

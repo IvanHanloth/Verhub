@@ -180,6 +180,33 @@ model TermsDocument {
   updatedAt        Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 }
 
+/// 实例级 AI 翻译配置（单例）。后台译文编辑处的「AI 翻译」按钮用它调上游模型。
+///
+/// 上游凭据必须由部署方自己填：Verhub 是自部署产品，不内置任何厂商的地址与 key。
+/// 译文永远只回给后台当草稿，不经这里入库——机器译文得有人过一眼才算数。
+model TranslationConfig {
+  id                String  @id @default("default")
+  /// 总闸。关掉时翻译端点一律拒绝，后台也不显示翻译按钮，凭据留着不动。
+  enabled           Boolean @default(false)
+  /// 上游协议，取值见 TRANSLATION_PROVIDERS：
+  /// openai（POST {baseUrl}/chat/completions）或 anthropic（POST {baseUrl}/v1/messages）。
+  provider          String  @default("openai")
+  /// 路径前缀，如 https://api.openai.com/v1。后缀按 provider 固定拼接，
+  /// 不替管理员猜写法（同 ProjectLocale 不做 BCP 47 规范化的理由）。
+  baseUrl           String?
+  /// API key 加密后的密文，格式 v1:<iv>:<tag>:<data>，见 secret-box。
+  /// 自建 Ollama / vLLM 常常无鉴权，留空即请求不带鉴权头，不算配置不全。
+  apiKeyEncrypted   String?
+  apiKeyFingerprint String?
+  apiKeyUpdatedAt   Int?
+  model             String?
+  /// 关掉时忽略下面的 systemPrompt，一律用内置提示词；打开才让自定义值生效。
+  /// 有这个开关，管理员把提示词改坏后不必逐字删回内置文案。
+  customPrompt      Boolean @default(false)
+  systemPrompt      String?
+  updatedAt         Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+}
+
 /// 项目级 GitHub 集成配置（GitHub App 相关功能，一项目一行，按需创建）。
 model ProjectGithubIntegration {
   projectKey                    String   @id
@@ -564,7 +591,8 @@ model Version {
   publishedAt           Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   createdAt             Int        @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
-  project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
+  project      Project              @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
+  translations VersionTranslation[]
 
   @@unique([projectKey, version])
   @@index([projectKey, createdAt])
@@ -572,6 +600,28 @@ model Version {
   @@index([projectKey, comparableVersionSort])
   // comparableVersion 仍被按版本号精确查找用到（findByVersionNumber）。
   @@index([projectKey, comparableVersion])
+}
+
+/// 版本的标题与更新说明译文。语义同 AnnouncementTranslation：默认值在 Version 自身，
+/// 这里只是覆盖层，字段留空即回落默认值。
+///
+/// 没有 isHidden：版本是分发对象，「对某个语言的用户藏掉某个版本」意味着那些用户
+/// 收不到更新提示却仍能下到包，是个说不清的状态。要停发就用 isDeprecated，它对所有人生效。
+model VersionTranslation {
+  versionId String
+  /// 必须是本项目注册过的语言（见 ProjectLocale）。
+  locale    String
+  /// 留空即用版本自身的 title。
+  title     String?
+  /// 留空即用版本自身的 content。
+  content   String?
+  createdAt Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+
+  version Version @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@id([versionId, locale])
+  @@index([versionId])
 }
 
 model Announcement {

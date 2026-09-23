@@ -23,6 +23,7 @@ import {
 import { PrismaService } from "../database/prisma.service"
 import { ProjectResolverService } from "../database/project-resolver.service"
 import { nowSeconds } from "../common/utils"
+import { FileIngestService } from "../files/file-ingest.service"
 import { compareComparableVersions, parseComparableVersion } from "../versions/version-comparator"
 import { normalizeVersionTag, toGithubReleaseDownloadLinks } from "../versions/version-mapping"
 import { VersionsService } from "../versions/versions.service"
@@ -53,6 +54,7 @@ export class GithubWebhookService {
     private readonly prisma: PrismaService,
     private readonly versionsService: VersionsService,
     private readonly projectResolver: ProjectResolverService,
+    private readonly fileIngest: FileIngestService,
   ) {}
 
   async handleDelivery(input: {
@@ -145,14 +147,20 @@ export class GithubWebhookService {
     const fallbackUrl = release.zipball_url?.trim() || release.html_url?.trim() || undefined
     const publishedAt = toUnixSeconds(release.published_at ?? release.created_at)
     const isLatest = await this.resolveIsLatest(projectKey, version, isPreview)
+    // 已镜像完成的附件写入分发直链。
+    const mirrored = await this.fileIngest.substituteMirrored(
+      projectKey,
+      downloadLinks,
+      downloadLinks[0]?.url ?? fallbackUrl ?? null,
+    )
 
     const { item, created } = await this.versionsService.upsertByVersion(projectKey, version, {
       version,
       comparable_version: version,
       title: truncate(release.name?.trim(), MAX_TITLE_LENGTH) ?? null,
       content: release.body?.trim() || null,
-      download_url: downloadLinks[0]?.url ?? fallbackUrl ?? null,
-      download_links: downloadLinks.length > 0 ? downloadLinks : undefined,
+      download_url: mirrored.downloadUrl,
+      download_links: mirrored.links.length > 0 ? mirrored.links : undefined,
       is_latest: isLatest,
       is_preview: isPreview,
       published_at: publishedAt,
@@ -169,7 +177,26 @@ export class GithubWebhookService {
       `[webhook][github] ${created ? "created" : "updated"} project=${projectKey} version=${item.version} action=${action}`,
     )
 
-    return { status: "synced", event, action, version: item.version, created }
+    const mirror = await this.fileIngest
+      .mirrorIfEnabled(
+        projectKey,
+        downloadLinks.map((link) => link.url),
+      )
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `[webhook][github] asset mirror failed project=${projectKey} version=${item.version}: ${(error as Error).message}`,
+        )
+        return null
+      })
+
+    return {
+      status: "synced",
+      event,
+      action,
+      version: item.version,
+      created,
+      ...(mirror ? { mirror_queued: mirror.queued } : {}),
+    }
   }
 
   /**

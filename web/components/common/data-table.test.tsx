@@ -43,6 +43,15 @@ async function openDetail(user: ReturnType<typeof userEvent.setup>, index = 0) {
   return screen.getByRole("dialog")
 }
 
+/** 页数据放在组件外：真实页面的行是 state，引用稳定，每次渲染新建数组会误判成「新一页到了」。 */
+const pages: Row[][] = [
+  rows,
+  [
+    { id: "r3", name: "第三行", note: "" },
+    { id: "r4", name: "第四行", note: "" },
+  ],
+]
+
 describe("DataTable", () => {
   beforeEach(() => {
     window.localStorage.clear()
@@ -178,6 +187,58 @@ describe("DataTable", () => {
     expect(
       within(screen.getByRole("dialog")).getByRole("heading", { name: "第一行" }),
     ).toBeVisible()
+  })
+
+  /** 模拟服务端分页：翻页后先 loading、旧行保留，稍后才换成新一页。 */
+  function PagedTable() {
+    const [page, setPage] = React.useState(0)
+    const [shown, setShown] = React.useState(page)
+    const loading = shown !== page
+
+    React.useEffect(() => {
+      const timer = window.setTimeout(() => setShown(page), 20)
+      return () => window.clearTimeout(timer)
+    }, [page])
+
+    return (
+      <DataTable
+        columns={columns}
+        rows={pages[shown]!}
+        getRowId={(row) => row.id}
+        loading={loading}
+        pagination={{
+          total: 4,
+          page: page + 1,
+          totalPages: 2,
+          hasPrev: page > 0,
+          hasNext: page < 1,
+          onPrev: () => setPage((value) => value - 1),
+          onNext: () => setPage((value) => value + 1),
+        }}
+      />
+    )
+  }
+
+  it("抽屉在页边界翻页时加载相邻页并落到首行 / 末行", async () => {
+    const user = userEvent.setup()
+    render(<PagedTable />)
+
+    await openDetail(user, 1)
+    const dialog = () => within(screen.getByRole("dialog"))
+    expect(dialog().getByRole("button", { name: "下一条" })).toBeEnabled()
+
+    await user.click(dialog().getByRole("button", { name: "下一条" }))
+    expect(await dialog().findByRole("heading", { name: "第三行" })).toBeVisible()
+    expect(dialog().getByText(/第 2\/2 页/)).toBeInTheDocument()
+
+    await user.click(dialog().getByRole("button", { name: "下一条" }))
+    expect(dialog().getByRole("heading", { name: "第四行" })).toBeVisible()
+    expect(dialog().getByRole("button", { name: "下一条" })).toBeDisabled()
+
+    await user.click(dialog().getByRole("button", { name: "上一条" }))
+    await user.click(dialog().getByRole("button", { name: "上一条" }))
+    expect(await dialog().findByRole("heading", { name: "第二行" })).toBeVisible()
+    expect(dialog().getByText(/第 1\/2 页/)).toBeInTheDocument()
   })
 
   it("Esc 关闭抽屉", async () => {

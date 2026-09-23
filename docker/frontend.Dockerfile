@@ -39,8 +39,10 @@ ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 RUN printf '{"version":"dev","published_at":"unknown"}\n' > /app/web/public/build-info.json
 
 COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
+COPY docker/nginx/verhub-locations.conf /etc/nginx/verhub-locations.conf
+COPY docker/nginx/render-dist-conf.sh /usr/local/bin/render-dist-conf.sh
 COPY docker/frontend-dev-entrypoint.sh /usr/local/bin/frontend-dev-entrypoint.sh
-RUN chmod +x /usr/local/bin/frontend-dev-entrypoint.sh && mkdir -p /run/nginx /etc/nginx/certs
+RUN chmod +x /usr/local/bin/frontend-dev-entrypoint.sh /usr/local/bin/render-dist-conf.sh && mkdir -p /run/nginx /etc/nginx/certs
 
 ENV NODE_ENV=development
 ENV FRONTEND_NODE_PORT=3000
@@ -70,8 +72,10 @@ COPY --from=frontend-builder /app/web/.next/static ./web/.next/static
 COPY --from=frontend-builder /app/web/public ./web/public
 
 COPY docker/nginx/default.conf /etc/nginx/http.d/default.conf
+COPY docker/nginx/verhub-locations.conf /etc/nginx/verhub-locations.conf
+COPY docker/nginx/render-dist-conf.sh /usr/local/bin/render-dist-conf.sh
 COPY docker/frontend-entrypoint.sh /usr/local/bin/frontend-entrypoint.sh
-RUN chmod +x /usr/local/bin/frontend-entrypoint.sh && mkdir -p /run/nginx /etc/nginx/certs
+RUN chmod +x /usr/local/bin/frontend-entrypoint.sh /usr/local/bin/render-dist-conf.sh && mkdir -p /run/nginx /etc/nginx/certs
 RUN printf '{"version":"%s","published_at":"%s"}\n' "$VERHUB_BUILD_VERSION" "$VERHUB_BUILD_PUBLISHED_AT" > /app/build-info.json
 
 ENV NODE_ENV=production

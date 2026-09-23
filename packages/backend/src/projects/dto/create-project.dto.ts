@@ -173,4 +173,19 @@ export class CreateProjectDto {
   @Type(() => ProjectTranslationDto)
   @ArrayMaxSize(32)
   translations?: ProjectTranslationDto[]
+
+  /** 本项目新文件写入的存储后端 id；null 表示使用实例默认存储。 */
+  @NullableStringTransform()
+  @ValidateIf((_object, value) => value !== null && value !== undefined)
+  @IsString()
+  @MaxLength(64)
+  storage_backend_id?: string | null
+
+  /** 开启后 GitHub Release webhook 同步的附件会镜像到文件存储并替换为分发直链。 */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === undefined ? undefined : value === true || value === "true" || value === "1",
+  )
+  @IsBoolean()
+  mirror_github_assets?: boolean
 }

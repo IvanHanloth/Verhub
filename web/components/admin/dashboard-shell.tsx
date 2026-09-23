@@ -15,6 +15,7 @@ import {
   Menu,
   MessagesSquare,
   Moon,
+  Package,
   Settings,
   Sun,
 } from "lucide-react"
@@ -48,6 +49,7 @@ const navItems: NavItem[] = [
   { href: "/admin/analytics", label: "统计大屏", icon: BarChart3 },
   { href: "/admin/projects", label: "项目管理", icon: FolderKanban },
   { href: "/admin/versions", label: "版本管理", icon: ClipboardList },
+  { href: "/admin/files", label: "文件分发", icon: Package },
   { href: "/admin/announcements", label: "公告管理", icon: Bell },
   { href: "/admin/events", label: "行为分析", icon: Activity },
   { href: "/admin/feedbacks", label: "反馈管理", icon: MessagesSquare },

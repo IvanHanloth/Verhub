@@ -40,6 +40,7 @@ import {
 import { notifyAdminProjectsChanged, useAdminProjects } from "@/hooks/use-admin-projects"
 import { usePagination } from "@/hooks/use-pagination"
 import { getSessionToken } from "@/lib/auth-session"
+import { getStorageOverview, type StorageBackendView } from "@/lib/files-api"
 import { AdminCard } from "@/components/admin/admin-card"
 import { AdminFormDialog } from "@/components/admin/admin-form-dialog"
 import { AdminPageHeader } from "@/components/admin/admin-page-header"
@@ -96,6 +97,9 @@ type FormState = {
   stats_retention_days: string
   event_collection_enabled: boolean
   event_retention_days: string
+  /** 空串表示使用实例默认存储。 */
+  storage_backend_id: string
+  mirror_github_assets: boolean
   /** 按语言存的名称/描述草稿。两项都留空的语言不会提交。 */
   translations: Record<string, { name: string; description: string }>
 }
@@ -116,6 +120,8 @@ const emptyForm: FormState = {
   stats_retention_days: String(DEFAULT_STATS_RETENTION_DAYS),
   event_collection_enabled: true,
   event_retention_days: String(DEFAULT_EVENT_RETENTION_DAYS),
+  storage_backend_id: "",
+  mirror_github_assets: false,
   translations: {},
 }
 
@@ -225,6 +231,8 @@ function toMutationInput(
     stats_retention_days: toStatsRetentionDays(form.stats_retention_days),
     event_collection_enabled: form.event_collection_enabled,
     event_retention_days: toEventRetentionDays(form.event_retention_days),
+    storage_backend_id: form.storage_backend_id || null,
+    mirror_github_assets: form.mirror_github_assets,
     // 只有编辑弹窗会填译文（新建时项目还不存在，必然没注册语言），
     // 新建请求里它恒为空数组，与"没有译文"同义。
     translations: toProjectTranslationList(form.translations),
@@ -320,12 +328,15 @@ function ProjectFormFields({
   setForm,
   minComparableError,
   maxComparableError,
+  storageBackends,
   theme = "dark",
 }: {
   form: FormState
   setForm: React.Dispatch<React.SetStateAction<FormState>>
   minComparableError: string | null
   maxComparableError: string | null
+  /** 可选的存储后端；为空时不显示存储选择。 */
+  storageBackends: StorageBackendView[]
   theme?: "dark" | "light"
 }) {
   const inputClassName =
@@ -533,6 +544,48 @@ function ProjectFormFields({
           </span>
         </span>
       </label>
+      {storageBackends.length > 0 ? (
+        <label className="space-y-1 text-sm">
+          <span className="text-slate-700 dark:text-slate-300">文件存储</span>
+          <select
+            value={form.storage_backend_id}
+            onChange={(event) =>
+              setForm((prev) => ({ ...prev, storage_backend_id: event.target.value }))
+            }
+            className={inputClassName}
+          >
+            <option value="">
+              实例默认（{storageBackends.find((item) => item.is_default)?.name ?? "本机存储"}）
+            </option>
+            {storageBackends.map((backend) => (
+              <option key={backend.id} value={backend.id}>
+                {backend.name}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            只影响之后上传或镜像的文件，已有文件留在原存储，直链不变。
+          </p>
+        </label>
+      ) : null}
+      <label className="flex items-start gap-2 text-sm sm:col-span-2">
+        <input
+          type="checkbox"
+          checked={form.mirror_github_assets}
+          onChange={(event) =>
+            setForm((prev) => ({ ...prev, mirror_github_assets: event.target.checked }))
+          }
+          className="mt-1"
+        />
+        <span>
+          <span className="text-slate-700 dark:text-slate-300">镜像 GitHub Release 附件</span>
+          <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+            通过 GitHub Release Webhook
+            同步版本时，把附件下载到文件存储，并把下载链接替换为分发直链。
+            需要配置分发域名；私有仓库的附件无法下载。
+          </span>
+        </span>
+      </label>
     </>
   )
 }
@@ -648,6 +701,18 @@ export function ProjectsDashboard() {
     }
   }, [])
 
+  const [storageBackends, setStorageBackends] = React.useState<StorageBackendView[]>([])
+  React.useEffect(() => {
+    if (!token) {
+      return
+    }
+    const controller = new AbortController()
+    getStorageOverview(token, controller.signal)
+      .then((overview) => setStorageBackends(overview.backends))
+      .catch(() => setStorageBackends([]))
+    return () => controller.abort()
+  }, [token])
+
   React.useEffect(() => {
     const controller = new AbortController()
     void loadProjects(offset, controller.signal)
@@ -685,6 +750,8 @@ export function ProjectsDashboard() {
       stats_retention_days: String(project.stats_retention_days ?? DEFAULT_STATS_RETENTION_DAYS),
       event_collection_enabled: project.event_collection_enabled ?? true,
       event_retention_days: String(project.event_retention_days ?? DEFAULT_EVENT_RETENTION_DAYS),
+      storage_backend_id: project.storage_backend_id ?? "",
+      mirror_github_assets: project.mirror_github_assets ?? false,
       translations: toProjectFormTranslations(project.translations),
     })
     setEditDialogOpen(true)
@@ -709,6 +776,8 @@ export function ProjectsDashboard() {
       stats_retention_days: String(project.stats_retention_days ?? DEFAULT_STATS_RETENTION_DAYS),
       event_collection_enabled: project.event_collection_enabled ?? true,
       event_retention_days: String(project.event_retention_days ?? DEFAULT_EVENT_RETENTION_DAYS),
+      storage_backend_id: project.storage_backend_id ?? "",
+      mirror_github_assets: project.mirror_github_assets ?? false,
       // 译文绑在原项目的语言注册上，复制到新建表单没有意义。
       translations: {},
     })
@@ -1135,6 +1204,7 @@ export function ProjectsDashboard() {
           setForm={setForm}
           minComparableError={minComparableError}
           maxComparableError={maxComparableError}
+          storageBackends={storageBackends}
           theme="light"
         />
         <div>
@@ -1215,6 +1285,7 @@ export function ProjectsDashboard() {
                     setForm={setEditForm}
                     minComparableError={editMinComparableError}
                     maxComparableError={editMaxComparableError}
+                    storageBackends={storageBackends}
                     theme="light"
                   />
                   {/* GitHub 相关配置（App 功能 + Release Webhook）已整体移至

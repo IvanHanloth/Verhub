@@ -31,6 +31,8 @@ export type GithubWebhookResult = {
   action?: string
   version?: string
   created?: boolean
+  /** 本次加入文件镜像队列的附件数，仅在项目开启附件镜像时出现。 */
+  mirror_queued?: number
 }
 
 /** Admin-facing webhook configuration state. Never exposes the secret itself. */

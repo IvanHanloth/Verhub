@@ -25,6 +25,19 @@ function createVersionsMock() {
   }
 }
 
+/** 文件镜像未开启：链接原样返回，不建立镜像任务。 */
+function createFileIngestMock() {
+  return {
+    substituteMirrored: jest.fn(
+      async (_projectKey: string, links: Array<{ url: string }>, downloadUrl: string | null) => ({
+        links,
+        downloadUrl,
+      }),
+    ),
+    mirrorIfEnabled: jest.fn().mockResolvedValue(null),
+  }
+}
+
 function createService(overrides?: { secret?: string | null }) {
   const prisma = createPrismaMock()
   const versionsService = createVersionsMock()
@@ -35,13 +48,15 @@ function createService(overrides?: { secret?: string | null }) {
   })
   prisma.version.findFirst.mockResolvedValue(null)
 
+  const fileIngest = createFileIngestMock()
   const service = new GithubWebhookService(
     prisma as never,
     versionsService as never,
     makeResolver(prisma),
+    fileIngest as never,
   )
 
-  return { service, prisma, versionsService }
+  return { service, prisma, versionsService, fileIngest }
 }
 
 /** Build a signed delivery the way GitHub would. */
@@ -110,6 +125,50 @@ describe("GithubWebhookService", () => {
     )
 
     fetchSpy.mockRestore()
+  })
+
+  it("writes already-mirrored assets as distribution links", async () => {
+    const { service, versionsService, fileIngest } = createService()
+    const mirrored = "https://cdn.example.com/f/verhub/abc123/verhub-win.zip"
+    fileIngest.substituteMirrored.mockImplementation(
+      async (_projectKey: string, links: Array<{ url: string }>) => ({
+        links: links.map((link) => ({ ...link, url: mirrored })),
+        downloadUrl: mirrored,
+      }),
+    )
+
+    await service.handleDelivery(delivery(RELEASE_EVENT))
+
+    expect(versionsService.upsertByVersion).toHaveBeenCalledWith(
+      "verhub",
+      "1.4.0",
+      expect.objectContaining({
+        download_url: mirrored,
+        download_links: [{ url: mirrored, name: "verhub-win.zip" }],
+      }),
+    )
+  })
+
+  it("queues original asset urls for mirroring and reports the count", async () => {
+    const { service, fileIngest } = createService()
+    fileIngest.mirrorIfEnabled.mockResolvedValue({ queued: 1, reused: 0, skipped: 0 })
+
+    const result = await service.handleDelivery(delivery(RELEASE_EVENT))
+
+    expect(fileIngest.mirrorIfEnabled).toHaveBeenCalledWith("verhub", [
+      "https://example.com/verhub-1.4.0-win.zip",
+    ])
+    expect(result).toMatchObject({ status: "synced", mirror_queued: 1 })
+  })
+
+  it("still reports synced when queueing the mirror fails", async () => {
+    const { service, fileIngest } = createService()
+    fileIngest.mirrorIfEnabled.mockRejectedValue(new Error("db down"))
+
+    const result = await service.handleDelivery(delivery(RELEASE_EVENT))
+
+    expect(result.status).toBe("synced")
+    expect(result).not.toHaveProperty("mirror_queued")
   })
 
   it("falls back to the zipball url when the release carries no assets", async () => {

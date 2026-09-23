@@ -11,6 +11,8 @@ export const AVAILABLE_API_SCOPES = [
   "feedbacks:write",
   "logs:read",
   "logs:write",
+  "files:read",
+  "files:write",
   "stats:read",
   "tokens:read",
   "tokens:write",

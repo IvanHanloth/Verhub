@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Copy,
   DownloadCloud,
+  HardDriveDownload,
   Loader2,
   PencilLine,
   Plus,
@@ -35,6 +36,7 @@ import {
   createDataTableColumns,
 } from "@/components/common/data-table"
 import { ApiReferenceDrawer } from "@/components/docs/api-reference-drawer"
+import { isGithubReleaseAsset, mirrorVersionAssets } from "@/lib/files-api"
 import { PLATFORM_OPTIONS, type Platform } from "@/lib/platform"
 import { formatTimestamp } from "@/lib/format"
 import { useAdminProjects } from "@/hooks/use-admin-projects"
@@ -63,7 +65,7 @@ import {
   validateVersionRules,
   type VersionFormState,
 } from "./version-form-utils"
-import { TranslateButton, useTranslationEnabled } from "@/components/common/translate-button"
+import { useTranslationEnabled } from "@/components/common/translate-button"
 import { listProjectLocales, type ProjectLocaleItem } from "@/lib/projects-api"
 
 import { VersionEditDialog } from "./version-edit-dialog"
@@ -580,6 +582,30 @@ export function VersionsDashboard() {
     }
   }
 
+  async function handleMirrorAssets(version: VersionItem) {
+    if (!token || !selectedProjectKey) {
+      toast.error("请先登录并选择项目。")
+      return
+    }
+    try {
+      const result = await mirrorVersionAssets(token, selectedProjectKey, version.id)
+      if (result.queued > 0) {
+        toast.success(`已开始镜像 ${result.queued} 个附件，完成后下载链接会自动替换为直链。`)
+      } else if (result.reused > 0) {
+        toast.success(`${result.reused} 个附件已镜像过，下载链接已替换为直链。`)
+      } else {
+        toast.info("没有需要镜像的 GitHub Release 附件。")
+      }
+      await loadVersions(offset)
+    } catch (error) {
+      if (isAuthError(error)) {
+        setToken("")
+        setAuthError("登录状态已过期，请重新登录。")
+      }
+      toast.error(`镜像附件失败：${getErrorMessage(error)}`)
+    }
+  }
+
   async function handleImportFromGithubReleaseHistory() {
     if (!token) {
       toast.error("请先登录后再操作。")
@@ -766,6 +792,18 @@ export function VersionsDashboard() {
           >
             <Copy className="size-4" />
           </Button>
+          {hasGithubAsset(row.original) ? (
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="outline"
+              title="镜像 GitHub 附件到文件存储"
+              aria-label="镜像 GitHub 附件到文件存储"
+              onClick={() => void handleMirrorAssets(row.original)}
+            >
+              <HardDriveDownload className="size-4" />
+            </Button>
+          ) : null}
           <Button
             type="button"
             size="icon-sm"
@@ -1068,5 +1106,13 @@ export function VersionsDashboard() {
         onSave={() => void handleSaveEdit()}
       />
     </section>
+  )
+}
+
+/** 版本的下载链接中是否含 GitHub Release 附件。 */
+function hasGithubAsset(version: VersionItem): boolean {
+  return (
+    version.download_links.some((link) => isGithubReleaseAsset(link.url)) ||
+    (version.download_url ? isGithubReleaseAsset(version.download_url) : false)
   )
 }

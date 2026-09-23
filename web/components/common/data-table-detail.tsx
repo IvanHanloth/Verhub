@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Check, ChevronLeft, ChevronRight, Copy } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Copy, LoaderCircle } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -38,8 +38,16 @@ type DataTableDetailSheetProps = {
   fields: DataTableDetailField[]
   /** 列覆盖不到的补充内容，排在字段表之后。 */
   extra?: React.ReactNode
-  /** 当前行在本页中的位置，从 1 开始。 */
-  position?: { index: number; total: number }
+  /** 当前行在本页中的位置，从 1 开始；带上分页信息时一并显示页码与总数。 */
+  position?: {
+    index: number
+    total: number
+    page?: number
+    totalPages?: number
+    grandTotal?: number
+  }
+  /** 正在跨页加载的方向。 */
+  pending?: "prev" | "next"
   onPrev?: () => void
   onNext?: () => void
   hasPrev?: boolean
@@ -99,6 +107,7 @@ export function DataTableDetailSheet({
   fields,
   extra,
   position,
+  pending,
   onPrev,
   onNext,
   hasPrev = false,
@@ -159,9 +168,17 @@ export function DataTableDetailSheet({
             下一条
             <ChevronRight className="size-4" />
           </Button>
-          {position ? (
+          {pending ? (
+            <span className="inline-flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+              <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+              正在加载{pending === "prev" ? "上" : "下"}一页…
+            </span>
+          ) : position ? (
             <span className="text-xs text-slate-500 tabular-nums dark:text-slate-400">
-              本页第 {position.index}/{position.total} 条
+              {position.page !== undefined && position.totalPages !== undefined
+                ? `第 ${position.page}/${position.totalPages} 页 · 本页第 ${position.index}/${position.total} 条`
+                : `本页第 ${position.index}/${position.total} 条`}
+              {position.grandTotal !== undefined ? ` · 共 ${position.grandTotal} 条` : null}
             </span>
           ) : null}
           <div className="ml-auto">

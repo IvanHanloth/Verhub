@@ -34,7 +34,8 @@ function createPrismaMock() {
 
 /** 建服务时统一注入用同一个 prisma mock 驱动的解析器。 */
 function createService(prisma: ReturnType<typeof createPrismaMock>) {
-  return new ProjectsService(prisma as never, makeResolver(prisma))
+  const filesService = { purgeProject: jest.fn().mockResolvedValue(undefined) }
+  return new ProjectsService(prisma as never, makeResolver(prisma), filesService as never)
 }
 
 describe("ProjectsService", () => {

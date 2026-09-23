@@ -80,6 +80,9 @@ services:
       VERHUB_PUBLIC_RATE_LIMIT: ${VERHUB_PUBLIC_RATE_LIMIT:-300}
       VERHUB_GITHUB_FORWARD_RATE_LIMIT: ${VERHUB_GITHUB_FORWARD_RATE_LIMIT:-3}
       VERHUB_GITHUB_FORWARD_RATE_TTL: ${VERHUB_GITHUB_FORWARD_RATE_TTL:-3600}
+      # 文件分发域名与单文件上限，见 doc/guide/deployment.md
+      VERHUB_DIST_BASE_URL: ${VERHUB_DIST_BASE_URL:-}
+      VERHUB_UPLOAD_MAX_MB: ${VERHUB_UPLOAD_MAX_MB:-4096}
     depends_on:
       postgres:
         condition: service_healthy
@@ -93,6 +96,7 @@ services:
       start_period: 120s
     volumes:
       - bootstrap-secrets:/bootstrap
+      - storage-data:/var/lib/verhub/storage
       - ./packages/backend/src:/app/packages/backend/src
       - ./packages/backend/prisma:/app/packages/backend/prisma
     logging: *default-logging # 引用日志配置
@@ -116,6 +120,8 @@ services:
       # inotify events that never arrive.
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
+      VERHUB_DIST_BASE_URL: ${VERHUB_DIST_BASE_URL:-}
+      VERHUB_DIST_CACHE_MAX_SIZE: ${VERHUB_DIST_CACHE_MAX_SIZE:-10g}
     depends_on:
       backend:
         condition: service_healthy
@@ -137,8 +143,27 @@ services:
       - ./web/lib:/app/web/lib
       - ./web/public:/app/web/public
       - ./packages/ui/src:/app/packages/ui/src
+      - dist-cache:/var/cache/nginx/verhub-dist
     logging: *default-logging # 引用日志配置
 
+  # 可选的 WebDAV 服务，用于调试 WebDAV 存储：
+  #   docker compose -f docker-compose.dev.yml --profile webdav up -d webdav
+  # 后台存储设置里填 http://webdav:8080，用户名/密码 dev / dev。
+  webdav:
+    image: rclone/rclone:1.71
+    container_name: verhub-webdav
+    profiles: ["webdav"]
+    restart: unless-stopped
+    networks:
+      - verhub-net
+    command: ["serve", "webdav", "/data", "--addr", ":8080", "--user", "dev", "--pass", "dev"]
+    volumes:
+      - webdav-data:/data
+    logging: *default-logging
+
 volumes:
+  webdav-data:
   postgres-data:
   bootstrap-secrets:
+  storage-data:
+  dist-cache:

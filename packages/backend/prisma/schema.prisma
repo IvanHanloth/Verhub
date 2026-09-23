@@ -114,6 +114,10 @@ model Project {
   /// 事件明细的保留期，独立于 statsRetentionDays 且默认更短。
   /// 明细带 distinctId，是可关联到个人的高频数据，不该与纯计数用同一窗口。
   eventRetentionDays                 Int                       @default(90)
+  /// 本项目新文件写入的存储后端；为空时使用实例默认存储。
+  storageBackendId                   String?
+  /// 开启后 GitHub Release webhook 同步的附件会镜像到文件存储，并把下载链接替换为分发直链。
+  mirrorGithubAssets                 Boolean                   @default(false)
   createdAt                          Int                       @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   updatedAt                          Int                       @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   versions                           Version[]
@@ -132,6 +136,93 @@ model Project {
   locales                            ProjectLocale[]
   translations                       ProjectTranslation[]
   githubIntegration                  ProjectGithubIntegration?
+  storageBackend                     StorageBackend?           @relation(fields: [storageBackendId], references: [id], onDelete: SetNull)
+  files                              StoredFile[]
+}
+
+enum StorageKind {
+  LOCAL
+  WEBDAV
+}
+
+enum StoredFileStatus {
+  /// 已登记，正在写入存储（上传合并后的转存或 GitHub 附件镜像）。
+  PENDING
+  /// 可分发。
+  READY
+  /// 写入失败，原因见 error。
+  FAILED
+}
+
+enum StoredFileSource {
+  UPLOAD
+  GITHUB_RELEASE
+}
+
+/// 文件存储后端。id 为 "local" 的本机存储由迁移内置、不可删除，根目录由 VERHUB_STORAGE_DIR 决定。
+model StorageBackend {
+  id                  String      @id @default(cuid())
+  name                String
+  kind                StorageKind
+  /// WebDAV 根地址，对象路径拼接在其后。
+  baseUrl             String?
+  username            String?
+  /// WebDAV 密码密文，格式见 secret-box。
+  passwordEncrypted   String?
+  passwordFingerprint String?
+  /// 分片大小（字节）。设置后大于该值的文件按分片写入 WebDAV，单次请求体不超过它；为空表示整文件写入。
+  partSize            Int?
+  /// 实例默认存储，全表至多一行为 true。
+  isDefault           Boolean     @default(false)
+  createdAt           Int         @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt           Int         @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+
+  files    StoredFile[]
+  projects Project[]
+}
+
+/// 实例级 CDN 缓存刷新配置（单例）。启用后删除文件与手动刷新会调用 CDN 接口刷新直链缓存。
+model CdnConfig {
+  id                         String  @id @default("default")
+  enabled                    Boolean @default(false)
+  /// 目前只有 aliyun。
+  provider                   String  @default("aliyun")
+  accessKeyId                String?
+  /// AccessKey Secret 密文，格式见 secret-box。
+  accessKeySecretEncrypted   String?
+  accessKeySecretFingerprint String?
+  updatedAt                  Int     @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+}
+
+/// 文件库中的一个文件。分发直链为 `{VERHUB_DIST_BASE_URL}/{objectKey}`，写入后不再变化。
+model StoredFile {
+  /// 短随机 id，出现在直链路径里。
+  id               String           @id
+  projectKey       String
+  storageBackendId String
+  /// 存储内的相对路径，形如 `f/{projectKey}/{id}/{filename}`，同时就是直链路径。
+  objectKey        String           @unique
+  filename         String
+  size             BigInt           @default(0)
+  /// 内容的 SHA-256（hex），同时作为 ETag。PENDING 状态下可能为空。
+  sha256           String?
+  /// 写入时使用的分片大小（字节）。为空表示整文件存放在 objectKey；否则存放在 `{objectKey 所在目录}/parts/{序号}`。
+  partSize         Int?
+  contentType      String
+  status           StoredFileStatus @default(READY)
+  source           StoredFileSource @default(UPLOAD)
+  /// 镜像来源地址（GitHub Release 附件的 browser_download_url）。
+  sourceUrl        String?
+  error            String?
+  createdAt        Int              @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+  updatedAt        Int              @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
+
+  project        Project        @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade, onUpdate: Cascade)
+  storageBackend StorageBackend @relation(fields: [storageBackendId], references: [id], onDelete: Restrict)
+
+  @@index([projectKey, createdAt])
+  @@index([projectKey, sourceUrl])
+  @@index([status])
 }
 
 /// 实例级 GitHub App 配置，单行表（id 恒为 "default"）。

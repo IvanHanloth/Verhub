@@ -620,12 +620,64 @@ export function DataTable<T extends RowData>({
   const detailIndex = modelRows.findIndex((row) => row.id === detailRowId)
   const detailRow = detailIndex >= 0 ? modelRows[detailIndex] : undefined
 
-  // 当前页换了内容（翻页、筛选、刷新）后原来那一行可能已经不在了，抽屉跟着关掉。
+  /**
+   * 抽屉翻过页边界：先让表格翻页，等新一页到了再落到它的首行/末行。
+   * 表格跟着翻而不是抽屉自己另拉一份，是为了关掉抽屉时列表正停在刚看的那条所在页。
+   * `rows` 引用变了才算新页到了——页面在请求期间保留旧行，loading 也可能晚一帧才置上。
+   */
+  const [pendingEdge, setPendingEdge] = React.useState<"first" | "last" | null>(null)
+  const pendingFromRows = React.useRef<T[] | null>(null)
+  const firstRowId = modelRows[0]?.id ?? null
+  const lastRowId = modelRows[modelRows.length - 1]?.id ?? null
+
   React.useEffect(() => {
+    if (pendingEdge) {
+      // 出错时页面未必清空行，不在这里放掉就会一直卡在「加载中」。
+      if (error) {
+        setPendingEdge(null)
+        pendingFromRows.current = null
+        return
+      }
+
+      if (loading || rows === pendingFromRows.current) {
+        return
+      }
+
+      setPendingEdge(null)
+      pendingFromRows.current = null
+      setDetailRowId(pendingEdge === "first" ? firstRowId : lastRowId)
+      return
+    }
+
+    // 当前页换了内容（筛选、刷新）后原来那一行可能已经不在了，抽屉跟着关掉。
     if (detailRowId !== null && detailIndex < 0) {
       setDetailRowId(null)
     }
-  }, [detailIndex, detailRowId])
+  }, [detailIndex, detailRowId, error, firstRowId, lastRowId, loading, pendingEdge, rows])
+
+  const crossPageBusy = pendingEdge !== null || loading
+  const canCrossPrev = !crossPageBusy && pagination?.hasPrev === true
+  const canCrossNext = !crossPageBusy && pagination?.hasNext === true
+
+  function goDetail(step: -1 | 1) {
+    const neighbour = modelRows[detailIndex + step]
+    if (neighbour) {
+      setDetailRowId(neighbour.id)
+      return
+    }
+
+    if (!pagination || (step < 0 ? !canCrossPrev : !canCrossNext)) {
+      return
+    }
+
+    pendingFromRows.current = rows
+    setPendingEdge(step < 0 ? "last" : "first")
+    if (step < 0) {
+      pagination.onPrev()
+    } else {
+      pagination.onNext()
+    }
+  }
 
   // 不 memo：TanStack 每次渲染都会重建行与单元格实例，缓存键永远不命中，
   // 而且这里只在抽屉开着的那一行上跑，构造几个 React 元素而已。
@@ -786,30 +838,40 @@ export function DataTable<T extends RowData>({
 
       {detailEnabled ? (
         <DataTableDetailSheet
-          open={detailRow !== undefined}
+          // 跨页等待期间若页面先清空了行，也别让抽屉闪关。
+          open={detailRow !== undefined || pendingEdge !== null}
           onOpenChange={(next) => {
             if (!next) {
               setDetailRowId(null)
+              setPendingEdge(null)
+              pendingFromRows.current = null
             }
           }}
           title={detailHeading}
           fields={detailFields}
           extra={detailRow && renderDetail ? renderDetail(detailRow.original) : null}
-          position={detailRow ? { index: detailIndex + 1, total: modelRows.length } : undefined}
-          hasPrev={detailIndex > 0}
-          hasNext={detailIndex >= 0 && detailIndex < modelRows.length - 1}
-          onPrev={() => {
-            const previous = modelRows[detailIndex - 1]
-            if (previous) {
-              setDetailRowId(previous.id)
-            }
-          }}
-          onNext={() => {
-            const next = modelRows[detailIndex + 1]
-            if (next) {
-              setDetailRowId(next.id)
-            }
-          }}
+          position={
+            detailRow
+              ? {
+                  index: detailIndex + 1,
+                  total: modelRows.length,
+                  page: pagination?.page,
+                  totalPages: pagination?.totalPages,
+                  grandTotal: pagination?.total,
+                }
+              : undefined
+          }
+          pending={pendingEdge === null ? undefined : pendingEdge === "first" ? "next" : "prev"}
+          hasPrev={
+            pendingEdge === null && detailRow !== undefined && (detailIndex > 0 || canCrossPrev)
+          }
+          hasNext={
+            pendingEdge === null &&
+            detailRow !== undefined &&
+            (detailIndex < modelRows.length - 1 || canCrossNext)
+          }
+          onPrev={() => goDetail(-1)}
+          onNext={() => goDetail(1)}
         />
       ) : null}
     </div>

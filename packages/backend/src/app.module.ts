@@ -8,6 +8,7 @@ import { AuthModule } from "./auth/auth.module"
 import { DatabaseModule } from "./database/database.module"
 import { EventsModule } from "./events/events.module"
 import { FeedbacksModule } from "./feedbacks/feedbacks.module"
+import { FilesModule } from "./files/files.module"
 import { GeoModule } from "./geo/geo.module"
 import { GithubAppModule } from "./github-app/github-app.module"
 import { HealthModule } from "./health/health.module"
@@ -56,6 +57,7 @@ function publicRateLimit(): number {
     GithubAppModule,
     TermsModule,
     TranslationModule,
+    FilesModule,
   ],
 })
 export class AppModule {}

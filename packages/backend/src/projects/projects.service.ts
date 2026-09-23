@@ -8,6 +8,7 @@ import {
 import { Prisma } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
+import { FilesService } from "../files/files.service"
 import { ProjectResolverService } from "../database/project-resolver.service"
 import { isUniqueViolation, normalizeProjectKey, nowSeconds } from "../common/utils"
 import { localeKey, matchRegisteredLocale } from "../common/locale"
@@ -54,6 +55,10 @@ type ProjectItem = {
   event_collection_enabled: boolean
   /// 事件明细的保留期，独立于 stats_retention_days 且默认更短。
   event_retention_days: number
+  /// 新文件写入的存储后端 id；null 表示使用实例默认存储。
+  storage_backend_id: string | null
+  /// GitHub Release 附件镜像开关。
+  mirror_github_assets: boolean
   /// 该项目改名后保留的旧 Project Key，均可作为别名访问到本项目。新到旧排序。
   aliases: string[]
   /**
@@ -98,6 +103,7 @@ export class ProjectsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly projectResolver: ProjectResolverService,
+    private readonly filesService: FilesService,
   ) {}
 
   async getStatistics(): Promise<{ count: number }> {
@@ -199,6 +205,8 @@ export class ProjectsService {
           statsRetentionDays: dto.stats_retention_days,
           eventCollectionEnabled: dto.event_collection_enabled,
           eventRetentionDays: dto.event_retention_days,
+          storageBackendId: await this.resolveStorageBackendId(dto.storage_backend_id),
+          mirrorGithubAssets: dto.mirror_github_assets,
         },
         include: PROJECT_WITH_ALIASES,
       })
@@ -259,7 +267,13 @@ export class ProjectsService {
       statsRetentionDays: dto.stats_retention_days,
       eventCollectionEnabled: dto.event_collection_enabled,
       eventRetentionDays: dto.event_retention_days,
+      mirrorGithubAssets: dto.mirror_github_assets,
       updatedAt: nowSeconds(),
+    }
+
+    if (dto.storage_backend_id !== undefined) {
+      const backendId = await this.resolveStorageBackendId(dto.storage_backend_id)
+      data.storageBackend = backendId ? { connect: { id: backendId } } : { disconnect: true }
     }
 
     // 传了就整体替换：逐条 upsert 没法表达「删掉某个语言」，与「表单里那几个语言
@@ -310,7 +324,8 @@ export class ProjectsService {
 
   async remove(id: string): Promise<void> {
     const canonicalKey = await this.projectResolver.resolveCanonicalKeyOrThrow(id)
-    // 删项目会经外键 onDelete CASCADE 一并清掉它的全部别名。
+    // 删项目会经外键 onDelete CASCADE 一并清掉它的全部别名与文件记录，存储中的对象在此之前删除。
+    await this.filesService.purgeProject(canonicalKey)
     await this.prisma.project.delete({ where: { projectKey: canonicalKey } })
   }
 
@@ -624,6 +639,8 @@ export class ProjectsService {
       statsRetentionDays: number
       eventCollectionEnabled: boolean
       eventRetentionDays: number
+      storageBackendId: string | null
+      mirrorGithubAssets: boolean
       aliases?: { alias: string }[]
       translations?: { locale: string; name: string | null; description: string | null }[]
       createdAt: number
@@ -654,6 +671,8 @@ export class ProjectsService {
       stats_retention_days: project.statsRetentionDays,
       event_collection_enabled: project.eventCollectionEnabled,
       event_retention_days: project.eventRetentionDays,
+      storage_backend_id: project.storageBackendId,
+      mirror_github_assets: project.mirrorGithubAssets,
       aliases: project.aliases?.map((item) => item.alias) ?? [],
       // 两个字段都留空的译文行对返回内容毫无贡献，报出去会让调用方以为拿到了译文。
       locale: name || description ? (translation?.locale ?? null) : null,
@@ -669,6 +688,23 @@ export class ProjectsService {
       created_at: project.createdAt,
       updated_at: project.updatedAt,
     }
+  }
+
+  /** 校验存储后端存在；null / undefined 原样返回。 */
+  private async resolveStorageBackendId(
+    id: string | null | undefined,
+  ): Promise<string | null | undefined> {
+    if (!id) {
+      return id
+    }
+    const backend = await this.prisma.storageBackend.findUnique({
+      where: { id },
+      select: { id: true },
+    })
+    if (!backend) {
+      throw new BadRequestException("storage_backend_id does not exist")
+    }
+    return backend.id
   }
 
   private validateComparableRange(min?: string | null, max?: string | null): void {

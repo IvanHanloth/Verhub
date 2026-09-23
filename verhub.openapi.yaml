@@ -24,6 +24,7 @@ tags:
   - name: GitHubApp
   - name: Terms
   - name: Translation
+  - name: Files
 
 paths:
   /health:
@@ -2190,6 +2191,577 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /admin/storage:
+    get:
+      tags: [Files]
+      summary: "查询文件存储配置"
+      description: |
+        返回分发域名（`VERHUB_DIST_BASE_URL`）、单文件大小上限、分片大小与全部存储后端。
+        WebDAV 密码永不回读，只返回 SHA-256 指纹。仅接受管理员 JWT。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageOverview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/storage/backends:
+    post:
+      tags: [Files]
+      summary: "新建 WebDAV 存储后端"
+      description: |
+        本机存储为内置项（id `local`），不可新建。`is_default: true` 会把新后端设为实例默认存储。
+        密码以 AES-256-GCM 加密落库，密钥派生自实例的 JWT_SECRET。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStorageBackendDto"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageBackendView"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/storage/backends/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        example: local
+    patch:
+      tags: [Files]
+      summary: "更新存储后端"
+      description: |
+        部分更新。`password` 传空字符串表示清除；`is_default` 只接受 `true`，
+        设为默认后其余后端自动取消默认。本机存储只能改名称与默认标记。
+
+        修改 WebDAV 地址不会迁移已有文件：已有文件仍按新地址读取，需自行把数据搬到新地址。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStorageBackendDto"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageBackendView"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Files]
+      summary: "删除存储后端"
+      description: "内置本机存储、当前默认存储，以及仍存有文件的后端不可删除（400 / 409）。"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSuccessResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: 后端为默认存储或仍存有文件
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/storage/backends/{id}/test:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        example: local
+    post:
+      tags: [Files]
+      summary: "测试存储后端"
+      description: |
+        用已保存的配置写入一个探测文件、以 Range 读回并删除，再写入并校验一个 2MB（设置了分片时为
+        分片大小）的文件。存储不可用也返回 200，原因写在 `error` 里；`range_supported` 为 false 时
+        分片缓存与断点下载不可用；`large_write_ok` 为 false 说明单次请求体受限（如宝塔 WAF），需要
+        设置或调小分片大小。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StorageProbeResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/storage/cdn:
+    get:
+      tags: [Files]
+      summary: "查询 CDN 缓存刷新配置"
+      description: |
+        目前只支持阿里云 CDN。AccessKey Secret 永不回读，只返回 SHA-256 指纹。仅接受管理员 JWT。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CdnConfigView"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      tags: [Files]
+      summary: "更新 CDN 缓存刷新配置"
+      description: |
+        部分更新。`access_key_secret` 传空字符串表示清除，以 AES-256-GCM 加密落库。
+        启用后删除文件会自动刷新其直链的 CDN 缓存，文件列表也可手动刷新。
+        RAM 用户需要 `cdn:RefreshObjectCaches` 与 `cdn:DescribeRefreshQuota` 权限。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCdnConfigDto"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CdnConfigView"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags: [Files]
+      summary: "清空 CDN 缓存刷新配置"
+      description: "清除 AccessKey 并关闭刷新。"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CdnConfigView"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/storage/cdn/test:
+    post:
+      tags: [Files]
+      summary: "测试 CDN 凭据"
+      description: "用已保存的 AccessKey 查询当日 URL 刷新余量。失败也返回 200，原因写在 `error` 里。"
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CdnTestResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /admin/projects/{projectKey}/files/{fileId}/refresh-cdn:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+      - $ref: "#/components/parameters/FileIdByPath"
+    post:
+      tags: [Files]
+      summary: "刷新文件直链的 CDN 缓存"
+      description: |
+        提交阿里云 CDN URL 刷新任务。未启用 CDN 刷新或未配置 `VERHUB_DIST_BASE_URL` 时返回 400；
+        CDN 接口失败也返回 200，原因写在 `error` 里。API Key 需要 `files:write` 作用域。
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CdnRefreshResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/projects/{projectKey}/files:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+    get:
+      tags: [Files]
+      summary: "查询项目文件库"
+      description: |
+        按上传时间倒序分页。`search` 匹配文件名、文件 id 与 SHA-256。
+        `referenced_by` 列出下载链接引用了该文件的版本号（按直链路径匹配，与域名无关）。
+        API Key 需要 `files:read` 作用域。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/Search"
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/StoredFileStatus"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoredFileListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/projects/{projectKey}/files/{fileId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+      - $ref: "#/components/parameters/FileIdByPath"
+    get:
+      tags: [Files]
+      summary: "查询单个文件"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoredFileView"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Files]
+      summary: "删除文件"
+      description: |
+        删除存储中的对象与文件记录，直链随即在源站返回 404。启用了 CDN 刷新时随后提交
+        该直链的刷新任务，结果在 `cdn_refresh` 里（刷新失败不影响删除）；未启用时 CDN 上
+        已缓存的副本在过期前仍可访问。引用它的版本下载链接不会被改动。
+        API Key 需要 `files:write` 作用域。
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteFileResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/projects/{projectKey}/files/{fileId}/retry:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+      - $ref: "#/components/parameters/FileIdByPath"
+    post:
+      tags: [Files]
+      summary: "重试失败的文件任务"
+      description: |
+        仅 `status=failed` 的文件可重试。GitHub Release 附件会重新下载；上传的文件在写入存储失败后
+        保留暂存 7 天，期间可重试，超过后返回 400，需重新上传。
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoredFileView"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: 文件不是失败状态
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/projects/{projectKey}/files/uploads:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+    post:
+      tags: [Files]
+      summary: "创建分片上传会话"
+      description: |
+        上传分三步：创建会话 → 逐个 `PUT` 分片 → `complete` 合并。会话保留 24 小时，
+        中断后可用 `GET` 查询已接收的分片继续上传。文件名会被收敛为安全文件名
+        （路径分隔符与保留字符替换为 `_`），超过 `VERHUB_UPLOAD_MAX_MB` 返回 413。
+        API Key 需要 `files:write` 作用域。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUploadDto"
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadSessionView"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          description: 文件超过大小上限
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/projects/{projectKey}/files/uploads/{uploadId}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+      - $ref: "#/components/parameters/UploadIdByPath"
+    get:
+      tags: [Files]
+      summary: "查询上传会话"
+      description: "返回已接收的分片序号，用于断点续传。"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadSessionView"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Files]
+      summary: "放弃上传会话"
+      description: "删除会话与已上传的分片。"
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteSuccessResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/projects/{projectKey}/files/uploads/{uploadId}/chunks/{index}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+      - $ref: "#/components/parameters/UploadIdByPath"
+      - name: index
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+        description: 分片序号，从 0 开始
+        example: 0
+    put:
+      tags: [Files]
+      summary: "上传一个分片"
+      description: |
+        请求体为分片原始字节。除最后一片外每片长度必须等于会话的 `chunk_size`，
+        最后一片为剩余字节数，长度不符返回 400。重复上传同一序号会覆盖旧分片。
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadChunkResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /admin/projects/{projectKey}/files/uploads/{uploadId}/complete:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+      - $ref: "#/components/parameters/UploadIdByPath"
+    post:
+      tags: [Files]
+      summary: "完成上传"
+      description: |
+        合并全部分片、计算 SHA-256 并登记文件。写入本机存储时同步完成，返回 `status=ready`；
+        写入 WebDAV 时返回 `status=pending`，由后台转存，完成后变为 `ready`（失败为 `failed`）。
+        分片不全返回 409。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoredFileView"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: 分片不全或合并后长度不符
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/projects/{projectKey}/versions/{versionId}/mirror-assets:
+    parameters:
+      - $ref: "#/components/parameters/ProjectKeyByPath"
+      - name: versionId
+        in: path
+        required: true
+        schema:
+          type: string
+        example: cm8versionid000001
+    post:
+      tags: [Files]
+      summary: "镜像版本的 GitHub Release 附件"
+      description: |
+        把版本下载链接中的 GitHub Release 附件（`https://github.com/{owner}/{repo}/releases/download/...`）
+        下载到项目的存储，完成后把项目内所有版本中指向该附件的链接替换为分发直链。
+        已镜像过的附件直接替换，不重复下载。不受项目「附件镜像」开关限制；
+        未配置 `VERHUB_DIST_BASE_URL` 时返回 400。API Key 需要 `files:write` 作用域。
+      x-verhub-doc: true
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MirrorAssetsResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /dist/f/{projectKey}/{fileId}/{filename}:
+    parameters:
+      - name: projectKey
+        in: path
+        required: true
+        schema:
+          type: string
+        description: 文件登记时的项目键（项目改名后仍为旧值）
+        example: verhub
+      - $ref: "#/components/parameters/FileIdByPath"
+      - name: filename
+        in: path
+        required: true
+        schema:
+          type: string
+        example: Verhub-Setup-1.2.0.msi
+    get:
+      tags: [Files]
+      summary: "文件直链"
+      description: |
+        对外地址为 `{VERHUB_DIST_BASE_URL}/f/{projectKey}/{fileId}/{filename}`，由自带 nginx
+        转发到本接口；`/api/v1/dist/` 不对外开放。无需鉴权，支持 `HEAD`、`Range`、
+        `If-None-Match` / `If-Range`，查询串被忽略。
+
+        路径与登记值不完全一致时返回 404（`Cache-Control: public, max-age=60`）。
+        成功响应带 `Cache-Control: public, max-age=31536000, immutable` 与以 SHA-256 为值的强 ETag，
+        同一 URL 的内容永不改变。存储不可用时返回 502（`no-store`）。
+      responses:
+        "200":
+          description: 文件内容
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: Range 请求的部分内容
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "304":
+          description: If-None-Match 命中
+        "404":
+          description: 文件不存在、未就绪或路径不匹配
+        "502":
+          description: 存储不可用
+
   /public/{projectKey}:
     parameters:
       - $ref: "#/components/parameters/ProjectKeyByPath"
@@ -3723,6 +4295,22 @@ components:
         type: integer
         minimum: 0
         default: 0
+    FileIdByPath:
+      name: fileId
+      in: path
+      required: true
+      description: 文件 id
+      example: k3v9q2m7x1ab
+      schema:
+        type: string
+    UploadIdByPath:
+      name: uploadId
+      in: path
+      required: true
+      description: 上传会话 id
+      example: 4f3c2b1a0e9d8c7b6a5f4e3d2c1b0a99
+      schema:
+        type: string
     ProjectKeyByPath:
       name: projectKey
       in: path
@@ -4344,6 +4932,16 @@ components:
           description: >-
             项目名称与描述的译文。传了就整体替换全部译文，空数组即清空；不传则不动。
             语言必须先在项目里注册（同义标签同样算命中），否则整个请求 400。
+        storage_backend_id:
+          type: [string, "null"]
+          maxLength: 64
+          description: 本项目新文件写入的存储后端；null 表示使用实例默认存储
+        mirror_github_assets:
+          type: boolean
+          default: false
+          description: >-
+            开启后 GitHub Release webhook 同步的附件会镜像到文件存储，并把下载链接替换为分发直链。
+            需要配置 VERHUB_DIST_BASE_URL。
       example:
         project_key: verhub
         name: Verhub
@@ -4427,12 +5025,589 @@ components:
           description: >-
             项目名称与描述的译文。传了就整体替换全部译文，空数组即清空；不传则不动。
             语言必须先在项目里注册（同义标签同样算命中），否则整个请求 400。
+        storage_backend_id:
+          type: [string, "null"]
+          maxLength: 64
+          description: 本项目新文件写入的存储后端；null 表示使用实例默认存储
+        mirror_github_assets:
+          type: boolean
+          default: false
+          description: >-
+            开启后 GitHub Release webhook 同步的附件会镜像到文件存储，并把下载链接替换为分发直链。
+            需要配置 VERHUB_DIST_BASE_URL。
       example:
         name: Verhub
         description: 版本与公告管理
         optional_update_min_comparable_version: 1.0.0
         optional_update_max_comparable_version: 1.9.9
         stats_retention_days: 180
+
+    StorageKind:
+      type: string
+      enum: [local, webdav]
+
+    CdnOriginHint:
+      type: object
+      required: [scheme, host, path_prefix]
+      description: CDN 直接回源 WebDAV（零带宽模式）所需的回源配置参考；设置了分片大小时为 null。
+      properties:
+        scheme:
+          type: string
+          enum: [http, https]
+          description: 回源协议
+        host:
+          type: string
+          description: 回源地址（含非默认端口）
+        path_prefix:
+          type: string
+          description: 回源路径前缀，CDN 需把 `/f/...` 改写为 `{path_prefix}/f/...`；为空表示无需改写
+      example:
+        scheme: https
+        host: dav.example.com
+        path_prefix: /remote.php/dav/files/verhub/dist
+
+    StorageBackendView:
+      type: object
+      required:
+        [
+          id,
+          name,
+          kind,
+          is_builtin,
+          is_default,
+          base_url,
+          username,
+          has_password,
+          password_fingerprint,
+          part_size_kb,
+          file_count,
+          cdn_origin,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        kind:
+          $ref: "#/components/schemas/StorageKind"
+        is_builtin:
+          type: boolean
+          description: 内置本机存储，不可删除
+        is_default:
+          type: boolean
+          description: 实例默认存储，未指定存储的项目写入这里
+        base_url:
+          type: [string, "null"]
+          description: WebDAV 根地址
+        username:
+          type: [string, "null"]
+        has_password:
+          type: boolean
+        password_fingerprint:
+          type: [string, "null"]
+          description: 已存密码的 SHA-256 前 16 位
+        part_size_kb:
+          type: [integer, "null"]
+          description: 分片大小（KB），null 表示整文件写入
+        file_count:
+          type: integer
+        cdn_origin:
+          oneOf:
+            - $ref: "#/components/schemas/CdnOriginHint"
+            - type: "null"
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+      example:
+        id: cm8webdav0000000001
+        name: 坚果云
+        kind: webdav
+        is_builtin: false
+        is_default: true
+        base_url: https://dav.jianguoyun.com/dav/verhub
+        username: ops@example.com
+        has_password: true
+        password_fingerprint: 3f2a9c1d0b7e4a55
+        part_size_kb: null
+        file_count: 12
+        cdn_origin:
+          scheme: https
+          host: dav.jianguoyun.com
+          path_prefix: /dav/verhub
+        created_at: 1760000000
+        updated_at: 1760000000
+
+    StorageOverview:
+      type: object
+      required: [dist_base_url, upload_max_bytes, chunk_size, backends]
+      properties:
+        dist_base_url:
+          type: [string, "null"]
+          description: 分发域名 origin，来自环境变量 VERHUB_DIST_BASE_URL；未配置时为 null
+        upload_max_bytes:
+          type: integer
+          format: int64
+          description: 单个文件大小上限（字节），来自 VERHUB_UPLOAD_MAX_MB
+        chunk_size:
+          type: integer
+          description: 上传分片大小（字节）
+        backends:
+          type: array
+          items:
+            $ref: "#/components/schemas/StorageBackendView"
+      example:
+        dist_base_url: https://cdn.verhub.example.com
+        upload_max_bytes: 4294967296
+        chunk_size: 8388608
+        backends:
+          - id: local
+            name: 本机存储
+            kind: local
+            is_builtin: true
+            is_default: false
+            base_url: null
+            username: null
+            has_password: false
+            password_fingerprint: null
+            part_size_kb: null
+            file_count: 3
+            cdn_origin: null
+            created_at: 1760000000
+            updated_at: 1760000000
+
+    CreateStorageBackendDto:
+      type: object
+      required: [name, kind, base_url]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        kind:
+          type: string
+          enum: [webdav]
+        base_url:
+          type: string
+          format: uri
+          maxLength: 512
+          description: WebDAV 根地址，文件存放在 `{base_url}/f/...`
+        username:
+          type: string
+          maxLength: 256
+        password:
+          type: string
+          maxLength: 512
+          description: 只写不读
+        part_size_kb:
+          type: [integer, "null"]
+          minimum: 64
+          maximum: 1048576
+          description: >-
+            分片大小（KB）。大于该值的文件拆成分片写入，单次请求体不超过它，读取时由服务端拼接，
+            直链不变；设置后不能使用零带宽模式。null 表示整文件写入，修改只影响之后的文件
+        is_default:
+          type: boolean
+          description: 设为实例默认存储
+      example:
+        name: 坚果云
+        kind: webdav
+        base_url: https://dav.jianguoyun.com/dav/verhub
+        username: ops@example.com
+        password: app-password
+        is_default: true
+
+    UpdateStorageBackendDto:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 64
+        base_url:
+          type: string
+          format: uri
+          maxLength: 512
+        username:
+          type: string
+          maxLength: 256
+        password:
+          type: string
+          maxLength: 512
+          description: 空字符串表示清除
+        part_size_kb:
+          type: [integer, "null"]
+          minimum: 64
+          maximum: 1048576
+          description: >-
+            分片大小（KB）。大于该值的文件拆成分片写入，单次请求体不超过它，读取时由服务端拼接，
+            直链不变；设置后不能使用零带宽模式。null 表示整文件写入，修改只影响之后的文件
+        is_default:
+          type: boolean
+          enum: [true]
+          description: 只接受 true；设为默认后其余后端自动取消默认
+      example:
+        is_default: true
+
+    StorageProbeResult:
+      type: object
+      required: [ok, range_supported, large_write_ok, latency_ms, error]
+      properties:
+        ok:
+          type: boolean
+        range_supported:
+          type: [boolean, "null"]
+          description: 读取是否支持 Range；未能测到时为 null
+        large_write_ok:
+          type: [boolean, "null"]
+          description: >-
+            单次写入 2MB（设置了分片时为分片大小）并读回长度是否成功。为 false 时 ok 仍为 true，
+            error 给出原因，通常需要设置或调小分片大小
+        latency_ms:
+          type: integer
+        error:
+          type: [string, "null"]
+      example:
+        ok: true
+        range_supported: true
+        large_write_ok: true
+        latency_ms: 412
+        error: null
+
+    StoredFileStatus:
+      type: string
+      enum: [pending, ready, failed]
+      description: pending 写入存储中；ready 可分发；failed 写入失败，原因见 error
+
+    StoredFileView:
+      type: object
+      required:
+        [
+          id,
+          project_key,
+          filename,
+          size,
+          sha256,
+          part_size,
+          content_type,
+          status,
+          source,
+          source_url,
+          error,
+          storage_backend_id,
+          storage_backend_name,
+          path,
+          url,
+          referenced_by,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: string
+          description: 12 位文件 id，出现在直链路径里
+        project_key:
+          type: string
+        filename:
+          type: string
+        size:
+          type: integer
+          format: int64
+        sha256:
+          type: [string, "null"]
+          description: 内容 SHA-256（hex），同时作为直链的 ETag
+        part_size:
+          type: [integer, "null"]
+          description: 在存储中按分片存放时的分片大小（字节），整文件存放为 null
+        content_type:
+          type: string
+        status:
+          $ref: "#/components/schemas/StoredFileStatus"
+        source:
+          type: string
+          enum: [upload, github_release]
+        source_url:
+          type: [string, "null"]
+          description: 镜像来源（GitHub Release 附件地址）
+        error:
+          type: [string, "null"]
+        storage_backend_id:
+          type: string
+        storage_backend_name:
+          type: string
+        path:
+          type: string
+          description: 直链路径（已编码），以 `/f/` 开头，写入后永不改变
+        url:
+          type: [string, "null"]
+          description: 完整直链；未配置 VERHUB_DIST_BASE_URL 时为 null
+        referenced_by:
+          type: array
+          items:
+            type: string
+          description: 下载链接引用了本文件的版本号
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+      example:
+        id: k3v9q2m7x1ab
+        project_key: verhub
+        filename: Verhub-Setup-1.2.0.msi
+        size: 52428800
+        sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+        part_size: null
+        content_type: application/x-msi
+        status: ready
+        source: upload
+        source_url: null
+        error: null
+        storage_backend_id: local
+        storage_backend_name: 本机存储
+        path: /f/verhub/k3v9q2m7x1ab/Verhub-Setup-1.2.0.msi
+        url: https://cdn.verhub.example.com/f/verhub/k3v9q2m7x1ab/Verhub-Setup-1.2.0.msi
+        referenced_by: ["1.2.0"]
+        created_at: 1760000000
+        updated_at: 1760000000
+
+    StoredFileListResponse:
+      type: object
+      required: [total, data]
+      properties:
+        total:
+          type: integer
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoredFileView"
+
+    CreateUploadDto:
+      type: object
+      required: [filename, size]
+      properties:
+        filename:
+          type: string
+          minLength: 1
+          maxLength: 255
+        size:
+          type: integer
+          format: int64
+          minimum: 1
+          description: 文件总字节数
+        storage_backend_id:
+          type: string
+          maxLength: 64
+          description: 写入的存储后端；不传则使用项目指定的存储，再否则为实例默认存储
+      example:
+        filename: Verhub-Setup-1.2.0.msi
+        size: 52428800
+
+    UploadSessionView:
+      type: object
+      required:
+        [
+          upload_id,
+          filename,
+          size,
+          chunk_size,
+          total_chunks,
+          received_chunks,
+          storage_backend_id,
+          expires_at,
+        ]
+      properties:
+        upload_id:
+          type: string
+        filename:
+          type: string
+          description: 收敛后的安全文件名，即最终直链里的文件名
+        size:
+          type: integer
+          format: int64
+        chunk_size:
+          type: integer
+        total_chunks:
+          type: integer
+        received_chunks:
+          type: array
+          items:
+            type: integer
+          description: 已接收的分片序号
+        storage_backend_id:
+          type: string
+        expires_at:
+          type: integer
+          format: int64
+          description: 会话过期时间（Unix 秒），过期后分片被清理
+      example:
+        upload_id: 4f3c2b1a0e9d8c7b6a5f4e3d2c1b0a99
+        filename: Verhub-Setup-1.2.0.msi
+        size: 52428800
+        chunk_size: 8388608
+        total_chunks: 7
+        received_chunks: [0, 1, 2]
+        storage_backend_id: local
+        expires_at: 1760086400
+
+    UploadChunkResult:
+      type: object
+      required: [index, bytes]
+      properties:
+        index:
+          type: integer
+        bytes:
+          type: integer
+      example:
+        index: 0
+        bytes: 8388608
+
+    CdnConfigView:
+      type: object
+      required:
+        [
+          provider,
+          enabled,
+          configured,
+          access_key_id,
+          has_access_key_secret,
+          access_key_secret_fingerprint,
+          dist_base_url,
+          updated_at,
+        ]
+      properties:
+        provider:
+          type: string
+          enum: [aliyun]
+        enabled:
+          type: boolean
+          description: 总闸。关闭时删除文件不刷新 CDN，手动刷新返回 400
+        configured:
+          type: boolean
+          description: AccessKey ID 与 Secret 齐全
+        access_key_id:
+          type: [string, "null"]
+        has_access_key_secret:
+          type: boolean
+        access_key_secret_fingerprint:
+          type: [string, "null"]
+          description: 已存 Secret 的 SHA-256 前 16 位
+        dist_base_url:
+          type: [string, "null"]
+          description: 刷新的直链基于该分发域名；未配置时不会发起刷新
+        updated_at:
+          type: [integer, "null"]
+      example:
+        provider: aliyun
+        enabled: true
+        configured: true
+        access_key_id: LTAI5tExampleKeyId
+        has_access_key_secret: true
+        access_key_secret_fingerprint: 3f2a9c1d0b7e4a55
+        dist_base_url: https://cdn.verhub.example.com
+        updated_at: 1760000000
+
+    UpdateCdnConfigDto:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        access_key_id:
+          type: string
+          maxLength: 128
+        access_key_secret:
+          type: string
+          maxLength: 256
+          description: 只写不读；空字符串表示清除
+      example:
+        enabled: true
+        access_key_id: LTAI5tExampleKeyId
+        access_key_secret: example-secret
+
+    CdnTestResult:
+      type: object
+      required: [ok, url_remain, url_quota, latency_ms, error]
+      properties:
+        ok:
+          type: boolean
+        url_remain:
+          type: [integer, "null"]
+          description: 当日剩余的 URL 刷新次数
+        url_quota:
+          type: [integer, "null"]
+          description: 每日 URL 刷新配额
+        latency_ms:
+          type: integer
+        error:
+          type: [string, "null"]
+      example:
+        ok: true
+        url_remain: 9998
+        url_quota: 10000
+        latency_ms: 230
+        error: null
+
+    CdnRefreshResult:
+      type: object
+      required: [ok, urls, task_ids, error]
+      properties:
+        ok:
+          type: boolean
+        urls:
+          type: array
+          items:
+            type: string
+          description: 提交刷新的直链
+        task_ids:
+          type: array
+          items:
+            type: string
+          description: 阿里云刷新任务 ID
+        error:
+          type: [string, "null"]
+      example:
+        ok: true
+        urls: [https://cdn.verhub.example.com/f/verhub/k3v9q2m7x1ab/Verhub-Setup-1.2.0.msi]
+        task_ids: ["17312345678"]
+        error: null
+
+    DeleteFileResult:
+      type: object
+      required: [success, cdn_refresh]
+      properties:
+        success:
+          type: boolean
+        cdn_refresh:
+          oneOf:
+            - $ref: "#/components/schemas/CdnRefreshResult"
+            - type: "null"
+          description: 未启用 CDN 刷新、未配置分发域名或文件未就绪时为 null
+      example:
+        success: true
+        cdn_refresh: null
+
+    MirrorAssetsResult:
+      type: object
+      required: [queued, reused, skipped]
+      properties:
+        queued:
+          type: integer
+          description: 新加入镜像队列的附件数
+        reused:
+          type: integer
+          description: 已镜像完成、直接替换为直链的附件数
+        skipped:
+          type: integer
+          description: 不是 GitHub Release 附件、未处理的链接数
+      example:
+        queued: 2
+        reused: 1
+        skipped: 1
 
     ProjectItem:
       type: object
@@ -4454,6 +5629,8 @@ components:
           stats_retention_days,
           event_collection_enabled,
           event_retention_days,
+          storage_backend_id,
+          mirror_github_assets,
           aliases,
           locale,
           created_at,
@@ -4496,6 +5673,12 @@ components:
         event_retention_days:
           type: integer
           description: 事件明细的保留时长（天），独立于 stats_retention_days
+        storage_backend_id:
+          type: [string, "null"]
+          description: 新文件写入的存储后端；null 表示使用实例默认存储
+        mirror_github_assets:
+          type: boolean
+          description: GitHub Release 附件镜像开关
         aliases:
           type: array
           items:
@@ -4820,6 +6003,9 @@ components:
         created:
           type: boolean
           description: true 表示新建版本，false 表示覆盖了已有版本
+        mirror_queued:
+          type: integer
+          description: 本次加入文件镜像队列的附件数，仅在项目开启附件镜像且配置了分发域名时返回
       example:
         status: synced
         event: release

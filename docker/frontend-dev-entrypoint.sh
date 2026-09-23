@@ -12,6 +12,8 @@ if [ ! -f /etc/nginx/certs/tls.crt ] || [ ! -f /etc/nginx/certs/tls.key ]; then
     -out /etc/nginx/certs/tls.crt >/dev/null 2>&1
 fi
 
+render-dist-conf.sh
+
 # Force webpack instead of the web package's `dev` script (which uses Turbopack,
 # also the Next 16 default). Turbopack's watcher does not see writes arriving
 # through a bind mount from a Windows/macOS host and offers no polling escape

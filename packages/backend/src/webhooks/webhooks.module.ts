@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common"
 
 import { AuthModule } from "../auth/auth.module"
+import { FilesModule } from "../files/files.module"
 import { VersionsModule } from "../versions/versions.module"
 import { GithubWebhookController } from "./github-webhook.controller"
 import { GithubWebhookSecretController } from "./github-webhook-secret.controller"
@@ -8,7 +9,7 @@ import { GithubWebhookSecretService } from "./github-webhook-secret.service"
 import { GithubWebhookService } from "./github-webhook.service"
 
 @Module({
-  imports: [AuthModule, VersionsModule],
+  imports: [AuthModule, VersionsModule, FilesModule],
   controllers: [GithubWebhookController, GithubWebhookSecretController],
   providers: [GithubWebhookService, GithubWebhookSecretService],
   exports: [GithubWebhookSecretService],

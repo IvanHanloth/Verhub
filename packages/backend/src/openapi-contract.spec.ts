@@ -23,6 +23,9 @@ import { EventsAdminController } from "./events/events-admin.controller"
 import { EventsController } from "./events/events.controller"
 import { FeedbacksCompatController } from "./feedbacks/feedbacks-compat.controller"
 import { FeedbacksController } from "./feedbacks/feedbacks.controller"
+import { DistController } from "./files/dist.controller"
+import { FilesController, VersionAssetMirrorController } from "./files/files.controller"
+import { StorageBackendsController } from "./files/storage-backends.controller"
 import { GithubAppConfigController } from "./github-app/github-app-config.controller"
 import { GithubAppWebhookController } from "./github-app/github-app-webhook.controller"
 import { ProjectGithubIntegrationController } from "./github-app/project-github-integration.controller"
@@ -56,6 +59,10 @@ const CONTROLLERS = [
   EventsController,
   FeedbacksCompatController,
   FeedbacksController,
+  DistController,
+  FilesController,
+  StorageBackendsController,
+  VersionAssetMirrorController,
   GithubAppConfigController,
   GithubAppWebhookController,
   GithubWebhookController,

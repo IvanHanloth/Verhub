@@ -19,6 +19,10 @@ export type ProjectItem = {
   event_collection_enabled?: boolean
   /** 事件明细的保留时长（天），独立于 stats_retention_days 且默认更短。 */
   event_retention_days?: number
+  /** 新文件写入的存储后端 id；null 表示使用实例默认存储。 */
+  storage_backend_id?: string | null
+  /** GitHub Release 附件镜像开关。 */
+  mirror_github_assets?: boolean
   /** 改名后保留的旧 Project Key（别名），均可访问到本项目。新到旧排序。 */
   aliases?: string[]
   /** 本条 name / description 来自哪个语言的译文；null 表示项目自身的值。 */
@@ -71,6 +75,9 @@ export type ProjectMutationInput = {
   stats_retention_days?: number
   event_collection_enabled?: boolean
   event_retention_days?: number
+  /** null 表示使用实例默认存储。 */
+  storage_backend_id?: string | null
+  mirror_github_assets?: boolean
   /** 传了即整体替换全部译文，空数组即清空；不传则保持原样。 */
   translations?: ProjectTranslation[]
 }

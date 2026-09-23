@@ -12,6 +12,8 @@ if [ ! -f /etc/nginx/certs/tls.crt ] || [ ! -f /etc/nginx/certs/tls.key ]; then
     -out /etc/nginx/certs/tls.crt >/dev/null 2>&1
 fi
 
+render-dist-conf.sh
+
 echo "[verhub][frontend] starting Next.js runtime"
 HOSTNAME="0.0.0.0" PORT="$FRONTEND_NODE_PORT" node web/server.js &
 NEXT_PID=$!

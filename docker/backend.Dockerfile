@@ -30,11 +30,12 @@ RUN pnpm --filter @workspace/backend build
 FROM backend-deps AS backend-dev
 
 COPY docker/backend-dev-entrypoint.sh /usr/local/bin/backend-dev-entrypoint.sh
-RUN chmod +x /usr/local/bin/backend-dev-entrypoint.sh && mkdir -p /bootstrap
+RUN chmod +x /usr/local/bin/backend-dev-entrypoint.sh && mkdir -p /bootstrap /var/lib/verhub/storage
 
 ENV NODE_ENV=development
 ENV PORT=4000
 ENV BOOTSTRAP_SECRET_DIR=/bootstrap
+ENV VERHUB_STORAGE_DIR=/var/lib/verhub/storage
 
 EXPOSE 4000
 
@@ -65,12 +66,13 @@ COPY --from=backend-builder /app/packages/backend/dist ./packages/backend/dist
 COPY --from=backend-builder /app/packages/backend/prisma ./packages/backend/prisma
 
 COPY docker/backend-entrypoint.sh /usr/local/bin/backend-entrypoint.sh
-RUN chmod +x /usr/local/bin/backend-entrypoint.sh && mkdir -p /bootstrap
+RUN chmod +x /usr/local/bin/backend-entrypoint.sh && mkdir -p /bootstrap /var/lib/verhub/storage
 RUN printf '{"version":"%s","published_at":"%s"}\n' "$VERHUB_BUILD_VERSION" "$VERHUB_BUILD_PUBLISHED_AT" > /app/build-info.json
 
 ENV NODE_ENV=production
 ENV PORT=4000
 ENV BOOTSTRAP_SECRET_DIR=/bootstrap
+ENV VERHUB_STORAGE_DIR=/var/lib/verhub/storage
 
 EXPOSE 4000
 

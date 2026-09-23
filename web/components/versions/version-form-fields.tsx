@@ -1,7 +1,9 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 
+import { FilePickerButton } from "@/components/files/file-picker-button"
 import { MarkdownEditor } from "@/components/markdown/markdown-editor"
 import { SegmentedButton, SegmentedGroup } from "@/components/common/settings-fields"
 import { TranslateButton } from "@/components/common/translate-button"
@@ -50,6 +52,30 @@ export function VersionFormFields({
   // 注销语言后表单里可能还停在那一页，回落到默认内容页而不是渲染一个空壳。
   const currentLocale = locales.some((item) => item.locale === activeLocale) ? activeLocale : ""
   const draft = form.translations[currentLocale] ?? { title: "", content: "" }
+
+  /** 把文件库的直链追加到下载链接列表；下载地址为空时一并填入。 */
+  function appendDownloadLink(url: string, name: string) {
+    let links: unknown[] = []
+    const raw = form.download_links_json.trim()
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as unknown
+        if (!Array.isArray(parsed)) {
+          throw new Error("not an array")
+        }
+        links = parsed
+      } catch {
+        toast.error("下载链接列表不是合法的 JSON 数组，请先修正后再添加。")
+        return
+      }
+    }
+    setForm((prev) => ({
+      ...prev,
+      download_url: prev.download_url.trim() ? prev.download_url : url,
+      download_links_json: JSON.stringify([...links, { url, name }], null, 2),
+    }))
+    toast.success(`已添加 ${name}。`)
+  }
 
   function updateTranslation(patch: { title?: string; content?: string }) {
     setForm((prev) => {
@@ -202,9 +228,18 @@ export function VersionFormFields({
         />
       </label>
 
-      <label className="space-y-1 text-sm">
-        <span className="text-slate-700 dark:text-slate-300">下载链接列表 JSON</span>
+      <div className="space-y-1 text-sm">
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor="version-download-links" className="text-slate-700 dark:text-slate-300">
+            下载链接列表 JSON
+          </label>
+          <FilePickerButton
+            projectKey={projectKey}
+            onPick={(url, file) => appendDownloadLink(url, file.filename)}
+          />
+        </div>
         <textarea
+          id="version-download-links"
           placeholder='例如：[{"url":"https://example.com/app.zip","name":"Windows 包","platform":"windows"}]'
           value={form.download_links_json}
           onChange={(event) =>
@@ -213,7 +248,7 @@ export function VersionFormFields({
           rows={4}
           className={MONO_FIELD_CLASS}
         />
-      </label>
+      </div>
 
       <MarkdownEditor
         label="更新内容"

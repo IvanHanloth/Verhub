@@ -33,6 +33,7 @@ Verhub 采用 Monorepo + 模块化单体架构：
 - `webhooks`：GitHub Release 推送接收（`GithubWebhookService`）与项目级 webhook secret 管理（`GithubWebhookSecretService`）
 - `github-app`：GitHub App 集成。实例级凭据与功能开关（`GithubAppConfigService`，私钥经 `secret-box` AES-256-GCM 加密落库）、出站 API 客户端（`GithubAppClientService`，App JWT → installation token）、项目级功能配置（`ProjectGithubIntegrationService`）、反馈转发 Issue（`FeedbackIssueService`，模板来源与内置模板见 `feedback-issue-template.ts`，单 IP 转发限流见 `FeedbackForwardThrottler`）与评论命令触发工作流（`CommentCommandsService`，走 `POST /webhooks/github-app`）。功能采用三级判定：实例级 enabledFeatures 是总闸，项目级开关只能在总闸开启后打开且只表示「允许」，最终是否转发由提交者在 `forward_to_github` 里逐条选择。转发是提交事务的一部分而非旁路：Issue 建成功才保留反馈行（并记下 `forwardedToGithub` 与 Issue 编号/链接），失败则连带删除刚落库的行并把 503 返回给客户端——不能让用户以为问题已经报到仓库里
 - `terms`：实例级条款文档（`TermsService`）。登记表见 `terms-documents.ts`，目前两份：《隐私政策》与《SDK 合规性文档》，内置正文在 `builtin/` 下、不入库。与反馈 Issue 模板同一套「开关 + 自定义正文」结构：关掉开关或草稿为空一律回落到内置正文，所以 `GET /public/terms/{slug}` 对已登记的文档任何时候都有正文可读。《隐私政策》面向最终用户，《SDK 合规性文档》面向接入方开发者（供其在自己的隐私政策里披露）、同时对最终用户公开；两份都逐项对应实际实现（各端点 DTO、事件采集在设备上写入的匿名标识与队列、四张统计表、去重指纹与事件幂等键、事件 IP 匿名化、归属地缓存与两套保留期），改动采集行为时必须同步修订，否则公示即失实。内置正文是模板：运营主体、联系方式等只有运营者知道的内容留成 `{{占位符}}`，键登记在 `placeholders.ts`（正文出现未登记的键会在模块加载时抛错），管理端据 `TermsDocumentConfigView.placeholders` 渲染填空表单、替换后把成品提交保存 —— 替换只发生在管理端，库里与前台都只有成品
+- `files`：文件存储与分发。存储后端（`StorageBackendsService`，内置本机存储 id 为 `local`，WebDAV 密码经 `secret-box` 加密落库）、分片上传会话（`UploadsService`，分片与元数据暂存在 `{VERHUB_STORAGE_DIR}/staging/uploads/`，24 小时过期由定时任务清理）、文件登记与 GitHub Release 附件镜像（`FileIngestService`）、进程内后台任务（`FileJobsService`：WebDAV 转存与附件下载，启动时接管 `PENDING` 文件）、直链分发（`DistController`，`GET /dist/f/{projectKey}/{fileId}/{filename}`）。存储驱动在 `storage-drivers.ts`，只有本机与 WebDAV 两种
 - `geo`：调用方来源解析。`GeoLocationService` 做 IP → 国家/地区解析与缓存，`ClientOriginService` 把请求拼装成各上报表要写入的来源字段。模块声明为 `@Global`，因为四个采集点都要用，且服务持有进程级缓存，不能被重复实例化
 - `database`：PrismaService 与数据库连接能力
 - `health`：服务健康检查
@@ -161,6 +162,20 @@ Webhook 鉴权（Project）：
 - 响应里的 `locale` 字段标出这次返回的内容实际来自哪个语言（`null` = 默认内容），让客户端一眼看出有没有发生回落；只设了隐藏、没覆盖任何内容的译文不算「返回了译文」，`locale` 仍为 `null`。全量 `translations` 只在管理接口返回。
 - **AI 翻译**（`TranslationConfig` + `POST /admin/projects/{projectKey}/translate`）。译文靠人手填，运营覆盖不了所有语言，所以后台的译文页签上有一个「AI 翻译」按钮，把默认内容整条译进当前语言。**译文只回不入库**：接口返回的字段被填进表单草稿，仍由人过一眼、改完再走原有的保存路径——机器译文直接落库等于没人为内容负责。整条一起译（标题与正文一次往返）而不是逐字段：模型看不到上下文时，标题与正文的用词会对不上。目标语言必须命中 `ProjectLocale`，语言的 `label` 一并喂给提示词（模型看「简体中文」比看 `zh-CN` 准）。
 - 上游凭据由部署方自己填，实例级单例，不内置任何厂商的地址与 key。支持 OpenAI 兼容（`/chat/completions`）与 Anthropic Messages（`/v1/messages`）两种协议，`base_url` 只填路径前缀、后缀按协议固定拼接——不替管理员猜写法，理由同语言标签不做 BCP 47 规范化。API key 经 `secret-box` 加密落库、只回读指纹，端点只收管理员 JWT 不开放 API key scope：这是一份能直接产生上游账单的出站凭据。提示词沿用「开关 + 内置模板兜底」的既有约定（同 `GithubAppConfig` 的模板与 `TermsDocument` 的正文）。
+
+文件分发（Files）：
+
+- **直链形态**：`{VERHUB_DIST_BASE_URL}/f/{projectKey}/{fileId}/{filename}`。`objectKey`（存储内的相对路径）就是直链路径去掉开头的 `/`，入库后不再变化：项目改名后旧文件仍按登记时的项目键访问，新文件用新键。分发接口按 `fileId` 查记录，再要求整条路径与 `objectKey` 完全一致，否则 404——路径的任何变体都不会命中，CDN 上不会因此长出多份缓存。
+- **不可变**：同一 URL 的内容永不改变（换包即新文件、新 URL），响应一律 `Cache-Control: public, max-age=31536000, immutable`，ETag 为 SHA-256。这同时满足应用商店「URL 版本化、二进制不可变」的要求，也让 CDN 永远不需要主动刷新。
+- **不跳转**：字节必须经过分发域名本身，因此省带宽靠的是 CDN 命中率而不是 302。链路为 CDN → 网关 nginx `/f/` → 后端 `/api/v1/dist/f/...`：本机存储由 `res.sendFile` 直出（Range / 条件请求由 `send` 处理），WebDAV 由后端以 `fetch` 流式转发（透传 Range，服务端跟随重定向，凭据不出后端）。网关对 `/f/` 开 `slice 4m` + `proxy_cache`，WebDAV 的每个分片只从上游拉一次；本机文件由后端响应头 `X-Verhub-Cache: bypass` 触发 `proxy_no_cache`，不在网关重复占盘。网关缓存有效期 10 分钟、过期后带 ETag 回源校验，后端对 `If-None-Match` 直接回 304 不触达 WebDAV，删除的文件因此最迟 10 分钟后在网关失效。
+- **按域名分流**：前端容器启动时 `render-dist-conf.sh` 依 `VERHUB_DIST_BASE_URL` 生成 `$verhub_serve_dist` / `$verhub_serve_app` 两个 map：分发域名只提供 `/f/`（后台与接口 404，避免被 CDN 缓存），其余域名不提供 `/f/`（避免绕过 CDN）。分发域名与 `NEXT_PUBLIC_SITE_URL` 相同或未配置时不分流。`/api/v1/dist/` 对外一律 404，只能经 `/f/` 访问。
+- **零带宽模式**：WebDAV 上的存放路径与直链路径一致（`{baseUrl}/f/...`），所以 CDN 可以直接回源 WebDAV（回源鉴权头在 CDN 上配置），字节完全不经过源站。这是纯部署侧的配置，代码不需要感知；后台只根据 WebDAV 地址算出回源主机与路径前缀作为参考。
+- **上传**：分片 8MB，走主站域名（不经 CDN，没有 CDN 的请求体上限）。合并时计算 SHA-256；本机存储同一卷内 `rename` 即完成，WebDAV 由后台任务 `MKCOL` 逐级建目录后流式 `PUT`，再 `HEAD` 校验长度。
+- **GitHub 附件镜像**：只认 `https://github.com/{owner}/{repo}/releases/download/...`。以 `(projectKey, sourceUrl)` 去重，同一附件只下载一次；完成后把项目内所有版本中等于该地址的链接替换为直链。Webhook 写入版本前先把已镜像的附件替换成直链，所以之后的 `edited` 推送不会把直链覆盖回 GitHub 地址。
+- **删除**：先删存储对象再删记录；删项目时先逐个删除对象（失败只记日志），再由外键级联删除记录。
+- **CDN 刷新**：实例级单例 `CdnConfig`，目前只接阿里云（`aliyun-cdn.ts` 自带 RPC 签名，不引入 SDK；`RefreshObjectCaches` 按 100 条一批提交，`DescribeRefreshQuota` 用作连接测试）。启用后删除文件、删除项目会刷新对应直链，另有手动刷新端点。刷新失败不回滚删除，结果放在删除响应的 `cdn_refresh` 里。
+- **WebDAV 分片存放**：WebDAV 没有通用的分段上传，而宝塔 WAF 这类网关会拦截大请求体（还以 200 返回拦截页）。存储后端可设 `partSize`：大于它的文件写成 `{objectKey 所在目录}/parts/{六位序号}`，并发 2 路、单片重试 3 次，写完用 PROPFIND（不支持时逐个 HEAD）校验每片长度；`StoredFile.partSize` 记录写入时实际使用的分片大小，之后改后端设置不影响旧文件。分发时 `DistController` 本地解析单段 Range，`readParts` 只请求覆盖区间的分片（服务端忽略 Range 时本地截取）。分片文件无法走零带宽模式，此时不返回 `cdn_origin`。所有 PUT 都拒绝「200 + HTML 页面」，整文件写入后 HEAD 必须成功且长度一致。
+- **失败重试**：上传的文件写入 WebDAV 失败时保留暂存 7 天，期间可重试；镜像失败重试时重新下载。定时任务清理超过保留期或已无记录的暂存文件。
 
 列表搜索：`search` 参数在各列表接口上语义一致——不区分大小写的子串匹配，命中字段由各 service 指定（见 OpenAPI 中每个端点的说明）。JSON 列（`custom_data` / `device_info` / `http`）一律不参与匹配：既慢又无从解释命中在哪。
 

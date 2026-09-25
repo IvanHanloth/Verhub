@@ -154,6 +154,29 @@ impl AdminApi<'_> {
             .await
     }
 
+    /// 修改已注册的语言，未提交的字段保持原值。`locale` 可以是主标签或同义标签，
+    /// 匹配规则同公开端。
+    pub async fn update_project_locale(
+        &self,
+        locale: &str,
+        input: &UpdateProjectLocaleInput,
+    ) -> Result<ProjectLocaleItem> {
+        let key = self.inner.require_project_key()?;
+        self.inner
+            .request(
+                Method::PATCH,
+                &format!(
+                    "/admin/projects/{}/locales/{}",
+                    segment(&key),
+                    segment(locale)
+                ),
+                &[],
+                Some(input),
+                true,
+            )
+            .await
+    }
+
     /// 注销一个语言。已录入的译文不会被删除，只是暂时不可达，重新注册即恢复。
     pub async fn delete_project_locale(&self, locale: &str) -> Result<DeleteSuccessResponse> {
         let key = self.inner.require_project_key()?;

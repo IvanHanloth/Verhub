@@ -1,17 +1,7 @@
 import { Transform } from "class-transformer"
-import {
-  IsBoolean,
-  IsIn,
-  IsInt,
-  IsOptional,
-  IsString,
-  Matches,
-  Max,
-  MaxLength,
-  Min,
-} from "class-validator"
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator"
 
-import { LOCALE_PATTERN, MAX_LOCALE_LENGTH, NormalizeLocale } from "../../common/locale"
+import { NormalizeLocale } from "../../common/locale"
 import { NormalizePlatform, PLATFORM_VALUES, type PlatformValue } from "../../common/platform"
 import {
   MAX_SEARCH_LENGTH,
@@ -73,8 +63,6 @@ export class QueryVersionsDto {
   @IsOptional()
   @NormalizeLocale()
   @IsString()
-  @MaxLength(MAX_LOCALE_LENGTH)
-  @Matches(LOCALE_PATTERN, { message: "locale format is invalid" })
   locale?: string
 }
 
@@ -86,7 +74,5 @@ export class QueryVersionLocaleDto {
   @IsOptional()
   @NormalizeLocale()
   @IsString()
-  @MaxLength(MAX_LOCALE_LENGTH)
-  @Matches(LOCALE_PATTERN, { message: "locale format is invalid" })
   locale?: string
 }

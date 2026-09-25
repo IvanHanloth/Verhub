@@ -1,5 +1,6 @@
 import { Platform, PublicEndpoint } from "@prisma/client"
 
+import { UNKNOWN_TZ_OFFSET } from "../common/client-clock"
 import { RequestStatsService, toHourBucket } from "./request-stats.service"
 
 function createPrismaMock() {
@@ -482,8 +483,18 @@ describe("RequestStatsService.getHeatmap", () => {
     const prisma = createPrismaMock()
     // 1784188800 = 2026-07-16T08:00:00Z, a Thursday (weekday 4). region 表外 -> 回退偏移。
     prisma.apiRequestStat.groupBy.mockResolvedValue([
-      { hourBucket: 1784188800, region: "UNKNOWN", _sum: { count: 5 } },
-      { hourBucket: 1784188800 + 7 * DAY, region: "UNKNOWN", _sum: { count: 3 } },
+      {
+        hourBucket: 1784188800,
+        region: "UNKNOWN",
+        tzOffset: UNKNOWN_TZ_OFFSET,
+        _sum: { count: 5 },
+      },
+      {
+        hourBucket: 1784188800 + 7 * DAY,
+        region: "UNKNOWN",
+        tzOffset: UNKNOWN_TZ_OFFSET,
+        _sum: { count: 3 },
+      },
     ])
     const service = new RequestStatsService(prisma as never, createGeoMock() as never)
 
@@ -504,8 +515,8 @@ describe("RequestStatsService.getHeatmap", () => {
     // CN(+8) -> 当地周五 04:00；US(-5) -> 当地周四 15:00。各落各的格子。
     const utcThu20 = 1784232000
     prisma.apiRequestStat.groupBy.mockResolvedValue([
-      { hourBucket: utcThu20, region: "CN", _sum: { count: 6 } },
-      { hourBucket: utcThu20, region: "US", _sum: { count: 2 } },
+      { hourBucket: utcThu20, region: "CN", tzOffset: UNKNOWN_TZ_OFFSET, _sum: { count: 6 } },
+      { hourBucket: utcThu20, region: "US", tzOffset: UNKNOWN_TZ_OFFSET, _sum: { count: 2 } },
     ])
     const service = new RequestStatsService(prisma as never, createGeoMock() as never)
 
@@ -520,7 +531,7 @@ describe("RequestStatsService.getHeatmap", () => {
     const prisma = createPrismaMock()
     const utcThu20 = 1784232000 // 2026-07-16T20:00:00Z 周四
     prisma.apiRequestStat.groupBy.mockResolvedValue([
-      { hourBucket: utcThu20, region: "UNKNOWN", _sum: { count: 4 } },
+      { hourBucket: utcThu20, region: "UNKNOWN", tzOffset: UNKNOWN_TZ_OFFSET, _sum: { count: 4 } },
     ])
     const service = new RequestStatsService(prisma as never, createGeoMock() as never)
 
@@ -528,5 +539,22 @@ describe("RequestStatsService.getHeatmap", () => {
     const cells = await service.getHeatmap("verhub", { startTime: 0, endTime: utcThu20 }, 480)
 
     expect(cells).toContainEqual({ weekday: 5, hour: 4, count: 4 })
+  })
+
+  it("prefers the client-reported offset over the country approximation", async () => {
+    const prisma = createPrismaMock()
+    const utcThu20 = 1784232000 // 2026-07-16T20:00:00Z 周四
+    prisma.apiRequestStat.groupBy.mockResolvedValue([
+      // 美国西海岸（夏令时 -7）：按国家表会被当成东部 -5 落到 15:00
+      { hourBucket: utcThu20, region: "US", tzOffset: -420, _sum: { count: 3 } },
+      // 没法定位来源国家，但客户端报了时区
+      { hourBucket: utcThu20, region: "UNKNOWN", tzOffset: 540, _sum: { count: 1 } },
+    ])
+    const service = new RequestStatsService(prisma as never, createGeoMock() as never)
+
+    const cells = await service.getHeatmap("verhub", { startTime: 0, endTime: utcThu20 }, 0)
+
+    expect(cells).toContainEqual({ weekday: 4, hour: 13, count: 3 })
+    expect(cells).toContainEqual({ weekday: 5, hour: 5, count: 1 })
   })
 })

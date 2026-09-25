@@ -5,6 +5,7 @@ import { RequireApiScope } from "../auth/guards/api-scope.decorator"
 
 import { CreateProjectDto } from "./dto/create-project.dto"
 import { CreateProjectLocaleDto } from "./dto/create-project-locale.dto"
+import { UpdateProjectLocaleDto } from "./dto/update-project-locale.dto"
 import { PreviewGithubRepoDto } from "./dto/preview-github-repo.dto"
 import { QueryProjectsDto } from "./dto/query-projects.dto"
 import { UpdateProjectDto } from "./dto/update-project.dto"
@@ -64,6 +65,16 @@ export class ProjectsController {
   @RequireApiScope("projects:write")
   async addLocale(@Param("projectKey") projectKey: string, @Body() dto: CreateProjectLocaleDto) {
     return this.projectsService.addLocale(projectKey, dto)
+  }
+
+  @Patch(":projectKey/locales/:locale")
+  @RequireApiScope("projects:write")
+  async updateLocale(
+    @Param("projectKey") projectKey: string,
+    @Param("locale") locale: string,
+    @Body() dto: UpdateProjectLocaleDto,
+  ) {
+    return this.projectsService.updateLocale(projectKey, locale, dto)
   }
 
   @Delete(":projectKey/locales/:locale")

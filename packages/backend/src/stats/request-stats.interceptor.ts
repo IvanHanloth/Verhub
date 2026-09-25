@@ -4,6 +4,7 @@ import { Platform, PublicEndpoint } from "@prisma/client"
 import type { Request } from "express"
 import { Observable, tap } from "rxjs"
 
+import { parseClientClock, tzOffsetColumn } from "../common/client-clock"
 import { extractClientIp } from "../common/client-context"
 import { ProjectResolverService } from "../database/project-resolver.service"
 import { PLATFORM_HEADER, PLATFORM_VERSION_HEADER, resolvePlatform } from "./platform-detection"
@@ -61,8 +62,9 @@ export class RequestStatsInterceptor implements NestInterceptor {
         const ip = extractClientIp(request)
         const version =
           endpoint === PublicEndpoint.VERSION_CHECK_UPDATE ? this.reportedVersion(request) : null
+        const tzOffset = tzOffsetColumn(parseClientClock(request.headers, Date.now()))
 
-        void this.record({ projectKey, endpoint, platform, platformVersion, ip, version })
+        void this.record({ projectKey, endpoint, platform, platformVersion, ip, version, tzOffset })
       }),
     )
   }
@@ -79,6 +81,7 @@ export class RequestStatsInterceptor implements NestInterceptor {
     platformVersion: string
     ip: string | null
     version: string | null
+    tzOffset: number
   }): Promise<void> {
     const projectKey = await this.projectResolver
       .resolveCanonicalKey(params.projectKey)
@@ -92,6 +95,7 @@ export class RequestStatsInterceptor implements NestInterceptor {
       endpoint: params.endpoint,
       platform: params.platform,
       ip: params.ip,
+      tzOffset: params.tzOffset,
     })
 
     // 系统版本在每个被跟踪的端点上都记：它描述的是设备本身，不像客户端版本

@@ -8,6 +8,9 @@ export const PLATFORM_HEADER = "x-verhub-platform"
 /** 客户端系统版本明细头，如 `11` / `ubuntu 24.04`；超过 32 字符会被服务端丢弃。 */
 export const PLATFORM_VERSION_HEADER = "x-verhub-platform-version"
 
+/** 客户端本地时间头；服务端从偏移取时区，从时刻算设备时钟偏差。 */
+export const CLIENT_TIME_HEADER = "x-verhub-client-time"
+
 /** 系统版本明细的长度上限，与服务端一致。 */
 const MAX_PLATFORM_VERSION_LENGTH = 32
 
@@ -34,8 +37,39 @@ function headerSafe(value: string | null): string | null {
   return value ? sanitizePlatformVersion(value) || null : null
 }
 
+/**
+ * 把时刻格式化成带显式偏移的本地时间，如 `2026-09-24T10:00:00.123+08:00`。
+ *
+ * 偏移恒为 `±HH:MM`（UTC 也写 `+00:00`），四个语言的 SDK 输出形状相同。只用
+ * `Date` 本身而不依赖 Intl，部分精简运行时没有完整的时区数据。
+ *
+ * @param date 要格式化的时刻，默认当前时刻
+ * @returns 格式化结果；无法得出合规值时为 null
+ */
+export function formatClientTime(date: Date = new Date()): string | null {
+  try {
+    // getTimezoneOffset 是「UTC 减本地」，符号与 ISO 偏移相反。
+    const offset = -date.getTimezoneOffset()
+    const year = date.getFullYear()
+    // 历史日期可能得到秒级的地方平时偏移，写不成 ±HH:MM 又不失真，干脆不报。
+    if (!Number.isInteger(offset) || !Number.isInteger(year) || year < 0 || year > 9999) {
+      return null
+    }
+    const pad = (value: number, width = 2) => String(value).padStart(width, "0")
+    const abs = Math.abs(offset)
+    return (
+      `${pad(year, 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+      `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}` +
+      `.${pad(date.getMilliseconds(), 3)}` +
+      `${offset < 0 ? "-" : "+"}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
+    )
+  } catch {
+    return null
+  }
+}
+
 /** 默认重试次数。 */
-const DEFAULT_RETRIES = 2
+const DEFAULT_RETRIES = 3
 
 /** 会触发重试的服务端状态码。 */
 const RETRY_STATUS = new Set([502, 503, 504])
@@ -69,9 +103,14 @@ export type VerhubClientOptions = {
   platform?: Platform | null
   /** 系统版本明细；省略则自动提取（`platform` 被显式关成 null 时除外），传 null 则不声明。 */
   platformVersion?: string | null
+  /**
+   * 是否在每个请求上带 `x-verhub-client-time`（设备本地时间与 UTC 偏移），默认 true。
+   * 服务端用它按用户当地时间统计、校正设备时钟偏差；传 false 则不发。
+   */
+  sendClientTime?: boolean
   /** 单次请求超时（毫秒），默认 15000；传 0 表示不超时。 */
   timeoutMs?: number
-  /** GET / HEAD 在连接失败与 502/503/504 时的自动重试次数，默认 2；传 0 关闭。 */
+  /** GET / HEAD 在连接失败与 502/503/504 时的自动重试次数，默认 3；传 0 关闭。 */
   retries?: number
   /** 自定义 fetch 实现，可用于注入代理、埋点或测试桩。 */
   fetch?: typeof globalThis.fetch
@@ -267,6 +306,7 @@ export class HttpClient {
   private token: string
   private platform: Platform | null
   private platformVersion: string | null
+  private readonly sendClientTime: boolean
   private readonly timeoutMs: number
   private readonly retries: number
   private readonly userAgent: string | null
@@ -281,6 +321,7 @@ export class HttpClient {
     this.baseUrl = normalizeBaseUrl(options.baseUrl)
     this.projectKey = options.projectKey
     this.token = options.token ?? ""
+    this.sendClientTime = options.sendClientTime !== false
     this.timeoutMs = options.timeoutMs ?? 15000
     this.retries = options.retries ?? DEFAULT_RETRIES
     this.extraHeaders = options.headers ?? {}
@@ -421,9 +462,13 @@ export class HttpClient {
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       this.logger?.({ method, url, attempt })
 
+      // 每次尝试现取：服务端拿它与收到请求的时刻比，重试前的等待不能算进去。
+      const clientTime = this.sendClientTime ? formatClientTime() : null
+      const attemptHeaders = clientTime ? { ...headers, [CLIENT_TIME_HEADER]: clientTime } : headers
+
       let response: Response
       try {
-        response = await this.fetchOnce(method, url, headers, payload)
+        response = await this.fetchOnce(method, url, attemptHeaders, payload)
       } catch (cause) {
         if (canRetry && attempt < maxAttempts) {
           await this.backoff(attempt)

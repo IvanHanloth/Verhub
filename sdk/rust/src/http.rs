@@ -19,6 +19,9 @@ pub const PLATFORM_HEADER: &str = "x-verhub-platform";
 /// 客户端系统版本明细头，如 `11` / `ubuntu 24.04`；超过 32 字符会被服务端丢弃。
 pub const PLATFORM_VERSION_HEADER: &str = "x-verhub-platform-version";
 
+/// 客户端本地时间头；服务端从偏移取时区，从时刻算设备时钟偏差。
+pub const CLIENT_TIME_HEADER: &str = "x-verhub-client-time";
+
 /// 系统版本明细的长度上限，与服务端一致。
 const MAX_PLATFORM_VERSION_LENGTH: usize = 32;
 
@@ -67,7 +70,7 @@ fn macos_marketing_version(product_version: &str) -> String {
 }
 
 /// 默认重试次数。
-const DEFAULT_RETRIES: usize = 2;
+const DEFAULT_RETRIES: usize = 3;
 
 /// 会触发重试的服务端状态码。
 const RETRY_STATUS: [u16; 3] = [502, 503, 504];
@@ -139,12 +142,52 @@ pub fn detect_platform_version() -> String {
     sanitize_platform_version(&combined)
 }
 
+/// 把时刻格式化成带显式偏移的本地时间，如 `2026-09-24T10:00:00.123+08:00`。
+///
+/// 偏移恒为 `±HH:MM`（UTC 也写 `+00:00`），四个语言的 SDK 输出形状相同。
+/// 无法得出合规值时返回 `None`：带秒级的偏移写不成 `±HH:MM` 又不失真，年份超出
+/// 四位也不合形状。
+fn format_client_time<Tz>(moment: &chrono::DateTime<Tz>) -> Option<String>
+where
+    Tz: chrono::TimeZone,
+    Tz::Offset: std::fmt::Display,
+{
+    use chrono::{Datelike, Offset};
+
+    if moment.offset().fix().local_minus_utc() % 60 != 0 {
+        return None;
+    }
+    if !(0..=9999).contains(&moment.year()) {
+        return None;
+    }
+    let value = moment.format("%Y-%m-%dT%H:%M:%S%.3f%:z").to_string();
+    is_client_time_shape(&value).then_some(value)
+}
+
+/// 当前时刻的本地时间，每次尝试现取。
+fn client_time_now() -> Option<String> {
+    format_client_time(&chrono::Local::now())
+}
+
+/// 是否形如 `YYYY-MM-DDTHH:MM:SS.mmm±HH:MM`；逐字节比对，免得为此引入正则。
+fn is_client_time_shape(value: &str) -> bool {
+    const PATTERN: &[u8] = b"dddd-dd-ddTdd:dd:dd.ddd?dd:dd";
+    let bytes = value.as_bytes();
+    bytes.len() == PATTERN.len()
+        && bytes.iter().zip(PATTERN).all(|(&b, &p)| match p {
+            b'd' => b.is_ascii_digit(),
+            b'?' => b == b'+' || b == b'-',
+            _ => b == p,
+        })
+}
+
 /// 两个命名空间共用的连接、凭据与来源声明。
 #[derive(Debug)]
 pub(crate) struct Inner {
     http: reqwest::Client,
     base_url: String,
     retries: usize,
+    send_client_time: bool,
     project_key: RwLock<Option<String>>,
     token: RwLock<String>,
     platform: RwLock<Option<Platform>>,
@@ -273,6 +316,13 @@ impl Inner {
                     builder = builder.header(PLATFORM_VERSION_HEADER, value);
                 }
             }
+            // 每次尝试现取：服务端拿它与收到请求的时刻比，重试前的等待不能算进去。
+            if self.send_client_time {
+                if let Some(value) = client_time_now().and_then(|v| HeaderValue::from_str(&v).ok())
+                {
+                    builder = builder.header(CLIENT_TIME_HEADER, value);
+                }
+            }
             if !pairs.is_empty() {
                 builder = builder.query(&pairs);
             }
@@ -365,6 +415,7 @@ pub struct VerhubClientBuilder {
     token: Option<String>,
     platform: Option<Option<Platform>>,
     platform_version: Option<String>,
+    send_client_time: bool,
     timeout: Option<Duration>,
     connect_timeout: Option<Duration>,
     retries: Option<usize>,
@@ -383,6 +434,7 @@ impl VerhubClientBuilder {
             token: None,
             platform: None,
             platform_version: None,
+            send_client_time: true,
             timeout: None,
             connect_timeout: None,
             retries: None,
@@ -424,6 +476,14 @@ impl VerhubClientBuilder {
         self
     }
 
+    /// 不在请求上带 `x-verhub-client-time`（设备本地时间与 UTC 偏移）。
+    ///
+    /// 默认每个请求都带，服务端用它按用户当地时间统计、校正设备时钟偏差。
+    pub fn without_client_time(mut self) -> Self {
+        self.send_client_time = false;
+        self
+    }
+
     /// 单次请求超时（连接 + 读取），默认 15 秒。
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
@@ -436,7 +496,7 @@ impl VerhubClientBuilder {
         self
     }
 
-    /// GET / HEAD 在连接失败与 502/503/504 时的自动重试次数，默认 2；传 0 关闭。
+    /// GET / HEAD 在连接失败与 502/503/504 时的自动重试次数，默认 3；传 0 关闭。
     pub fn retries(mut self, retries: usize) -> Self {
         self.retries = Some(retries);
         self
@@ -522,6 +582,7 @@ impl VerhubClientBuilder {
             http,
             base_url,
             retries: self.retries.unwrap_or(DEFAULT_RETRIES),
+            send_client_time: self.send_client_time,
             project_key: RwLock::new(self.project_key),
             token: RwLock::new(self.token.unwrap_or_default()),
             analytics: RwLock::new(None),
@@ -654,5 +715,87 @@ mod tests {
         );
         assert!(detected.chars().count() <= MAX_PLATFORM_VERSION_LENGTH);
         assert!(HeaderValue::from_str(&detected).is_ok());
+    }
+
+    fn at_offset(offset_seconds: i32) -> chrono::DateTime<chrono::FixedOffset> {
+        use chrono::TimeZone;
+        let instant = chrono::Utc.with_ymd_and_hms(2026, 9, 24, 2, 0, 0).unwrap()
+            + chrono::Duration::milliseconds(123);
+        instant.with_timezone(&chrono::FixedOffset::east_opt(offset_seconds).unwrap())
+    }
+
+    /// 本地墙钟加 `±HH:MM` 偏移；UTC 写 `+00:00` 而不是 `Z`，非整点偏移照写。
+    #[test]
+    fn client_time_is_local_wall_clock_with_numeric_offset() {
+        let cases = [
+            (8 * 3600, "2026-09-24T10:00:00.123+08:00"),
+            (0, "2026-09-24T02:00:00.123+00:00"),
+            (5 * 3600 + 45 * 60, "2026-09-24T07:45:00.123+05:45"),
+            (-(2 * 3600 + 30 * 60), "2026-09-23T23:30:00.123-02:30"),
+            (-7 * 3600, "2026-09-23T19:00:00.123-07:00"),
+        ];
+        for (offset, expected) in cases {
+            let value = format_client_time(&at_offset(offset)).expect("可格式化");
+            assert_eq!(value, expected);
+            assert_eq!(
+                chrono::DateTime::parse_from_rfc3339(&value).unwrap(),
+                at_offset(0),
+                "时刻必须不变"
+            );
+        }
+    }
+
+    /// 毫秒截断而不是四舍五入，否则 .9995 秒会进位成下一秒。
+    #[test]
+    fn client_time_truncates_to_milliseconds() {
+        use chrono::TimeZone;
+        let moment = chrono::Utc.with_ymd_and_hms(2026, 9, 24, 2, 0, 59).unwrap()
+            + chrono::Duration::microseconds(999_999);
+        assert_eq!(
+            format_client_time(&moment.fixed_offset()).as_deref(),
+            Some("2026-09-24T02:00:59.999+00:00")
+        );
+    }
+
+    /// 历史日期的地方平时偏移带秒，写不成 `±HH:MM`，宁可不报。
+    #[test]
+    fn client_time_rejects_second_level_offsets() {
+        assert_eq!(format_client_time(&at_offset(8 * 3600 + 5 * 60 + 43)), None);
+    }
+
+    #[test]
+    fn client_time_now_matches_shape_and_local_offset() {
+        let before = chrono::Utc::now() - chrono::Duration::milliseconds(1);
+        let value = client_time_now().expect("当前时刻可格式化");
+        let after = chrono::Utc::now();
+        assert!(is_client_time_shape(&value), "{value}");
+        let parsed = chrono::DateTime::parse_from_rfc3339(&value).unwrap();
+        assert!(before <= parsed && parsed <= after, "{value}");
+        assert_eq!(
+            parsed.offset().local_minus_utc(),
+            chrono::Local::now().offset().local_minus_utc()
+        );
+    }
+
+    #[test]
+    fn client_time_shape_check() {
+        assert!(is_client_time_shape("2026-09-24T10:00:00.123+08:00"));
+        assert!(is_client_time_shape("2026-09-24T10:00:00.123-02:30"));
+        assert!(!is_client_time_shape("2026-09-24T10:00:00.123Z"));
+        assert!(!is_client_time_shape("2026-09-24T10:00:00+08:00"));
+        assert!(!is_client_time_shape("+10000-09-24T10:00:00.123+08:00"));
+    }
+
+    #[test]
+    fn client_time_is_on_by_default_and_can_be_turned_off() {
+        let on = VerhubClientBuilder::new("https://example.com/api/v1")
+            .build_inner()
+            .expect("构造客户端");
+        assert!(on.send_client_time);
+        let off = VerhubClientBuilder::new("https://example.com/api/v1")
+            .without_client_time()
+            .build_inner()
+            .expect("构造客户端");
+        assert!(!off.send_client_time);
     }
 }

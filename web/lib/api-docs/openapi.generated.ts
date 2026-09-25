@@ -1142,9 +1142,64 @@ export const openApiDocument: OpenApiDocument = {
           schema: {
             type: "string",
           },
-          description: "要注销的语言标签，匹配大小写不敏感。",
+          description: "要修改或注销的语言标签（主标签或同义标签），匹配规则同公开端。",
         },
       ],
+      patch: {
+        tags: ["Projects"],
+        summary: "修改项目语言",
+        description:
+          "修改已注册的语言，缺省字段保持原值。改主标签时，本项目下该语言的项目、版本与公告 译文在同一事务里迁到新标签；客户端若仍会提交旧标签，把它放进 aliases。 新主标签或同义标签与本项目其它语言相撞时 400；新主标签下已有注销语言遗留的译文时 409。",
+        "x-verhub-doc": true,
+        security: [
+          {
+            BearerAuth: [],
+          },
+          {
+            ApiKeyAuth: [],
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/UpdateProjectLocaleDto",
+              },
+            },
+          },
+        },
+        responses: {
+          "200": {
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ProjectLocaleItem",
+                },
+              },
+            },
+          },
+          "400": {
+            $ref: "#/components/responses/BadRequest",
+          },
+          "401": {
+            $ref: "#/components/responses/Unauthorized",
+          },
+          "404": {
+            $ref: "#/components/responses/NotFound",
+          },
+          "409": {
+            description: "新主标签下已有注销语言遗留的译文",
+            content: {
+              "application/json": {
+                schema: {
+                  $ref: "#/components/schemas/ErrorResponse",
+                },
+              },
+            },
+          },
+        },
+      },
       delete: {
         tags: ["Projects"],
         summary: "注销项目语言",
@@ -4465,6 +4520,9 @@ export const openApiDocument: OpenApiDocument = {
           $ref: "#/components/parameters/ClientPlatformVersionHeader",
         },
         {
+          $ref: "#/components/parameters/ClientTimeHeader",
+        },
+        {
           $ref: "#/components/parameters/ClientPlatformQuery",
         },
         {
@@ -4482,12 +4540,10 @@ export const openApiDocument: OpenApiDocument = {
             in: "query",
             required: false,
             description:
-              "语言偏好。命中项目注册的语言（主标签或同义标签，大小写不敏感）且该语言的\n译文填了对应字段时，`name` / `description` 返回译文，`locale` 字段标出实际语言。\n\n没提本参数、语言未注册、或该语言的译文把字段留空，都回落项目自身的值且\n`locale` 为 `null`。两个字段各自独立回落。\n",
+              "语言偏好。命中项目注册的语言（主标签或同义标签，大小写不敏感）且该语言的\n译文填了对应字段时，`name` / `description` 返回译文，`locale` 字段标出实际语言。\n\n没提本参数、语言未注册、或该语言的译文把字段留空，都回落项目自身的值且\n`locale` 为 `null`。两个字段各自独立回落。\n\n提交格式不设限：`en-US`、`en_US`、`en(US)` 视为同一个标签（`_` 与括号等同 `-`，\n大小写不敏感）；不含分隔符的写法整串比对。没命中时不报错，返回默认内容，并在\n返回对象上附 `locale_message` 说明提交的语言未命中。\n",
             example: "en-US",
             schema: {
               type: "string",
-              maxLength: 35,
-              pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
             },
           },
         ],
@@ -4517,6 +4573,9 @@ export const openApiDocument: OpenApiDocument = {
         },
         {
           $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientTimeHeader",
         },
         {
           $ref: "#/components/parameters/ClientPlatformQuery",
@@ -4583,6 +4642,9 @@ export const openApiDocument: OpenApiDocument = {
           $ref: "#/components/parameters/ClientPlatformVersionHeader",
         },
         {
+          $ref: "#/components/parameters/ClientTimeHeader",
+        },
+        {
           $ref: "#/components/parameters/ClientPlatformQuery",
         },
         {
@@ -4625,6 +4687,9 @@ export const openApiDocument: OpenApiDocument = {
         },
         {
           $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientTimeHeader",
         },
         {
           $ref: "#/components/parameters/ClientPlatformQuery",
@@ -4676,6 +4741,9 @@ export const openApiDocument: OpenApiDocument = {
         },
         {
           $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientTimeHeader",
         },
         {
           $ref: "#/components/parameters/ClientPlatformQuery",
@@ -4730,6 +4798,9 @@ export const openApiDocument: OpenApiDocument = {
         {
           $ref: "#/components/parameters/ClientPlatformVersionHeader",
         },
+        {
+          $ref: "#/components/parameters/ClientTimeHeader",
+        },
       ],
       post: {
         tags: ["Versions"],
@@ -4776,6 +4847,9 @@ export const openApiDocument: OpenApiDocument = {
         },
         {
           $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientTimeHeader",
         },
         {
           $ref: "#/components/parameters/ClientPlatformQuery",
@@ -4850,6 +4924,9 @@ export const openApiDocument: OpenApiDocument = {
           $ref: "#/components/parameters/ClientPlatformVersionHeader",
         },
         {
+          $ref: "#/components/parameters/ClientTimeHeader",
+        },
+        {
           $ref: "#/components/parameters/ClientPlatformQuery",
         },
         {
@@ -4904,6 +4981,9 @@ export const openApiDocument: OpenApiDocument = {
         },
         {
           $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientTimeHeader",
         },
       ],
       post: {
@@ -5758,6 +5838,9 @@ export const openApiDocument: OpenApiDocument = {
         {
           $ref: "#/components/parameters/ClientPlatformVersionHeader",
         },
+        {
+          $ref: "#/components/parameters/ClientTimeHeader",
+        },
       ],
       post: {
         tags: ["Logs"],
@@ -5828,6 +5911,9 @@ export const openApiDocument: OpenApiDocument = {
         },
         {
           $ref: "#/components/parameters/ClientPlatformVersionHeader",
+        },
+        {
+          $ref: "#/components/parameters/ClientTimeHeader",
         },
         {
           $ref: "#/components/parameters/DoNotTrackHeader",
@@ -6936,6 +7022,18 @@ export const openApiDocument: OpenApiDocument = {
           maxLength: 32,
         },
       },
+      ClientTimeHeader: {
+        name: "x-verhub-client-time",
+        in: "header",
+        required: false,
+        description:
+          "客户端发出请求时的本地时间，ISO 8601 并带显式 UTC 偏移，官方 SDK 默认附带。\n仅用于统计，不影响接口返回内容：偏移让请求与事件热力图按用户当地时间折叠\n（没带时按来源国家的代表时区近似）；与服务端接收时间的差值用于校正同一批\n事件的 `occurred_at`（偏差不足 60 秒视为网络延迟，不校正）。\n缺偏移、偏移超出 UTC-12:00 至 UTC+14:00 或不是 15 分钟整数倍的取值按未上报处理，不会报错。\n",
+        example: "2026-09-24T10:00:00.123+08:00",
+        schema: {
+          type: "string",
+          maxLength: 40,
+        },
+      },
       DoNotTrackHeader: {
         name: "x-verhub-do-not-track",
         in: "header",
@@ -6985,12 +7083,10 @@ export const openApiDocument: OpenApiDocument = {
         in: "query",
         required: false,
         description:
-          "语言偏好。命中该项目注册过的语言（匹配大小写不敏感）且该公告存有对应译文时，\n`title` / `content` 返回译文，`locale` 字段标出实际语言；\n\n以下三种情况一律返回公告的默认内容且 `locale` 为 `null`：不传本参数、\n传了项目未注册的语言、该公告没有这个语言的译文。\n",
+          "语言偏好。命中该项目注册过的语言（匹配大小写不敏感）且该公告存有对应译文时，\n`title` / `content` 返回译文，`locale` 字段标出实际语言；\n\n以下三种情况一律返回公告的默认内容且 `locale` 为 `null`：不传本参数、\n传了项目未注册的语言、该公告没有这个语言的译文。\n\n提交格式不设限：`en-US`、`en_US`、`en(US)` 视为同一个标签（`_` 与括号等同 `-`，\n大小写不敏感）；不含分隔符的写法整串比对。没命中时不报错，返回默认内容，并在\n返回对象上附 `locale_message` 说明提交的语言未命中。\n",
         example: "en-US",
         schema: {
           type: "string",
-          maxLength: 35,
-          pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
         },
       },
       VersionLocale: {
@@ -6998,12 +7094,10 @@ export const openApiDocument: OpenApiDocument = {
         in: "query",
         required: false,
         description:
-          "语言偏好。命中该项目注册过的语言（匹配大小写不敏感）且该版本存有对应译文时，\n`title` / `content` 返回译文，`locale` 字段标出实际语言；\n\n以下三种情况一律返回版本的默认内容且 `locale` 为 `null`：不传本参数、\n传了项目未注册的语言、该版本没有这个语言的译文。回落是逐字段的：\n只译了标题的版本，更新说明仍返回默认内容。\n",
+          "语言偏好。命中该项目注册过的语言（匹配大小写不敏感）且该版本存有对应译文时，\n`title` / `content` 返回译文，`locale` 字段标出实际语言；\n\n以下三种情况一律返回版本的默认内容且 `locale` 为 `null`：不传本参数、\n传了项目未注册的语言、该版本没有这个语言的译文。回落是逐字段的：\n只译了标题的版本，更新说明仍返回默认内容。\n\n提交格式不设限：`en-US`、`en_US`、`en(US)` 视为同一个标签（`_` 与括号等同 `-`，\n大小写不敏感）；不含分隔符的写法整串比对。没命中时不报错，返回默认内容，并在\n返回对象上附 `locale_message` 说明提交的语言未命中。\n",
         example: "en-US",
         schema: {
           type: "string",
-          maxLength: 35,
-          pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
         },
       },
       EntityId: {
@@ -8605,6 +8699,11 @@ export const openApiDocument: OpenApiDocument = {
             description:
               "本次返回的 name / description 实际来自哪个语言的译文；null 表示项目自身的值 （没提语言偏好、语言未注册，或该语言的译文两个字段都留空）。",
           },
+          locale_message: {
+            type: "string",
+            description:
+              "提交了语言偏好却没命中项目注册的语言时的提示，此时内容已回落默认值； 命中或没提交语言偏好时不返回此字段。",
+          },
           translations: {
             type: "array",
             items: {
@@ -8687,9 +8786,9 @@ export const openApiDocument: OpenApiDocument = {
           locale: {
             type: "string",
             maxLength: 35,
-            pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+            pattern: "^[^\\x00-\\x1f\\x7f/\\\\]+$",
             description:
-              "语言标签，如 zh-CN / en-US。原样保存录入时的写法，服务端不做 BCP 47 规范化——语言由项目自己定。匹配（含重复注册判定）大小写不敏感。",
+              "语言标签，如 zh-CN / en-US。原样保存录入时的写法，服务端不做 BCP 47 规范化——语言由项目自己定。匹配（含重复注册判定）大小写不敏感，且 `_`、 括号与 `-` 等价，所以 `en_US` 会认作已注册的 `en-US`。不能含控制字符与 `/`、`\\`。",
           },
           aliases: {
             type: "array",
@@ -8697,7 +8796,7 @@ export const openApiDocument: OpenApiDocument = {
             items: {
               type: "string",
               maxLength: 35,
-              pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+              pattern: "^[^\\x00-\\x1f\\x7f/\\\\]+$",
             },
             description:
               "同义标签：客户端提交其中任何一个都等价于命中主标签（多对一）。例如主标签 `en` 列出 `en-US` / `en-GB`，三种写法取到同一份译文，返回体里的 locale 始终是主标签 `en`。只认显式列出的，不做 `en-*` 前缀自动回退。 与本项目其它语言的主标签或同义标签相撞会 400；重复项与主标签自身会被忽略。",
@@ -8711,6 +8810,37 @@ export const openApiDocument: OpenApiDocument = {
         example: {
           locale: "en",
           aliases: ["en-US", "en-GB"],
+          label: "English",
+        },
+      },
+      UpdateProjectLocaleDto: {
+        type: "object",
+        properties: {
+          locale: {
+            type: "string",
+            maxLength: 35,
+            pattern: "^[^\\x00-\\x1f\\x7f/\\\\]+$",
+            description: "新的主标签。缺省即不改名。",
+          },
+          aliases: {
+            type: "array",
+            maxItems: 16,
+            items: {
+              type: "string",
+              maxLength: 35,
+              pattern: "^[^\\x00-\\x1f\\x7f/\\\\]+$",
+            },
+            description: "整体替换同义标签列表，传空数组即清空；缺省保持原值。",
+          },
+          label: {
+            type: ["string", "null"],
+            maxLength: 64,
+            description: "展示名，传 null 或空串即清空；缺省保持原值。",
+          },
+        },
+        example: {
+          locale: "en-US",
+          aliases: ["en", "en-GB"],
           label: "English",
         },
       },
@@ -8779,7 +8909,7 @@ export const openApiDocument: OpenApiDocument = {
           locale: {
             type: "string",
             maxLength: 35,
-            pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+            pattern: "^[^\\x00-\\x1f\\x7f/\\\\]+$",
             description: "必须是该项目已注册的语言（主标签或同义标签均可）。",
           },
           name: {
@@ -10864,7 +10994,7 @@ export const openApiDocument: OpenApiDocument = {
           locale: {
             type: "string",
             maxLength: 35,
-            pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+            pattern: "^[^\\x00-\\x1f\\x7f/\\\\]+$",
             description:
               "语言标签，必须是该项目已注册的语言（主标签或同义标签均可，见 /admin/projects/{projectKey}/locales），未注册则整个请求 400。 匹配大小写不敏感，存储时归一到注册的主标签。",
           },
@@ -10926,6 +11056,11 @@ export const openApiDocument: OpenApiDocument = {
             type: ["string", "null"],
             description:
               "本次返回的 title / content 实际是哪个语言的译文；null 表示返回的是默认内容 （没提语言偏好、语言未注册，或该版本没有这个语言的译文）。",
+          },
+          locale_message: {
+            type: "string",
+            description:
+              "提交了语言偏好却没命中项目注册的语言时的提示，此时内容已回落默认值； 命中或没提交语言偏好时不返回此字段。",
           },
           translations: {
             type: "array",
@@ -11206,10 +11341,8 @@ export const openApiDocument: OpenApiDocument = {
           },
           locale: {
             type: "string",
-            maxLength: 35,
-            pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
             description:
-              "语言偏好。命中该项目注册过的语言时，响应里 latest_version / latest_preview_version / target_version 三个版本对象的 title 与 content 都返回对应译文（逐字段回落），各自的 locale 字段标出实际语言。 没命中或该版本没有译文时返回默认内容，locale 为 null。",
+              "语言偏好，格式不设限（`en-US` / `en_US` / `en(US)` 等价）。没命中时各版本对象带 `locale_message`。命中该项目注册过的语言时，响应里 latest_version / latest_preview_version / target_version 三个版本对象的 title 与 content 都返回对应译文（逐字段回落），各自的 locale 字段标出实际语言。 没命中或该版本没有译文时返回默认内容，locale 为 null。",
           },
         },
         example: {
@@ -11305,7 +11438,7 @@ export const openApiDocument: OpenApiDocument = {
           locale: {
             type: "string",
             maxLength: 35,
-            pattern: "^[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*$",
+            pattern: "^[^\\x00-\\x1f\\x7f/\\\\]+$",
             description:
               "语言标签，必须是该项目已注册的语言（主标签或同义标签均可，见 /admin/projects/{projectKey}/locales），未注册则整个请求 400。 匹配大小写不敏感，存储时归一到注册的主标签。",
           },
@@ -11528,6 +11661,11 @@ export const openApiDocument: OpenApiDocument = {
             type: ["string", "null"],
             description:
               "本次返回的 title / content 实际是哪个语言的译文；null 表示返回的是默认内容 （没提语言偏好、语言未注册，或该公告没有这个语言的译文）。",
+          },
+          locale_message: {
+            type: "string",
+            description:
+              "提交了语言偏好却没命中项目注册的语言时的提示，此时内容已回落默认值； 命中或没提交语言偏好时不返回此字段。",
           },
           translations: {
             type: "array",

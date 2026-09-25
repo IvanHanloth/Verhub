@@ -3,11 +3,12 @@ import { Platform, Prisma } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
 import { ProjectResolverService } from "../database/project-resolver.service"
+import { tzOffsetColumn, UNKNOWN_CLIENT_CLOCK, type ClientClock } from "../common/client-clock"
 import { nowSeconds } from "../common/utils"
 import { toDayBucket, toHourBucket } from "../stats/bucket-utils"
 import { UNKNOWN_REGION } from "../stats/request-stats.service"
 import type { ClientOrigin } from "../geo/client-origin.service"
-import { clampOccurredAt } from "./event-config"
+import { clampOccurredAt, correctClockSkew } from "./event-config"
 import { normalizeEventName } from "./event-name"
 import { applyEventIpStorage, resolveEventIpStorage } from "./ip-anonymize"
 import type { IngestEventsDto } from "./dto/ingest-events.dto"
@@ -27,7 +28,12 @@ export type IngestResult = {
 }
 
 /** 服务端在事件明细里另行记录的来源，与 Log / Feedback 同源。 */
-type ResolvedOrigin = ClientOrigin & { region: string; regionCode: string; cityCode: string }
+type ResolvedOrigin = ClientOrigin & {
+  region: string
+  regionCode: string
+  cityCode: string
+  tzOffset: number
+}
 
 @Injectable()
 export class EventsIngestService {
@@ -49,6 +55,7 @@ export class EventsIngestService {
     dto: IngestEventsDto,
     origin: ClientOrigin,
     doNotTrack: boolean,
+    clock: ClientClock = UNKNOWN_CLIENT_CLOCK,
   ): Promise<IngestResult> {
     const normalizedProjectKey = await this.resolveProjectKey(projectKey)
 
@@ -73,6 +80,7 @@ export class EventsIngestService {
       region: origin.countryCode ?? UNKNOWN_REGION,
       regionCode: "",
       cityCode: "",
+      tzOffset: tzOffsetColumn(clock),
     }
 
     const prepared = dto.events.flatMap((item) => {
@@ -90,7 +98,12 @@ export class EventsIngestService {
       distinctId: dto.distinct_id,
       sessionId: dto.session_id ?? null,
       eventId: item.event_id,
-      occurredAt: clampOccurredAt(item.occurred_at, receivedAt),
+      // 先按本次请求测得的设备时钟偏差校正，再过可信窗口：离线补发的事件与这次请求
+      // 出自同一个时钟，偏差一并适用。
+      occurredAt: clampOccurredAt(
+        correctClockSkew(item.occurred_at, clock.skewSeconds),
+        receivedAt,
+      ),
       receivedAt,
       properties: (item.properties ?? undefined) as Prisma.InputJsonValue | undefined,
       // 地理定位在 ClientOriginService 里已经用完整地址解析完了，这里只决定存什么。
@@ -298,7 +311,7 @@ export class EventsIngestService {
 
     for (const bucket of buckets.values()) {
       await this.prisma.$executeRaw`
-        INSERT INTO "EventStat" ("id", "projectKey", "eventName", "hourBucket", "platform", "region", "regionCode", "cityCode", "count")
+        INSERT INTO "EventStat" ("id", "projectKey", "eventName", "hourBucket", "platform", "region", "regionCode", "cityCode", "tzOffset", "count")
         VALUES (
           gen_random_uuid()::text,
           ${projectKey},
@@ -308,9 +321,10 @@ export class EventsIngestService {
           ${origin.region},
           ${origin.regionCode},
           ${origin.cityCode},
+          ${origin.tzOffset},
           ${bucket.count}
         )
-        ON CONFLICT ("projectKey", "eventName", "hourBucket", "platform", "region", "regionCode", "cityCode")
+        ON CONFLICT ("projectKey", "eventName", "hourBucket", "platform", "region", "regionCode", "cityCode", "tzOffset")
         DO UPDATE SET
           "count" = "EventStat"."count" + ${bucket.count},
           "updatedAt" = CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)

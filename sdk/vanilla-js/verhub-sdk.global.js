@@ -21,6 +21,9 @@ const PLATFORM_HEADER = "x-verhub-platform"
 /** 客户端系统版本明细头，如 `11` / `ubuntu 24.04`；超过 32 字符会被服务端丢弃。 */
 const PLATFORM_VERSION_HEADER = "x-verhub-platform-version"
 
+/** 客户端本地时间头；服务端从偏移取时区，从时刻算设备时钟偏差。 */
+const CLIENT_TIME_HEADER = "x-verhub-client-time"
+
 /** 系统版本明细的长度上限，与服务端一致。 */
 const MAX_PLATFORM_VERSION_LENGTH = 32
 
@@ -52,8 +55,39 @@ function headerSafe(value) {
   return value ? sanitizePlatformVersion(value) || null : null
 }
 
+/**
+ * 把时刻格式化成带显式偏移的本地时间，如 `2026-09-24T10:00:00.123+08:00`。
+ *
+ * 偏移恒为 `±HH:MM`（UTC 也写 `+00:00`），四个语言的 SDK 输出形状相同。只用
+ * Date 本身而不依赖 Intl，部分精简运行时没有完整的时区数据。
+ *
+ * @param {Date} [date] 要格式化的时刻，默认当前时刻
+ * @returns {string | null} 格式化结果；无法得出合规值时为 null
+ */
+function formatClientTime(date = new Date()) {
+  try {
+    // getTimezoneOffset 是「UTC 减本地」，符号与 ISO 偏移相反。
+    const offset = -date.getTimezoneOffset()
+    const year = date.getFullYear()
+    // 历史日期可能得到秒级的地方平时偏移，写不成 ±HH:MM 又不失真，干脆不报。
+    if (!Number.isInteger(offset) || !Number.isInteger(year) || year < 0 || year > 9999) {
+      return null
+    }
+    const pad = (value, width = 2) => String(value).padStart(width, "0")
+    const abs = Math.abs(offset)
+    return (
+      `${pad(year, 4)}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+      `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}` +
+      `.${pad(date.getMilliseconds(), 3)}` +
+      `${offset < 0 ? "-" : "+"}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
+    )
+  } catch {
+    return null
+  }
+}
+
 /** 默认重试次数。 */
-const DEFAULT_RETRIES = 2
+const DEFAULT_RETRIES = 3
 
 /** 会触发重试的服务端状态码。 */
 const RETRY_STATUS = new Set([502, 503, 504])
@@ -299,16 +333,20 @@ class HttpClient {
    *   token?: string,
    *   platform?: string | null,
    *   platformVersion?: string | null,
+   *   sendClientTime?: boolean,
    *   timeoutMs?: number,
    *   retries?: number,
    *   fetch?: typeof fetch,
    *   headers?: Record<string, string>,
    *   appIdentifier?: string,
    *   logger?: (event: {method: string, url: string, status?: number, attempt: number}) => void,
-   * }} options 客户端配置
+   * }} options 客户端配置。sendClientTime 默认 true，即每个请求带上
+   *   x-verhub-client-time（设备本地时间与 UTC 偏移），供服务端按用户当地时间
+   *   统计、校正设备时钟偏差；传 false 则不发。
    */
   constructor(options) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl)
+    this.sendClientTime = options.sendClientTime !== false
     this.projectKey = options.projectKey
     this.token = options.token || ""
     this.timeoutMs = options.timeoutMs === undefined ? 15000 : options.timeoutMs
@@ -436,9 +474,15 @@ class HttpClient {
         this.logger({ method, url, attempt })
       }
 
+      // 每次尝试现取：服务端拿它与收到请求的时刻比，重试前的等待不能算进去。
+      const clientTime = this.sendClientTime ? formatClientTime() : null
+      const attemptHeaders = clientTime
+        ? Object.assign({}, headers, { [CLIENT_TIME_HEADER]: clientTime })
+        : headers
+
       let response
       try {
-        response = await this.fetchOnce(method, url, headers, body)
+        response = await this.fetchOnce(method, url, attemptHeaders, body)
       } catch (cause) {
         if (canRetry && attempt < maxAttempts) {
           await this.backoff(attempt)
@@ -1114,7 +1158,7 @@ class PublicApi {
   /**
    * @param {{locale?: string}} [options] 语言偏好。命中项目注册的语言且该语言译文填了
    *   对应字段时，`name` / `description` 返回译文，返回体的 `locale` 标出实际语言；
-   *   否则回落项目自身的值。
+   *   否则回落项目自身的值。提交的语言没命中注册语言时，返回体另带 `locale_message` 提示。
    */
   getProject(options = {}) {
     return this.http.request("GET", "/public/{projectKey}", {
@@ -1127,6 +1171,7 @@ class PublicApi {
    * @param {{limit?: number, offset?: number, locale?: string}} [options] 分页参数与语言偏好。
    *   `locale` 命中项目注册的语言且该版本有译文时，`title` / `content` 返回译文，
    *   返回项的 `locale` 标出实际语言；否则回落版本自身的内容（`locale` 为 null）。
+   *   提交的语言没命中注册语言时，返回项另带 `locale_message` 提示。
    */
   listVersions(options = {}) {
     return this.http.request("GET", "/public/{projectKey}/versions", {
@@ -1190,7 +1235,8 @@ class PublicApi {
    * @param {{limit?: number, offset?: number, platform?: string, version?: string, locale?: string}} [options]
    *   分页、平台、客户端版本号与语言偏好。
    *   `version` 不传时，所有设了可见版本范围的公告都不会返回；
-   *   `locale` 未注册或该公告无译文时回落到默认内容（返回项的 `locale` 为 null）。
+   *   `locale` 未注册或该公告无译文时回落到默认内容（返回项的 `locale` 为 null），
+   *   未注册时返回项另带 `locale_message` 提示。
    */
   listAnnouncements(options = {}) {
     return this.http.request("GET", "/public/{projectKey}/announcements", {
@@ -1573,9 +1619,25 @@ class AdminApi {
   }
 
   /**
+   * 修改已注册的语言，缺省字段保持原值。改主标签时本项目下该语言的译文随之迁移，
+   * 客户端若仍会提交旧标签，把它放进 aliases。
+   *
+   * @param {string} locale 要修改的语言标签（主标签或同义标签），匹配规则同公开端
+   * @param {{locale?: string, aliases?: string[], label?: string|null}} input
+   *   新主标签、整体替换的同义标签列表（空数组即清空）与展示名（null 或空串即清空）
+   */
+  updateProjectLocale(locale, input) {
+    return this.http.request("PATCH", "/admin/projects/{projectKey}/locales/{locale}", {
+      pathParams: { projectKey: this.http.requireProjectKey(), locale },
+      body: compact(Object.assign({}, input)),
+      auth: true,
+    })
+  }
+
+  /**
    * 注销一个语言。已录入的公告译文不会被删除，只是暂时不可达，重新注册即恢复。
    *
-   * @param {string} locale 要注销的语言标签，匹配大小写不敏感
+   * @param {string} locale 要注销的语言标签（主标签或同义标签），匹配规则同公开端
    */
   deleteProjectLocale(locale) {
     return this.http.request("DELETE", "/admin/projects/{projectKey}/locales/{locale}", {
@@ -2332,6 +2394,7 @@ class VerhubClient {
    *   token?: string,
    *   platform?: string | null,
    *   platformVersion?: string | null,
+   *   sendClientTime?: boolean,
    *   timeoutMs?: number,
    *   retries?: number,
    *   fetch?: typeof fetch,
@@ -2342,6 +2405,8 @@ class VerhubClient {
    * }} options 客户端配置；baseUrl 须包含 /api/v1 前缀。
    *   analytics 是事件采集配置，省略即启用默认行为（设备级匿名标识 + 本地待发
    *   队列）；面向欧盟用户的接入方应当设置 analytics.requireConsent 为 true。
+   *   sendClientTime 默认 true，即每个请求带上 x-verhub-client-time（设备本地
+   *   时间与 UTC 偏移），供服务端按用户当地时间统计、校正设备时钟偏差；传 false 则不发。
    */
   constructor(options) {
     this.http = new HttpClient(options)
@@ -2425,7 +2490,9 @@ const VerhubSDK = VerhubClient
     root.nullStorage = nullStorage
     root.randomId = randomId
     root.sanitizePlatformVersion = sanitizePlatformVersion
+    root.formatClientTime = formatClientTime
     root.compact = compact
+    root.CLIENT_TIME_HEADER = CLIENT_TIME_HEADER
     root.PLATFORM_HEADER = PLATFORM_HEADER
     root.PLATFORM_VERSION_HEADER = PLATFORM_VERSION_HEADER
     root.VERHUB_SDK_VERSION = VERHUB_SDK_VERSION

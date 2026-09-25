@@ -12,6 +12,7 @@ import {
   type StatsRange,
   type TimeseriesSeries,
 } from "../stats/bucket-utils"
+import { UNKNOWN_TZ_OFFSET } from "../common/client-clock"
 import { resolveTzOffset } from "../stats/region-timezone"
 import { provinceName } from "../stats/province-names"
 import { andAll, compileFilters } from "./dsl/compile"
@@ -232,14 +233,18 @@ export class EventsStatsService {
     }
 
     const rows = await this.prisma.eventStat.groupBy({
-      by: ["hourBucket", "region"],
+      by: ["hourBucket", "region", "tzOffset"],
       _sum: { count: true },
       where,
     })
 
     const totals = new Map<string, number>()
     for (const row of rows) {
-      const offset = resolveTzOffset(row.region, tzOffsetMinutes)
+      // 优先用客户端上报的时区，口径同请求热力图。
+      const offset =
+        row.tzOffset !== UNKNOWN_TZ_OFFSET
+          ? row.tzOffset
+          : resolveTzOffset(row.region, tzOffsetMinutes)
       const date = new Date((row.hourBucket + offset * 60) * 1000)
       const cell = `${date.getUTCDay()}:${date.getUTCHours()}`
       totals.set(cell, (totals.get(cell) ?? 0) + (row._sum.count ?? 0))

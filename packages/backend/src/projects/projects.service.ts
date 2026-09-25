@@ -11,11 +11,12 @@ import { PrismaService } from "../database/prisma.service"
 import { FilesService } from "../files/files.service"
 import { ProjectResolverService } from "../database/project-resolver.service"
 import { isUniqueViolation, normalizeProjectKey, nowSeconds } from "../common/utils"
-import { localeKey, matchRegisteredLocale } from "../common/locale"
+import { localeKey, matchRegisteredLocale, resolveLocalePreference } from "../common/locale"
 import { searchContains } from "../common/query-filters"
 import { parseGithubRepository } from "../versions/github-release.service"
 import { CreateProjectDto, ProjectTranslationDto } from "./dto/create-project.dto"
 import { CreateProjectLocaleDto } from "./dto/create-project-locale.dto"
+import { UpdateProjectLocaleDto } from "./dto/update-project-locale.dto"
 import { QueryProjectsDto } from "./dto/query-projects.dto"
 import { UpdateProjectDto } from "./dto/update-project.dto"
 import { compareComparableVersions, parseComparableVersion } from "../versions/version-comparator"
@@ -66,6 +67,8 @@ type ProjectItem = {
    * （没提语言偏好、语言未注册，或该语言的译文两个字段都留空）。
    */
   locale: string | null
+  /** 提交了语言偏好却没命中项目注册的语言时的提示；命中或没提交则不返回此字段。 */
+  locale_message?: string
   /** 全部译文，仅管理接口返回。 */
   translations?: ProjectTranslationItem[]
   created_at: number
@@ -173,7 +176,11 @@ export class ProjectsService {
         : Promise.resolve([]),
     ])
 
-    return this.toProjectItem(project, { locale: matchRegisteredLocale(registered, locale) })
+    const resolved = resolveLocalePreference(registered, locale)
+    return this.toProjectItem(project, {
+      locale: resolved.locale,
+      localeMessage: resolved.message,
+    })
   }
 
   async create(dto: CreateProjectDto): Promise<ProjectItem> {
@@ -387,7 +394,11 @@ export class ProjectsService {
       select: { locale: true, aliases: true },
     })
     const canonical = matchRegisteredLocale(existing, dto.locale) ?? dto.locale
-    const aliases = this.normalizeLocaleAliases(existing, canonical, dto.aliases)
+    const aliases = this.normalizeLocaleAliases(
+      existing.filter((item) => item.locale !== canonical),
+      canonical,
+      dto.aliases,
+    )
 
     const saved = await this.prisma.projectLocale.upsert({
       where: { projectKey_locale: { projectKey: canonicalKey, locale: canonical } },
@@ -410,11 +421,92 @@ export class ProjectsService {
   }
 
   /**
+   * 修改一个已注册的语言：主标签、同义标签、展示名，缺省字段保持原值。
+   *
+   * 改主标签时本项目下该语言的译文（项目、版本、公告）在同一事务里迁到新标签——
+   * 译文按主标签存，只改注册表会让已有译文全部失联。
+   */
+  async updateLocale(
+    id: string,
+    locale: string,
+    dto: UpdateProjectLocaleDto,
+  ): Promise<ProjectLocaleItem> {
+    const canonicalKey = await this.projectResolver.resolveCanonicalKeyOrThrow(id)
+    const existing = await this.prisma.projectLocale.findMany({
+      where: { projectKey: canonicalKey },
+      select: { locale: true, aliases: true, label: true },
+    })
+
+    const current = existing.find((item) => item.locale === matchRegisteredLocale(existing, locale))
+    if (!current) {
+      throw new NotFoundException("Locale not found")
+    }
+
+    const others = existing.filter((item) => item.locale !== current.locale)
+    const nextLocale = dto.locale?.trim() || current.locale
+    const owner = matchRegisteredLocale(others, nextLocale)
+    if (owner) {
+      throw new BadRequestException(
+        `Locale "${nextLocale}" is already used by locale "${owner}" in this project.`,
+      )
+    }
+
+    // 没传 aliases 时沿用旧列表，但要剔掉与新主标签同义的那个（改名成某个旧同义标签很常见）。
+    const aliases = this.normalizeLocaleAliases(others, nextLocale, dto.aliases ?? current.aliases)
+    const label = dto.label === undefined ? current.label : dto.label?.trim() || null
+    const renamed = nextLocale !== current.locale
+
+    try {
+      const saved = await this.prisma.$transaction(async (tx) => {
+        const row = await tx.projectLocale.update({
+          where: { projectKey_locale: { projectKey: canonicalKey, locale: current.locale } },
+          data: { locale: nextLocale, aliases, label },
+          select: { locale: true, aliases: true, label: true, createdAt: true },
+        })
+        if (renamed) {
+          const from = { locale: current.locale }
+          const to = { locale: nextLocale }
+          await tx.projectTranslation.updateMany({
+            where: { projectKey: canonicalKey, ...from },
+            data: to,
+          })
+          await tx.versionTranslation.updateMany({
+            where: { ...from, version: { projectKey: canonicalKey } },
+            data: to,
+          })
+          await tx.announcementTranslation.updateMany({
+            where: { ...from, announcement: { projectKey: canonicalKey } },
+            data: to,
+          })
+        }
+        return row
+      })
+
+      return {
+        locale: saved.locale,
+        aliases: saved.aliases,
+        label: saved.label,
+        created_at: saved.createdAt,
+      }
+    } catch (error) {
+      // 注销语言不删译文，新标签下可能还躺着当年留下的译文，迁过去会撞主键。
+      if (isUniqueViolation(error)) {
+        throw new ConflictException(
+          `Translations under locale "${nextLocale}" already exist (left from a removed locale). Register "${nextLocale}" again instead of renaming.`,
+        )
+      }
+      throw error
+    }
+  }
+
+  /**
    * 同义标签去重并校验：不能与自己的主标签重复（冗余），也不能撞上本项目**其它**
    * 语言的主标签或同义标签——撞了就说不清客户端传这个标签时该命中谁。
+   *
+   * @param others 本项目除当前语言外的其它语言。
    */
   private normalizeLocaleAliases(
-    existing: { locale: string; aliases: string[] }[],
+    others: { locale: string; aliases: string[] }[],
     canonical: string,
     aliases: string[] | undefined,
   ): string[] {
@@ -423,7 +515,6 @@ export class ProjectsService {
     }
 
     const canonicalKeyValue = localeKey(canonical)
-    const others = existing.filter((item) => localeKey(item.locale) !== canonicalKeyValue)
     const taken = new Map<string, string>()
     for (const item of others) {
       taken.set(localeKey(item.locale), item.locale)
@@ -620,6 +711,7 @@ export class ProjectsService {
   /**
    * @param options.locale 公开端请求的语言（已归一到主标签）。译文按字段覆盖：
    *   名称与描述各自留空就回落项目自身的值。
+   * @param options.localeMessage 语言偏好没命中注册表时的提示，原样放进 `locale_message`。
    * @param options.includeTranslations 后台接口带出全部译文供编辑；公开端不带。
    */
   private toProjectItem(
@@ -646,7 +738,11 @@ export class ProjectsService {
       createdAt: number
       updatedAt: number
     },
-    options: { locale?: string | null; includeTranslations?: boolean } = {},
+    options: {
+      locale?: string | null
+      localeMessage?: string | null
+      includeTranslations?: boolean
+    } = {},
   ): ProjectItem {
     const translation = options.locale
       ? project.translations?.find((item) => item.locale === options.locale)
@@ -676,6 +772,7 @@ export class ProjectsService {
       aliases: project.aliases?.map((item) => item.alias) ?? [],
       // 两个字段都留空的译文行对返回内容毫无贡献，报出去会让调用方以为拿到了译文。
       locale: name || description ? (translation?.locale ?? null) : null,
+      ...(options.localeMessage ? { locale_message: options.localeMessage } : {}),
       ...(options.includeTranslations
         ? {
             translations: (project.translations ?? []).map((item) => ({

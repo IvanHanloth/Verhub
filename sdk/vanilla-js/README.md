@@ -147,10 +147,13 @@ client.public.revokeConsent()
   没给就自己探测；只有 `platform: null` 这个明确的退出声明会连带停掉版本探测。
   两个值都会清洗成能安全进 HTTP 头的形式（非可打印 ASCII 按空白处理、折叠空白、
   按 32 字符截断，洗完为空则不发），免得脏值让 `fetch` 抛 `TypeError` 弄挂请求
+- 每个请求默认带 `x-verhub-client-time`（设备本地时间加 UTC 偏移，如
+  `2026-09-24T10:00:00.123+08:00`，每次发送前现取），供服务端按用户当地时间统计、
+  校正设备时钟偏差；`sendClientTime: false` 关闭。`sendBeacon` 设不了请求头，那一批不带
 - 错误分三类：`VerhubAuthError`（缺凭据的本地前置校验，请求没发出去）、
   `VerhubApiError`（非 2xx）、`VerhubConnectionError`（没到服务端），都继承自
   `VerhubError`
-- GET / HEAD 在连接失败与 502/503/504 时默认自动重试 2 次；其余方法不重放。用
+- GET / HEAD 在连接失败与 502/503/504 时默认自动重试 3 次；其余方法不重放。用
   `retries` 调整，传 `0` 关闭
 - 支持 `timeoutMs`、`retries`、`headers`、`fetch`、`appIdentifier`、`logger` 等可选项。
   `appIdentifier` 追加到默认 UA 之后（仅服务端运行时有效，浏览器禁改 UA）

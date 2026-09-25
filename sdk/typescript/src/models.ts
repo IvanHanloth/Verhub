@@ -58,6 +58,11 @@ export type ProjectItem = {
    * （没提语言偏好、语言未注册，或该语言的译文两个字段都留空）。
    */
   locale: string | null
+  /**
+   * 提交了语言偏好却没命中项目注册的语言时的提示，此时内容已回落默认值；
+   * 命中或没提交语言偏好时不返回此字段。
+   */
+  locale_message?: string
   /** 项目的全部译文，仅管理接口返回。 */
   translations?: ProjectTranslation[]
   created_at: number
@@ -82,6 +87,11 @@ export type VersionItem = {
    * （没提语言偏好、语言未注册，或该版本没有这个语言的译文）。
    */
   locale: string | null
+  /**
+   * 提交了语言偏好却没命中项目注册的语言时的提示，此时内容已回落默认值；
+   * 命中或没提交语言偏好时不返回此字段。
+   */
+  locale_message?: string
   /** 该版本的全部译文，只有管理接口会返回。 */
   translations?: VersionTranslation[]
   download_url: string | null
@@ -134,6 +144,11 @@ export type AnnouncementItem = {
    * （没提语言偏好、语言未注册，或该公告没有这个语言的译文）。
    */
   locale: string | null
+  /**
+   * 提交了语言偏好却没命中项目注册的语言时的提示，此时内容已回落默认值；
+   * 命中或没提交语言偏好时不返回此字段。
+   */
+  locale_message?: string
   /** 全部译文，仅管理接口返回。 */
   translations?: AnnouncementTranslation[]
   published_at: number
@@ -447,6 +462,19 @@ export type CreateProjectLocaleInput = {
   aliases?: string[]
   /** 后台展示名，如「简体中文」。 */
   label?: string
+}
+
+/** 修改已注册的语言，缺省字段保持原值。 */
+export type UpdateProjectLocaleInput = {
+  /**
+   * 新的主标签。本项目下该语言的项目、版本与公告译文随之迁到新标签；
+   * 客户端若仍会提交旧标签，把它放进 aliases。新主标签下已有注销语言遗留的译文时 409。
+   */
+  locale?: string
+  /** 整体替换同义标签列表，传空数组即清空。与本项目其它语言相撞会 400。 */
+  aliases?: string[]
+  /** 展示名，传 null 或空串即清空。 */
+  label?: string | null
 }
 export type VersionListResponse = ListResponse<VersionItem>
 export type AnnouncementListResponse = ListResponse<AnnouncementItem>

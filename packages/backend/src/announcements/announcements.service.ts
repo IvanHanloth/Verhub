@@ -4,7 +4,12 @@ import { Platform, Prisma } from "@prisma/client"
 import { PrismaService } from "../database/prisma.service"
 import { ProjectResolverService } from "../database/project-resolver.service"
 import { nowSeconds } from "../common/utils"
-import { matchRegisteredLocale } from "../common/locale"
+import {
+  matchRegisteredLocale,
+  NO_LOCALE,
+  resolveLocalePreference,
+  type LocaleResolution,
+} from "../common/locale"
 import { fromPlatforms, type PlatformValue } from "../common/platform"
 import { searchContains } from "../common/query-filters"
 import { toComparableVersionSortKey } from "../versions/version-comparator"
@@ -42,6 +47,8 @@ type AnnouncementItem = {
    * 让客户端一眼看出有没有发生回落，不必自己比对文案。
    */
   locale: string | null
+  /** 提交了语言偏好却没命中项目注册的语言时的提示；命中或没提交则不返回此字段。 */
+  locale_message?: string
   /** 全部译文，仅后台接口返回；公开端不带，避免把没请求的语言一并推给客户端。 */
   translations?: AnnouncementTranslationItem[]
   published_at: number
@@ -222,7 +229,7 @@ export class AnnouncementsService {
     query: QueryAnnouncementsDto,
   ): Promise<AnnouncementListResponse> {
     const normalizedProjectKey = await this.resolveProjectKey(projectKey)
-    const [clientSortKey, locale] = await Promise.all([
+    const [clientSortKey, { locale, message: localeMessage }] = await Promise.all([
       this.resolveClientVersionSortKey(normalizedProjectKey, query.version),
       this.resolveRegisteredLocale(normalizedProjectKey, query.locale),
     ])
@@ -253,7 +260,7 @@ export class AnnouncementsService {
 
     return {
       total,
-      data: data.map((item) => this.toAnnouncementItem(item, { locale })),
+      data: data.map((item) => this.toAnnouncementItem(item, { locale, localeMessage })),
     }
   }
 
@@ -262,7 +269,7 @@ export class AnnouncementsService {
     query?: Pick<QueryAnnouncementsDto, "platform" | "version" | "locale">,
   ): Promise<AnnouncementItem> {
     const normalizedProjectKey = await this.resolveProjectKey(projectKey)
-    const [clientSortKey, locale] = await Promise.all([
+    const [clientSortKey, { locale, message: localeMessage }] = await Promise.all([
       this.resolveClientVersionSortKey(normalizedProjectKey, query?.version),
       this.resolveRegisteredLocale(normalizedProjectKey, query?.locale),
     ])
@@ -286,7 +293,7 @@ export class AnnouncementsService {
       throw new NotFoundException("Announcement not found")
     }
 
-    return this.toAnnouncementItem(latest, { locale })
+    return this.toAnnouncementItem(latest, { locale, localeMessage })
   }
 
   async create(projectKey: string, dto: CreateAnnouncementDto): Promise<AnnouncementItem> {
@@ -446,15 +453,15 @@ export class AnnouncementsService {
   }
 
   /**
-   * 语言偏好 → 项目注册表里的主标签；没注册过就返回 null（等同没提偏好）。
-   * 主标签与同义标签一视同仁地匹配，都忽略大小写，命中同义标签也返回主标签。
+   * 语言偏好 → 项目注册表里的主标签；没命中时 locale 为 null 并带一句提示。
+   * 主标签与同义标签一视同仁地匹配，命中同义标签也返回主标签。
    */
   private async resolveRegisteredLocale(
     projectKey: string,
     locale: string | undefined,
-  ): Promise<string | null> {
+  ): Promise<LocaleResolution> {
     if (!locale?.trim()) {
-      return null
+      return NO_LOCALE
     }
 
     const registered = await this.prisma.projectLocale.findMany({
@@ -462,7 +469,7 @@ export class AnnouncementsService {
       select: { locale: true, aliases: true },
     })
 
-    return matchRegisteredLocale(registered, locale)
+    return resolveLocalePreference(registered, locale)
   }
 
   /**
@@ -517,11 +524,16 @@ export class AnnouncementsService {
   /**
    * @param options.locale 公开端请求的语言（已归一到主标签）。译文按字段覆盖：
    *   标题与正文各自留空就回落默认内容，所以永远有东西可返回。
+   * @param options.localeMessage 语言偏好没命中注册表时的提示，原样放进 `locale_message`。
    * @param options.includeTranslations 后台接口带出全部译文供编辑；公开端不带。
    */
   private toAnnouncementItem(
     announcement: AnnouncementRow,
-    options: { locale?: string | null; includeTranslations?: boolean } = {},
+    options: {
+      locale?: string | null
+      localeMessage?: string | null
+      includeTranslations?: boolean
+    } = {},
   ): AnnouncementItem {
     const translation = options.locale
       ? announcement.translations.find((item) => item.locale === options.locale)
@@ -542,6 +554,7 @@ export class AnnouncementsService {
       // 只有真的覆盖了内容才算"返回的是该语言的译文"；一行仅设了 isHidden 的
       // 译文对可见的那部分内容毫无贡献，报出去会让调用方以为拿到了译文。
       locale: title || content ? (translation?.locale ?? null) : null,
+      ...(options.localeMessage ? { locale_message: options.localeMessage } : {}),
       ...(options.includeTranslations
         ? {
             translations: announcement.translations.map((item) => ({

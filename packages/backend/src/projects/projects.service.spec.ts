@@ -26,8 +26,12 @@ function createPrismaMock() {
     projectLocale: {
       findMany: jest.fn().mockResolvedValue([]),
       upsert: jest.fn(),
+      update: jest.fn(),
       delete: jest.fn(),
     },
+    projectTranslation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    versionTranslation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    announcementTranslation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     $transaction: jest.fn(),
   }
 }
@@ -724,6 +728,119 @@ describe("ProjectsService", () => {
 
     expect(result.name).toBe("默认名称")
     expect(result.locale).toBeNull()
+    expect(result.locale_message).toContain("ja-JP")
+  })
+
+  it("findOneByProjectKey matches underscore and parenthesised spellings", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({
+      projectKey: "proj",
+      name: "默认名称",
+      description: null,
+      aliases: [],
+      translations: [{ locale: "en-US", name: "English", description: null }],
+    })
+    prisma.projectLocale.findMany.mockResolvedValue([{ locale: "en-US", aliases: [] }])
+
+    const service = createService(prisma)
+    for (const wanted of ["en_US", "en(US)", "EN (us)"]) {
+      const result = await service.findOneByProjectKey("proj", wanted)
+      expect(result.name).toBe("English")
+      expect(result.locale).toBe("en-US")
+      expect(result.locale_message).toBeUndefined()
+    }
+  })
+
+  it("updateLocale edits aliases and label in place", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(prisma))
+    prisma.projectLocale.findMany.mockResolvedValue([
+      { locale: "en", aliases: ["en-US"], label: "English" },
+    ])
+    prisma.projectLocale.update.mockResolvedValue({
+      locale: "en",
+      aliases: ["en-GB"],
+      label: null,
+      createdAt: 1,
+    })
+
+    const service = createService(prisma)
+    await service.updateLocale("proj", "EN", { aliases: ["en-GB"], label: "" })
+
+    expect(prisma.projectLocale.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { projectKey_locale: { projectKey: "proj", locale: "en" } },
+        data: { locale: "en", aliases: ["en-GB"], label: null },
+      }),
+    )
+    expect(prisma.projectTranslation.updateMany).not.toHaveBeenCalled()
+  })
+
+  it("updateLocale renaming moves every translation to the new tag", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.$transaction.mockImplementation(async (cb: (tx: unknown) => unknown) => cb(prisma))
+    prisma.projectLocale.findMany.mockResolvedValue([
+      { locale: "en", aliases: ["en-US"], label: "English" },
+    ])
+    prisma.projectLocale.update.mockResolvedValue({
+      locale: "en-US",
+      aliases: [],
+      label: "English",
+      createdAt: 1,
+    })
+
+    const service = createService(prisma)
+    await service.updateLocale("proj", "en", { locale: "en-US" })
+
+    // 改名成原来的同义标签：该同义标签随之剔除，否则与主标签重复
+    expect(prisma.projectLocale.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { locale: "en-US", aliases: [], label: "English" },
+      }),
+    )
+    const move = { data: { locale: "en-US" } }
+    expect(prisma.projectTranslation.updateMany).toHaveBeenCalledWith({
+      where: { projectKey: "proj", locale: "en" },
+      ...move,
+    })
+    expect(prisma.versionTranslation.updateMany).toHaveBeenCalledWith({
+      where: { locale: "en", version: { projectKey: "proj" } },
+      ...move,
+    })
+    expect(prisma.announcementTranslation.updateMany).toHaveBeenCalledWith({
+      where: { locale: "en", announcement: { projectKey: "proj" } },
+      ...move,
+    })
+  })
+
+  it("updateLocale rejects a tag that belongs to another locale", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+    prisma.projectLocale.findMany.mockResolvedValue([
+      { locale: "en", aliases: [], label: null },
+      { locale: "zh-CN", aliases: ["zh"], label: null },
+    ])
+
+    const service = createService(prisma)
+    await expect(service.updateLocale("proj", "en", { locale: "zh_cn" })).rejects.toBeInstanceOf(
+      BadRequestException,
+    )
+    await expect(service.updateLocale("proj", "en", { aliases: ["ZH"] })).rejects.toBeInstanceOf(
+      BadRequestException,
+    )
+    expect(prisma.projectLocale.update).not.toHaveBeenCalled()
+  })
+
+  it("updateLocale throws when the locale is not registered", async () => {
+    const prisma = createPrismaMock()
+    prisma.project.findUnique.mockResolvedValue({ projectKey: "proj" })
+
+    const service = createService(prisma)
+    await expect(service.updateLocale("proj", "fr", { label: "Français" })).rejects.toBeInstanceOf(
+      NotFoundException,
+    )
   })
 
   it("update replaces the whole translation set", async () => {

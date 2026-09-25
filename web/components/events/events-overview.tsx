@@ -331,7 +331,7 @@ function OverviewBody({
 
         <ChartCard
           title="活跃节律"
-          subtitle="按每条上报来源国家的当地时区折叠，回答「用户在当地几点活跃」"
+          subtitle="按用户当地时区折叠（SDK 上报的时区优先，缺失时按来源国家近似），回答「用户在当地几点活跃」"
           icon={Flame}
         >
           <RequestHeatmap cells={heatmap?.data ?? []} loading={loading} />

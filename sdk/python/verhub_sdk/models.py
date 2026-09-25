@@ -68,6 +68,9 @@ class _ProjectItemBase(TypedDict):
 class ProjectItem(_ProjectItemBase, total=False):
     #: 项目的全部译文，仅管理接口返回；公开接口不带这个键。
     translations: List["ProjectTranslation"]
+    #: 提交了语言偏好却没命中项目注册的语言时的提示，此时内容已回落默认值；
+    #: 命中或没提交语言偏好时不带这个键。
+    locale_message: str
 
 
 class VersionTranslation(TypedDict):
@@ -78,7 +81,7 @@ class VersionTranslation(TypedDict):
     content: Optional[str]
 
 
-class VersionItem(TypedDict):
+class _VersionItemBase(TypedDict):
     id: str
     version: str
     comparable_version: str
@@ -101,6 +104,12 @@ class VersionItem(TypedDict):
     custom_data: Optional[Dict[str, Any]]
     published_at: int
     created_at: int
+
+
+class VersionItem(_VersionItemBase, total=False):
+    #: 提交了语言偏好却没命中项目注册的语言时的提示，此时内容已回落默认值；
+    #: 命中或没提交语言偏好时不带这个键。
+    locale_message: str
 
 
 class AnnouncementTranslation(TypedDict):
@@ -139,6 +148,9 @@ class _AnnouncementItemBase(TypedDict):
 class AnnouncementItem(_AnnouncementItemBase, total=False):
     #: 全部译文，仅管理接口返回；公开接口不带这个键。
     translations: List[AnnouncementTranslation]
+    #: 提交了语言偏好却没命中项目注册的语言时的提示，此时内容已回落默认值；
+    #: 命中或没提交语言偏好时不带这个键。
+    locale_message: str
 
 
 class FeedbackItem(TypedDict):

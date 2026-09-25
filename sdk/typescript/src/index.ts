@@ -23,8 +23,10 @@ export {
 export { VerhubClient, VerhubSDK, type VerhubOptions } from "./client"
 export { VerhubApiError, VerhubAuthError, VerhubConnectionError, VerhubError } from "./errors"
 export {
+  CLIENT_TIME_HEADER,
   detectPlatform,
   detectPlatformVersion,
+  formatClientTime,
   PLATFORM_HEADER,
   PLATFORM_VERSION_HEADER,
   type RequestQuery,

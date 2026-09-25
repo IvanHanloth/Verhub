@@ -52,6 +52,7 @@ import type {
   ProjectLocaleItem,
   ProjectLocaleListResponse,
   CreateProjectLocaleInput,
+  UpdateProjectLocaleInput,
   ProjectGithubIntegration,
   ProjectItem,
   ProjectListResponse,
@@ -199,9 +200,22 @@ export class AdminApi {
   }
 
   /**
+   * 修改已注册的语言，缺省字段保持原值。
+   *
+   * @param locale 要修改的语言标签（主标签或同义标签），匹配规则同公开端
+   */
+  updateProjectLocale(locale: string, input: UpdateProjectLocaleInput): Promise<ProjectLocaleItem> {
+    return this.http.request("PATCH", "/admin/projects/{projectKey}/locales/{locale}", {
+      pathParams: { projectKey: this.http.requireProjectKey(), locale },
+      body: input,
+      auth: true,
+    })
+  }
+
+  /**
    * 注销一个语言。已录入的公告译文不会被删除，只是暂时不可达，重新注册即恢复。
    *
-   * @param locale 要注销的语言标签，匹配大小写不敏感
+   * @param locale 要注销的语言标签（主标签或同义标签），匹配规则同公开端
    */
   deleteProjectLocale(locale: string): Promise<DeleteSuccessResponse> {
     return this.http.request("DELETE", "/admin/projects/{projectKey}/locales/{locale}", {

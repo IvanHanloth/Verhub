@@ -51,6 +51,31 @@ export function hasDoNotTrackHeader(
 }
 
 /**
+ * 小于这个量级的偏差是网络往返与请求排队，不是时钟不准，不做校正——否则每条事件
+ * 都会被平移几百毫秒到几秒，平白引入抖动。
+ */
+export const CLOCK_SKEW_CORRECTION_THRESHOLD_SECONDS = 60
+
+/**
+ * 按测得的设备时钟偏差校正客户端声明的时间。偏差来自同一请求的 X-Verhub-Client-Time。
+ */
+export function correctClockSkew(
+  declared: number | undefined,
+  skewSeconds: number | null,
+): number | undefined {
+  if (
+    declared === undefined ||
+    !Number.isFinite(declared) ||
+    skewSeconds === null ||
+    Math.abs(skewSeconds) < CLOCK_SKEW_CORRECTION_THRESHOLD_SECONDS
+  ) {
+    return declared
+  }
+
+  return declared + skewSeconds
+}
+
+/**
  * 把客户端声明的时间钳到可信窗口内。
  *
  * 返回落库用的 occurredAt：窗口内用客户端值，窗口外一律用接收时间。

@@ -335,11 +335,41 @@ class AdminApi:
             auth=True,
         )
 
+    def update_project_locale(
+        self,
+        locale: str,
+        *,
+        new_locale: Any = UNSET,
+        aliases: Any = UNSET,
+        label: Any = UNSET,
+    ) -> ProjectLocaleItem:
+        """
+        修改已注册的语言，缺省字段保持原值。
+
+        :param locale: 要修改的语言标签（主标签或同义标签），匹配规则同公开端
+        :param new_locale: 新的主标签。本项目下该语言的项目、版本与公告译文随之迁到
+            新标签；客户端若仍会提交旧标签，把它放进 ``aliases``。新主标签下已有注销
+            语言遗留的译文时 409
+        :param aliases: 整体替换同义标签列表，传空列表即清空。与本项目其它语言相撞会 400
+        :param label: 展示名，传 ``None`` 或空串即清空
+        :return: 修改后的语言
+        """
+        return self._http.request(
+            "PATCH",
+            "/admin/projects/{projectKey}/locales/{locale}",
+            path_params={
+                "projectKey": self._http.require_project_key(),
+                "locale": locale,
+            },
+            body=compact({"locale": new_locale, "aliases": aliases, "label": label}),
+            auth=True,
+        )
+
     def delete_project_locale(self, locale: str) -> DeleteSuccessResponse:
         """
         注销一个语言。已录入的公告译文不会被删除，只是暂时不可达，重新注册即恢复。
 
-        :param locale: 要注销的语言标签，匹配大小写不敏感
+        :param locale: 要注销的语言标签（主标签或同义标签），匹配规则同公开端
         :return: 删除结果
         """
         return self._http.request(

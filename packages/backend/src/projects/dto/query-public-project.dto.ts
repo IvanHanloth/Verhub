@@ -1,6 +1,6 @@
-import { IsOptional, IsString, Matches, MaxLength } from "class-validator"
+import { IsOptional, IsString } from "class-validator"
 
-import { LOCALE_PATTERN, MAX_LOCALE_LENGTH, NormalizeLocale } from "../../common/locale"
+import { NormalizeLocale } from "../../common/locale"
 
 /** 公开项目详情的查询参数。 */
 export class QueryPublicProjectDto {
@@ -12,7 +12,5 @@ export class QueryPublicProjectDto {
   @IsOptional()
   @NormalizeLocale()
   @IsString()
-  @MaxLength(MAX_LOCALE_LENGTH)
-  @Matches(LOCALE_PATTERN, { message: "locale format is invalid" })
   locale?: string
 }

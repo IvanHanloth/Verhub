@@ -28,6 +28,8 @@ export type VersionItem = {
    * 让客户端一眼看出有没有发生回落。管理端与公开端都返回，与 AnnouncementItem 同口径。
    */
   locale: string | null
+  /** 提交了语言偏好却没命中项目注册的语言时的提示；命中或没提交则不返回此字段。 */
+  locale_message?: string
   /** 全部译文，只在管理接口返回，供后台编辑。 */
   translations?: VersionTranslationItem[]
   download_url: string | null

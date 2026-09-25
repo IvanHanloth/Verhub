@@ -17,11 +17,13 @@ from ._analytics import (
     random_id,
 )
 from ._http import (
+    CLIENT_TIME_HEADER,
     PLATFORM_HEADER,
     PLATFORM_VERSION_HEADER,
     VERHUB_SDK_VERSION,
     detect_platform,
     detect_platform_version,
+    format_client_time,
 )
 from ._unset import UNSET, UnsetType
 from ._worker import BackgroundWorker
@@ -68,6 +70,7 @@ __all__ = [
     "UNSET",
     "UnsetType",
     "PLATFORMS",
+    "CLIENT_TIME_HEADER",
     "PLATFORM_HEADER",
     "PLATFORM_VERSION_HEADER",
     "LOG_LEVEL_DEBUG",
@@ -76,6 +79,7 @@ __all__ = [
     "LOG_LEVEL_ERROR",
     "detect_platform",
     "detect_platform_version",
+    "format_client_time",
     "VERHUB_SDK_VERSION",
     "__version__",
 ]

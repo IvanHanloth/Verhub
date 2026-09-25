@@ -214,6 +214,52 @@ describe("EventsIngestService.ingest", () => {
     >
     expect(rows[0]!.occurredAt).toBe(1_760_000_100)
   })
+
+  it("shifts client timestamps by the clock skew measured on the same request", async () => {
+    const prisma = createPrismaMock()
+    prisma.eventRecord.createMany.mockResolvedValue({ count: 1 })
+    const { service } = build(prisma)
+
+    // 设备时钟慢 2 小时：它记的发生时间与这次请求的客户端时间都早了 7200 秒
+    await service.ingest(
+      "demo",
+      dto({
+        events: [{ event_id: "e1", name: "checkout_clicked", occurred_at: 1_759_992_800 }],
+      } as Partial<IngestEventsDto>),
+      ORIGIN,
+      false,
+      { tzOffsetMinutes: 480, skewSeconds: 7200 },
+    )
+
+    const rows = prisma.eventRecord.createMany.mock.calls[0]![0].data as Array<
+      Record<string, unknown>
+    >
+    expect(rows[0]!.occurredAt).toBe(1_760_000_000)
+    await Promise.resolve()
+    const [statCall] = rawCallsFor(prisma, "EventStat")
+    expect(statCall).toContain(480)
+  })
+
+  it("ignores skew small enough to be network latency", async () => {
+    const prisma = createPrismaMock()
+    prisma.eventRecord.createMany.mockResolvedValue({ count: 1 })
+    const { service } = build(prisma)
+
+    await service.ingest(
+      "demo",
+      dto({
+        events: [{ event_id: "e1", name: "checkout_clicked", occurred_at: 1_760_000_000 }],
+      } as Partial<IngestEventsDto>),
+      ORIGIN,
+      false,
+      { tzOffsetMinutes: 0, skewSeconds: 3 },
+    )
+
+    const rows = prisma.eventRecord.createMany.mock.calls[0]![0].data as Array<
+      Record<string, unknown>
+    >
+    expect(rows[0]!.occurredAt).toBe(1_760_000_000)
+  })
 })
 
 describe("EventsIngestService.deleteSubject", () => {

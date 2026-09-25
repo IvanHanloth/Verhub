@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Languages, Loader2, Plus, Trash2 } from "lucide-react"
+import { Check, Languages, Loader2, Pencil, Plus, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@workspace/ui/components/button"
@@ -13,8 +13,11 @@ import {
   createProjectLocale,
   deleteProjectLocale,
   listProjectLocales,
+  updateProjectLocale,
   type ProjectLocaleItem,
 } from "@/lib/projects-api"
+
+type LocaleDraft = { locale: string; aliases: string; label: string }
 
 const FIELD_CLASS =
   "w-full rounded-lg border border-slate-900/20 bg-white/80 px-2.5 py-1.5 text-xs dark:border-white/20 dark:bg-white/10"
@@ -52,6 +55,13 @@ export function ProjectLocalesSettings({
   const [draftAliases, setDraftAliases] = React.useState("")
   const [draftLabel, setDraftLabel] = React.useState("")
   const [adding, setAdding] = React.useState(false)
+  // 同一时间只编辑一行；editing 记的是进入编辑时的主标签，保存时用它定位。
+  const [editing, setEditing] = React.useState<string | null>(null)
+  const [editDraft, setEditDraft] = React.useState<LocaleDraft>({
+    locale: "",
+    aliases: "",
+    label: "",
+  })
 
   // 列表每次变动都同步给外层，省得两边各存一份还要担心不同步。
   const applyLocales = React.useCallback(
@@ -122,6 +132,50 @@ export function ProjectLocalesSettings({
     }
   }
 
+  function startEdit(item: ProjectLocaleItem) {
+    setEditing(item.locale)
+    setEditDraft({
+      locale: item.locale,
+      aliases: item.aliases.join(", "),
+      label: item.label ?? "",
+    })
+  }
+
+  async function handleSaveEdit() {
+    const original = editing
+    const nextLocale = editDraft.locale.trim()
+    if (!token || !projectKey || !original || !nextLocale) {
+      return
+    }
+
+    if (nextLocale !== original) {
+      const confirmed = await confirm({
+        title: "修改语言标签",
+        description: `「${original}」下已录入的公告、版本与项目译文会一并迁到「${nextLocale}」。客户端若仍提交旧标签，请把「${original}」加进同义标签。`,
+        confirmLabel: "修改",
+      })
+      if (!confirmed) {
+        return
+      }
+    }
+
+    setBusyLocale(original)
+    try {
+      const saved = await updateProjectLocale(token, projectKey, original, {
+        locale: nextLocale,
+        aliases: parseAliases(editDraft.aliases),
+        label: editDraft.label.trim() || null,
+      })
+      applyLocales(locales.map((item) => (item.locale === original ? saved : item)))
+      setEditing(null)
+      toast.success(`已更新语言 ${saved.locale}。`)
+    } catch (saveError) {
+      toast.error(getErrorMessage(saveError))
+    } finally {
+      setBusyLocale(null)
+    }
+  }
+
   async function handleDelete(locale: string) {
     if (!token || !projectKey) {
       return
@@ -172,40 +226,121 @@ export function ProjectLocalesSettings({
 
       {locales.length > 0 ? (
         <ul className="space-y-2">
-          {locales.map((item) => (
-            <li
-              key={item.locale}
-              className="flex items-center justify-between gap-2 rounded-lg border border-slate-900/15 bg-white/70 px-3 py-2 dark:border-white/15 dark:bg-white/10"
-            >
-              <div className="min-w-0">
-                <code className="block truncate text-xs">{item.locale}</code>
-                {item.label ? (
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                    {item.label}
-                  </span>
-                ) : null}
-                {item.aliases.length > 0 ? (
-                  <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">
-                    同义：{item.aliases.join("、")}
-                  </span>
-                ) : null}
-              </div>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                disabled={busyLocale === item.locale}
-                onClick={() => void handleDelete(item.locale)}
+          {locales.map((item) =>
+            editing === item.locale ? (
+              <li
+                key={item.locale}
+                className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-900/25 bg-white/80 px-3 py-2 dark:border-white/25 dark:bg-white/10"
               >
-                {busyLocale === item.locale ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Trash2 className="size-4" />
-                )}
-                注销
-              </Button>
-            </li>
-          ))}
+                <label className="min-w-[7rem] flex-1 space-y-1">
+                  <span className="text-[11px] text-slate-600 dark:text-slate-400">语言标签</span>
+                  <input
+                    value={editDraft.locale}
+                    onChange={(event) =>
+                      setEditDraft((draft) => ({ ...draft, locale: event.target.value }))
+                    }
+                    className={FIELD_CLASS}
+                    maxLength={35}
+                    aria-label="编辑语言标签"
+                  />
+                </label>
+                <label className="min-w-[7rem] flex-1 space-y-1">
+                  <span className="text-[11px] text-slate-600 dark:text-slate-400">同义标签</span>
+                  <input
+                    value={editDraft.aliases}
+                    onChange={(event) =>
+                      setEditDraft((draft) => ({ ...draft, aliases: event.target.value }))
+                    }
+                    className={FIELD_CLASS}
+                    placeholder="逗号分隔，留空即清空"
+                    aria-label="编辑同义标签"
+                  />
+                </label>
+                <label className="min-w-[7rem] flex-1 space-y-1">
+                  <span className="text-[11px] text-slate-600 dark:text-slate-400">展示名</span>
+                  <input
+                    value={editDraft.label}
+                    onChange={(event) =>
+                      setEditDraft((draft) => ({ ...draft, label: event.target.value }))
+                    }
+                    className={FIELD_CLASS}
+                    maxLength={64}
+                    aria-label="编辑语言展示名"
+                  />
+                </label>
+                <div className="flex gap-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={busyLocale === item.locale || !editDraft.locale.trim()}
+                    onClick={() => void handleSaveEdit()}
+                  >
+                    {busyLocale === item.locale ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Check className="size-4" />
+                    )}
+                    保存
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busyLocale === item.locale}
+                    onClick={() => setEditing(null)}
+                  >
+                    <X className="size-4" />
+                    取消
+                  </Button>
+                </div>
+              </li>
+            ) : (
+              <li
+                key={item.locale}
+                className="flex items-center justify-between gap-2 rounded-lg border border-slate-900/15 bg-white/70 px-3 py-2 dark:border-white/15 dark:bg-white/10"
+              >
+                <div className="min-w-0">
+                  <code className="block truncate text-xs">{item.locale}</code>
+                  {item.label ? (
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {item.label}
+                    </span>
+                  ) : null}
+                  {item.aliases.length > 0 ? (
+                    <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">
+                      同义：{item.aliases.join("、")}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busyLocale === item.locale}
+                    onClick={() => startEdit(item)}
+                  >
+                    <Pencil className="size-4" />
+                    编辑
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    disabled={busyLocale === item.locale}
+                    onClick={() => void handleDelete(item.locale)}
+                  >
+                    {busyLocale === item.locale ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="size-4" />
+                    )}
+                    注销
+                  </Button>
+                </div>
+              </li>
+            ),
+          )}
         </ul>
       ) : null}
 

@@ -12,10 +12,12 @@ import test from "node:test"
 import { OUTPUT_PATH, render, SOURCE_PATH } from "./build.mjs"
 import {
   analyticsNamespace,
+  CLIENT_TIME_HEADER,
   detectPlatform,
   detectPlatformVersion,
   EventQueue,
   fnv1a32Hex,
+  formatClientTime,
   memoryStorage,
   originOf,
   sanitizePlatformVersion,
@@ -468,4 +470,160 @@ test("条款文档接口打到实例级路径，不带 projectKey", async () => 
   await client.public.getTerms("privacy-policy")
 
   assert.deepEqual(urls, [`${BASE_URL}/public/terms`, `${BASE_URL}/public/terms/privacy-policy`])
+})
+
+test("updateProjectLocale 以 PATCH 提交，语言路径段做 URL 编码", async () => {
+  const calls = []
+  const client = new VerhubClient({
+    baseUrl: BASE_URL,
+    projectKey: "demo",
+    token: "tok",
+    fetch: async (url, init) => {
+      calls.push({ url, method: init.method, body: init.body })
+      const item = { locale: "en-US", aliases: [], label: null, created_at: 1 }
+      return new Response(JSON.stringify(item), { status: 200 })
+    },
+  })
+
+  const item = await client.admin.updateProjectLocale("en (US)", { locale: "en-US", label: null })
+
+  assert.equal(item.locale, "en-US")
+  assert.equal(calls[0].method, "PATCH")
+  assert.equal(calls[0].url, `${BASE_URL}/admin/projects/demo/locales/en%20(US)`)
+  // 缺省字段不上送，显式 null 保留（清空展示名）。
+  assert.deepEqual(JSON.parse(calls[0].body), { locale: "en-US", label: null })
+})
+
+test("未命中语言时响应带 locale_message，命中时不带", async () => {
+  const payloads = [
+    { id: "v1", locale: null, locale_message: "not registered" },
+    { id: "v1", locale: "en-US" },
+  ]
+  const urls = []
+  const client = new VerhubClient({
+    baseUrl: BASE_URL,
+    projectKey: "demo",
+    fetch: async (url) => {
+      urls.push(url)
+      return new Response(JSON.stringify(payloads.shift()), { status: 200 })
+    },
+  })
+
+  const missed = await client.public.getLatestVersion({ locale: "en_US" })
+  assert.equal(missed.locale, null)
+  assert.equal(missed.locale_message, "not registered")
+  assert.ok(urls[0].endsWith("?locale=en_US"), urls[0])
+
+  const matched = await client.public.getLatestVersion({ locale: "en(US)" })
+  assert.equal(matched.locale, "en-US")
+  assert.equal(matched.locale_message, undefined)
+})
+
+// ---- 客户端本地时间头 ----
+//
+// 与 sdk/typescript/tests/client-time.test.mjs 是同一份断言，改一处务必同步。
+
+const CLIENT_TIME_SHAPE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}$/
+
+/** 进程当前时区的偏移，写成 ±HH:MM。 */
+function localOffset() {
+  const minutes = -new Date().getTimezoneOffset()
+  const abs = Math.abs(minutes)
+  const pad = (n) => String(n).padStart(2, "0")
+  return `${minutes < 0 ? "-" : "+"}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
+}
+
+/** 在指定时区下执行；Node 在赋值 TZ 后会重读时区。 */
+function withTz(tz, fn) {
+  const saved = process.env.TZ
+  process.env.TZ = tz
+  try {
+    return fn()
+  } finally {
+    if (saved === undefined) {
+      delete process.env.TZ
+    } else {
+      process.env.TZ = saved
+    }
+  }
+}
+
+function clientTimeRecorder(options, statuses = []) {
+  const seen = []
+  const client = new VerhubClient({
+    baseUrl: BASE_URL,
+    projectKey: "demo",
+    analytics: { storage: memoryStorage() },
+    ...options,
+    fetch: async (_url, init) => {
+      seen.push(new Headers(init.headers).get(CLIENT_TIME_HEADER))
+      const status = statuses.shift() ?? 200
+      return new Response("{}", { status, headers: { "content-type": "application/json" } })
+    },
+  })
+  return { client, seen }
+}
+
+test("默认带上本地时间头，形状合规、偏移等于本机时区、时刻准确", async () => {
+  const { client, seen } = clientTimeRecorder({})
+  const before = Date.now()
+  await client.health()
+  const after = Date.now()
+
+  const value = seen[0]
+  assert.match(value, CLIENT_TIME_SHAPE)
+  assert.equal(value.slice(-6), localOffset())
+  const instant = Date.parse(value)
+  assert.ok(instant >= before && instant <= after, `${value} 不在 [${before}, ${after}] 内`)
+})
+
+test("管理接口与事件上报同样带上", async () => {
+  const { client, seen } = clientTimeRecorder({ token: "t" })
+  await client.admin.listProjects().catch(() => {})
+  client.public.track("app_opened")
+  await client.public.flush()
+  assert.equal(seen.length, 2)
+  for (const value of seen) {
+    assert.match(value ?? "", CLIENT_TIME_SHAPE)
+  }
+})
+
+test("sendClientTime: false 时不发", async () => {
+  const { client, seen } = clientTimeRecorder({ sendClientTime: false })
+  await client.health()
+  assert.deepEqual(seen, [null])
+})
+
+test("重试时现取而不是沿用首发的值", async () => {
+  const { client, seen } = clientTimeRecorder({}, [503, 200])
+  await client.health()
+  assert.equal(seen.length, 2)
+  for (const value of seen) {
+    assert.match(value, CLIENT_TIME_SHAPE)
+  }
+  assert.ok(Date.parse(seen[1]) > Date.parse(seen[0]), `${seen[0]} -> ${seen[1]}`)
+})
+
+test("UTC 写成 +00:00 而不是 Z", () => {
+  const value = withTz("UTC", () => formatClientTime(new Date(Date.UTC(2026, 8, 24, 2, 0, 0, 5))))
+  assert.equal(value, "2026-09-24T02:00:00.005+00:00")
+})
+
+test("东西半球与非整点偏移都按本地墙钟加偏移输出", () => {
+  const instant = new Date(Date.UTC(2026, 8, 24, 2, 0, 0, 123))
+  const cases = [
+    ["Asia/Shanghai", "2026-09-24T10:00:00.123+08:00"],
+    ["Asia/Kathmandu", "2026-09-24T07:45:00.123+05:45"],
+    ["America/St_Johns", "2026-09-23T23:30:00.123-02:30"],
+    ["America/Los_Angeles", "2026-09-23T19:00:00.123-07:00"],
+  ]
+  for (const [tz, expected] of cases) {
+    const value = withTz(tz, () => formatClientTime(instant))
+    assert.equal(value, expected, tz)
+    assert.equal(Date.parse(value), instant.getTime(), tz)
+  }
+})
+
+test("无效时刻返回 null 而不是抛错", () => {
+  assert.equal(formatClientTime(new Date(Number.NaN)), null)
 })

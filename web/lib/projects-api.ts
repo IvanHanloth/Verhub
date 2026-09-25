@@ -216,6 +216,19 @@ export async function createProjectLocale(
   })
 }
 
+/** 修改已注册的语言；改主标签时服务端会把该语言的译文一并迁过去。 */
+export async function updateProjectLocale(
+  token: string,
+  projectKey: string,
+  locale: string,
+  input: { locale?: string; aliases?: string[]; label?: string | null },
+): Promise<ProjectLocaleItem> {
+  return requestJson<ProjectLocaleItem>(
+    `/admin/projects/${projectKey}/locales/${encodeURIComponent(locale)}`,
+    { method: "PATCH", token, body: input },
+  )
+}
+
 export async function deleteProjectLocale(
   token: string,
   projectKey: string,

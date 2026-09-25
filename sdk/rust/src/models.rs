@@ -142,6 +142,10 @@ pub struct ProjectItem {
     /// 本次返回的 name / description 实际来自哪个语言的译文；None 表示项目自身的值。
     #[serde(default)]
     pub locale: Option<String>,
+    /// 提交了语言偏好却没命中项目注册的语言时的提示，此时内容已回落默认值；
+    /// 命中或没提交语言偏好时为 None。
+    #[serde(default)]
+    pub locale_message: Option<String>,
     /// 项目的全部译文，仅管理接口返回。
     #[serde(default)]
     pub translations: Option<Vec<ProjectTranslation>>,
@@ -162,6 +166,10 @@ pub struct VersionItem {
     /// `serde(default)` 让本 SDK 也能解析未支持多语言的旧服务端的响应。
     #[serde(default)]
     pub locale: Option<String>,
+    /// 提交了语言偏好却没命中项目注册的语言时的提示，此时内容已回落默认值；
+    /// 命中或没提交语言偏好时为 None。
+    #[serde(default)]
+    pub locale_message: Option<String>,
     /// 该版本的全部译文，仅管理接口返回；公开接口不带这个字段。
     #[serde(default)]
     pub translations: Option<Vec<VersionTranslation>>,
@@ -201,6 +209,10 @@ pub struct AnnouncementItem {
     /// （没提语言偏好、语言未注册，或该公告没有这个语言的译文）。
     #[serde(default)]
     pub locale: Option<String>,
+    /// 提交了语言偏好却没命中项目注册的语言时的提示，此时内容已回落默认值；
+    /// 命中或没提交语言偏好时为 None。
+    #[serde(default)]
+    pub locale_message: Option<String>,
     /// 全部译文，仅管理接口返回；公开接口不带这个字段。
     #[serde(default)]
     pub translations: Option<Vec<AnnouncementTranslation>>,
@@ -1186,6 +1198,21 @@ pub struct CreateProjectLocaleInput {
     /// 后台展示名，如「简体中文」。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+}
+
+/// 修改已注册的项目语言，`None` 的字段不提交、保持原值。
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct UpdateProjectLocaleInput {
+    /// 新的主标签。本项目下该语言的项目、版本与公告译文随之迁到新标签；
+    /// 客户端若仍会提交旧标签，把它放进 `aliases`。新主标签下已有注销语言遗留的译文时 409。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
+    /// 整体替换同义标签列表，空数组即清空。与本项目其它语言相撞会 400。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aliases: Option<Vec<String>>,
+    /// 外层 `None` 表示不提交该字段，`Some(None)` 表示提交 null 以清空展示名。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<Option<String>>,
 }
 
 // ---- 事件分析 ----

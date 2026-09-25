@@ -103,6 +103,18 @@ client = VerhubClient(base_url, "verhub", platform=None)
 空白、按 32 字符截断，洗完为空则不发这个头。用错编码读出来的 `...[�汾 10.0...]`
 这类串因此不会让 HTTP 客户端在编码请求头时抛异常，把整个请求带下水。
 
+## 本地时间声明
+
+每个请求（含 admin 接口与事件上报，重试的每一次都现取）默认带上
+`x-verhub-client-time`：设备本地时间加显式 UTC 偏移，如
+`2026-09-24T10:00:00.123+08:00`（UTC 也写 `+00:00`）。服务端据此按用户当地时间统计、
+校正设备时钟偏差（离线补发的事件靠它还原发生时间）。取不到合规值时不发这个头，请求
+照常进行。
+
+```python
+VerhubClient(base_url, "verhub", send_client_time=False)  # 不发；AsyncVerhubClient 同名参数
+```
+
 ## 异步用法
 
 在 asyncio 里跑就用 `AsyncVerhubClient`。它的接口面与 `VerhubClient` 完全一致，
@@ -168,7 +180,7 @@ tkinter 用 `after()`、wxPython 用 `wx.Timer` 接 `drain` 同理。
 
 ## 重试与超时
 
-- **GET / HEAD** 在连接失败与 502/503/504 时默认自动重试 2 次并指数退避；其余方法
+- **GET / HEAD** 在连接失败与 502/503/504 时默认自动重试 3 次并指数退避；其余方法
   （含 `check_update` 这类 POST）一律不重放。读超时也不重试——请求可能已经在服务端
   生效了。用 `retries=` 调整，传 `0` 关闭：`VerhubClient(base_url, "verhub", retries=3)`。
 - `timeout` 支持 `(connect, read)` 元组，分别指定连接与读取超时——更新检查常

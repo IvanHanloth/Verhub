@@ -14,6 +14,7 @@ import {
 import { PublicEndpoint } from "@prisma/client"
 import { Throttle } from "@nestjs/throttler"
 
+import { parseClientClock, UNKNOWN_CLIENT_CLOCK } from "../common/client-clock"
 import { ClientIpThrottlerGuard } from "../common/client-ip-throttler.guard"
 import { ClientOriginService } from "../geo/client-origin.service"
 import { TrackEndpoint } from "../stats/track-endpoint.decorator"
@@ -80,7 +81,10 @@ export class EventsController {
         }
       : await this.clientOriginService.describe(request)
 
-    return this.ingestService.ingest(projectKey, dto, origin, doNotTrack)
+    // 时钟与 origin 同一口径：退出信号下连这个也不看。
+    const clock = doNotTrack ? UNKNOWN_CLIENT_CLOCK : parseClientClock(request.headers, Date.now())
+
+    return this.ingestService.ingest(projectKey, dto, origin, doNotTrack, clock)
   }
 
   /**

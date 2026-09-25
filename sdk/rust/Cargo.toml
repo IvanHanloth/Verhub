@@ -15,6 +15,8 @@ categories = ["api-bindings", "web-programming::http-client"]
 exclude = ["/target"]
 
 [dependencies]
+# 只取系统时钟与本地时区偏移；std 没有取本地偏移的接口。
+chrono = { version = "0.4.38", default-features = false, features = ["clock"] }
 log = "0.4"
 os_info = { version = "3", default-features = false }
 percent-encoding = "2.3"

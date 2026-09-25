@@ -3,6 +3,7 @@ import { Reflector } from "@nestjs/core"
 import { Platform, PublicEndpoint } from "@prisma/client"
 import { of, throwError, lastValueFrom } from "rxjs"
 
+import { UNKNOWN_TZ_OFFSET } from "../common/client-clock"
 import { RequestStatsInterceptor } from "./request-stats.interceptor"
 
 type RequestShape = {
@@ -63,7 +64,23 @@ describe("RequestStatsInterceptor", () => {
       endpoint: PublicEndpoint.VERSION_LATEST,
       platform: Platform.WINDOWS,
       ip: null,
+      tzOffset: UNKNOWN_TZ_OFFSET,
     })
+  })
+
+  it("records the timezone offset from the client time header", async () => {
+    const { interceptor, statsService } = createInterceptor(PublicEndpoint.VERSION_LATEST)
+    const context = createContext({
+      params: { projectKey: "verhub" },
+      headers: { "x-verhub-client-time": "2026-09-24T03:00:00.000-07:00" },
+    })
+
+    await lastValueFrom(interceptor.intercept(context, createHandler()))
+    await flushMicrotasks()
+
+    expect(statsService.recordRequestSafely).toHaveBeenCalledWith(
+      expect.objectContaining({ tzOffset: -420 }),
+    )
   })
 
   it("passes the forwarded client address on for region resolution", async () => {

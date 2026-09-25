@@ -28,11 +28,16 @@ export function translationInclude(locale: string | null): {
  *
  * @param options.locale 公开端请求的语言（已归一到主标签）。译文按字段覆盖：
  *   标题与更新说明各自留空就回落版本自身的值，所以永远有东西可返回。
+ * @param options.localeMessage 语言偏好没命中注册表时的提示，原样放进 `locale_message`。
  * @param options.includeTranslations 后台接口带出全部译文供编辑；公开端不带。
  */
 export function toVersionItem(
   version: VersionRecord,
-  options: { locale?: string | null; includeTranslations?: boolean } = {},
+  options: {
+    locale?: string | null
+    localeMessage?: string | null
+    includeTranslations?: boolean
+  } = {},
 ): VersionItem {
   const normalizedLinks = parseDownloadLinks(version.downloadLinks)
   const translations = version.translations ?? []
@@ -50,6 +55,7 @@ export function toVersionItem(
     content: content ?? version.content,
     // 只有真的覆盖了内容才算「返回的是该语言的译文」，与公告同一口径。
     locale: title || content ? (translation?.locale ?? null) : null,
+    ...(options.localeMessage ? { locale_message: options.localeMessage } : {}),
     ...(options.includeTranslations
       ? {
           translations: translations.map((item) => ({

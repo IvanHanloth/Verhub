@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import sys
 import time
 import warnings
+from datetime import datetime, timezone
 from typing import Any, Dict, Mapping, NamedTuple, Optional, Tuple, Union
 from urllib.parse import quote, urlencode
 
@@ -25,7 +27,7 @@ logger = logging.getLogger("verhub_sdk")
 Timeout = Union[float, Tuple[float, float], httpx.Timeout, None]
 
 #: 默认重试次数。
-DEFAULT_RETRIES = 2
+DEFAULT_RETRIES = 3
 
 #: 会触发重试的服务端状态码。
 RETRY_STATUS = (502, 503, 504)
@@ -41,6 +43,12 @@ PLATFORM_HEADER = "x-verhub-platform"
 
 #: 客户端系统版本明细头，如 ``11`` / ``ubuntu 24.04``；超过 32 字符会被服务端丢弃。
 PLATFORM_VERSION_HEADER = "x-verhub-platform-version"
+
+#: 客户端本地时间头；服务端从偏移取时区，从时刻算设备时钟偏差。
+CLIENT_TIME_HEADER = "x-verhub-client-time"
+
+#: 客户端本地时间的合规形状：毫秒精度 + ``±HH:MM`` 偏移，四个语言的 SDK 相同。
+_CLIENT_TIME_SHAPE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{2}:\d{2}$")
 
 #: 系统版本明细的长度上限，与服务端一致。
 MAX_PLATFORM_VERSION_LENGTH = 32
@@ -90,6 +98,24 @@ def _macos_marketing_version(product_version: str) -> str:
     if parts[0] == "10":
         return ".".join(parts[:2])
     return parts[0]
+
+
+def format_client_time(moment: Optional[datetime] = None) -> Optional[str]:
+    """
+    把时刻格式化成带显式偏移的本地时间，如 ``2026-09-24T10:00:00.123+08:00``。
+
+    从 UTC 时刻换算到本地而不是取朴素的 ``datetime.now()``：后者在夏令时回拨的
+    那一小时里有两种解释，换算出的时刻可能差一小时。
+
+    :param moment: 要格式化的时刻，带时区；默认当前时刻
+    :return: 格式化结果；无法得出合规值（如历史日期带秒级偏移）时为 ``None``
+    """
+    try:
+        instant = moment if moment is not None else datetime.now(timezone.utc)
+        value = instant.astimezone().isoformat(timespec="milliseconds")
+    except Exception:  # noqa: BLE001 - 尽力而为的遥测信号，取不到就不报
+        return None
+    return value if _CLIENT_TIME_SHAPE.match(value) else None
 
 
 def detect_platform() -> str:
@@ -231,6 +257,7 @@ class BaseHttpClient:
         *,
         platform: Any = UNSET,
         platform_version: Any = UNSET,
+        send_client_time: bool = True,
         timeout: Timeout = 15.0,
         retries: int = DEFAULT_RETRIES,
         user_agent: Optional[str] = None,
@@ -245,6 +272,7 @@ class BaseHttpClient:
             不影响系统版本明细，后者仍会自动探测
         :param platform_version: 系统版本明细；省略则自动探测（平台被显式关成
             ``None`` 时除外），传 ``None`` 则不声明
+        :param send_client_time: 是否在每个请求上带设备本地时间与 UTC 偏移
         :param timeout: 单次请求超时（秒）
         :param retries: GET / HEAD 在连接失败与 502/503/504 时的自动重试次数
         :param user_agent: 覆盖默认 User-Agent
@@ -258,6 +286,7 @@ class BaseHttpClient:
         self.token = token or ""
         self.timeout = _to_httpx_timeout(timeout)
         self.retries = max(0, retries)
+        self.send_client_time = send_client_time
 
         if user_agent:
             self.user_agent = user_agent
@@ -416,6 +445,17 @@ class BaseHttpClient:
 
         return _Prepared(method.upper(), url, headers, content)
 
+    def _attempt_headers(self, prepared: _Prepared) -> Dict[str, str]:
+        """
+        单次尝试实际发出的请求头。
+
+        客户端时间每次尝试现取：服务端拿它与收到请求的时刻比，重试前的等待不能算进去。
+        """
+        client_time = format_client_time() if self.send_client_time else None
+        if client_time is None:
+            return prepared.headers
+        return {**prepared.headers, CLIENT_TIME_HEADER: client_time}
+
     def _retry_delay(
         self,
         method: str,
@@ -558,6 +598,7 @@ class SyncHttpClient(BaseHttpClient):
         *,
         platform: Any = UNSET,
         platform_version: Any = UNSET,
+        send_client_time: bool = True,
         timeout: Timeout = 15.0,
         retries: int = DEFAULT_RETRIES,
         http_client: Optional[httpx.Client] = None,
@@ -575,6 +616,7 @@ class SyncHttpClient(BaseHttpClient):
             token,
             platform=platform,
             platform_version=platform_version,
+            send_client_time=send_client_time,
             timeout=timeout,
             retries=retries,
             user_agent=user_agent,
@@ -611,7 +653,7 @@ class SyncHttpClient(BaseHttpClient):
                 response = self.client.request(
                     prepared.method,
                     prepared.url,
-                    headers=prepared.headers,
+                    headers=self._attempt_headers(prepared),
                     content=prepared.content,
                     timeout=self.timeout,
                     follow_redirects=True,
@@ -648,6 +690,7 @@ class AsyncHttpClient(BaseHttpClient):
         *,
         platform: Any = UNSET,
         platform_version: Any = UNSET,
+        send_client_time: bool = True,
         timeout: Timeout = 15.0,
         retries: int = DEFAULT_RETRIES,
         http_client: Optional[httpx.AsyncClient] = None,
@@ -664,6 +707,7 @@ class AsyncHttpClient(BaseHttpClient):
             token,
             platform=platform,
             platform_version=platform_version,
+            send_client_time=send_client_time,
             timeout=timeout,
             retries=retries,
             user_agent=user_agent,
@@ -710,7 +754,7 @@ class AsyncHttpClient(BaseHttpClient):
                 response = await self.client.request(
                     prepared.method,
                     prepared.url,
-                    headers=prepared.headers,
+                    headers=self._attempt_headers(prepared),
                     content=prepared.content,
                     timeout=self.timeout,
                     follow_redirects=True,

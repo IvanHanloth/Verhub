@@ -1,6 +1,6 @@
 import { IsBoolean, IsOptional, IsString, Matches, MaxLength } from "class-validator"
 
-import { LOCALE_PATTERN, MAX_LOCALE_LENGTH, NormalizeLocale } from "../../common/locale"
+import { NormalizeLocale } from "../../common/locale"
 
 const COMPARABLE_VERSION_PATTERN =
   /^(?<core>\d+(?:\.\d+)*)(?:-(?<tag>alpha|beta|rc)(?:\.(?<tail>\d+(?:\.\d+)*))?)?$/
@@ -30,8 +30,6 @@ export class CheckVersionUpdateDto {
   @IsOptional()
   @NormalizeLocale()
   @IsString()
-  @MaxLength(MAX_LOCALE_LENGTH)
-  @Matches(LOCALE_PATTERN, { message: "locale format is invalid" })
   locale?: string
 
   /** Validate that at least one version identifier is provided */

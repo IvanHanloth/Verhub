@@ -13,7 +13,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 
 import { PrismaService } from "../database/prisma.service"
 import { ProjectResolverService } from "../database/project-resolver.service"
-import { matchRegisteredLocale } from "../common/locale"
+import { NO_LOCALE, resolveLocalePreference, type LocaleResolution } from "../common/locale"
 import { CheckVersionUpdateDto } from "./dto/check-version-update.dto"
 import {
   compareComparableVersions,
@@ -31,15 +31,15 @@ export class VersionUpdateCheckService {
   ) {}
 
   /**
-   * 语言偏好 -> 项目注册表里的主标签；没注册过就返回 null（等同没提偏好）。
+   * 语言偏好 -> 项目注册表里的主标签；没命中时 locale 为 null 并带一句提示。
    * 与 VersionsService 里同名方法同一套规则，两处都要用而模块间不互相注入。
    */
   private async resolveRegisteredLocale(
     projectKey: string,
     locale: string | undefined,
-  ): Promise<string | null> {
+  ): Promise<LocaleResolution> {
     if (!locale?.trim()) {
-      return null
+      return NO_LOCALE
     }
 
     const registered = await this.prisma.projectLocale.findMany({
@@ -47,7 +47,7 @@ export class VersionUpdateCheckService {
       select: { locale: true, aliases: true },
     })
 
-    return matchRegisteredLocale(registered, locale)
+    return resolveLocalePreference(registered, locale)
   }
 
   /** Evaluate whether a client should update, and to which version. */
@@ -62,7 +62,10 @@ export class VersionUpdateCheckService {
     }
 
     const normalizedKey = await this.projectResolver.resolveCanonicalKeyOrThrow(projectKey)
-    const locale = await this.resolveRegisteredLocale(normalizedKey, dto.locale)
+    const { locale, message: localeMessage } = await this.resolveRegisteredLocale(
+      normalizedKey,
+      dto.locale,
+    )
     const project = await this.prisma.project.findUniqueOrThrow({
       where: { projectKey: normalizedKey },
       select: {
@@ -148,9 +151,13 @@ export class VersionUpdateCheckService {
       current_comparable_version: currentComparableVersion,
       // 三个版本对象都按同一个语言回落：客户端把它们并排显示，
       // 只译其中一个会得到中英混排的更新弹窗。
-      latest_version: toVersionItem(latestCandidate, { locale }),
-      latest_preview_version: latestPreview ? toVersionItem(latestPreview, { locale }) : null,
-      target_version: targetVersion ? toVersionItem(targetVersion, { locale }) : null,
+      latest_version: toVersionItem(latestCandidate, { locale, localeMessage }),
+      latest_preview_version: latestPreview
+        ? toVersionItem(latestPreview, { locale, localeMessage })
+        : null,
+      target_version: targetVersion
+        ? toVersionItem(targetVersion, { locale, localeMessage })
+        : null,
       milestone: {
         current: currentRecord?.isMilestone ?? false,
         latest: latestCandidate.isMilestone,

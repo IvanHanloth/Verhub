@@ -17,7 +17,12 @@ import { Prisma } from "@prisma/client"
 
 import { PrismaService } from "../database/prisma.service"
 import { ProjectResolverService } from "../database/project-resolver.service"
-import { matchRegisteredLocale } from "../common/locale"
+import {
+  matchRegisteredLocale,
+  NO_LOCALE,
+  resolveLocalePreference,
+  type LocaleResolution,
+} from "../common/locale"
 import { CreateVersionDto, VersionTranslationDto } from "./dto/create-version.dto"
 import { QueryVersionsDto } from "./dto/query-versions.dto"
 import { UpdateVersionDto } from "./dto/update-version.dto"
@@ -196,7 +201,10 @@ export class VersionsService {
     query: QueryVersionsDto,
   ): Promise<VersionListResponse> {
     const normalizedKey = await this.resolveProjectKey(projectKey)
-    const locale = await this.resolveRegisteredLocale(normalizedKey, query.locale)
+    const { locale, message: localeMessage } = await this.resolveRegisteredLocale(
+      normalizedKey,
+      query.locale,
+    )
     const where = buildVersionListWhere(normalizedKey, query)
 
     const [total, data] = await this.prisma.$transaction([
@@ -216,13 +224,16 @@ export class VersionsService {
 
     return {
       total,
-      data: data.map((version) => toVersionItem(version, { locale })),
+      data: data.map((version) => toVersionItem(version, { locale, localeMessage })),
     }
   }
 
   async findLatestByProjectKey(projectKey: string, wantedLocale?: string): Promise<VersionItem> {
     const normalizedKey = await this.resolveProjectKey(projectKey)
-    const locale = await this.resolveRegisteredLocale(normalizedKey, wantedLocale)
+    const { locale, message: localeMessage } = await this.resolveRegisteredLocale(
+      normalizedKey,
+      wantedLocale,
+    )
     const include = translationInclude(locale)
 
     const latest = await this.prisma.version.findFirst({
@@ -231,7 +242,7 @@ export class VersionsService {
       include,
     })
     if (latest) {
-      return toVersionItem(latest, { locale })
+      return toVersionItem(latest, { locale, localeMessage })
     }
 
     const fallbackStable = await this.prisma.version.findFirst({
@@ -240,7 +251,7 @@ export class VersionsService {
       include,
     })
     if (fallbackStable) {
-      return toVersionItem(fallbackStable, { locale })
+      return toVersionItem(fallbackStable, { locale, localeMessage })
     }
 
     const fallbackAny = await this.prisma.version.findFirst({
@@ -251,7 +262,7 @@ export class VersionsService {
     if (!fallbackAny) {
       throw new NotFoundException("Version not found")
     }
-    return toVersionItem(fallbackAny, { locale })
+    return toVersionItem(fallbackAny, { locale, localeMessage })
   }
 
   async findLatestPreviewByProjectKey(
@@ -259,7 +270,10 @@ export class VersionsService {
     wantedLocale?: string,
   ): Promise<VersionItem | null> {
     const normalizedKey = await this.resolveProjectKey(projectKey)
-    const locale = await this.resolveRegisteredLocale(normalizedKey, wantedLocale)
+    const { locale, message: localeMessage } = await this.resolveRegisteredLocale(
+      normalizedKey,
+      wantedLocale,
+    )
 
     const latestPreview = await this.prisma.version.findFirst({
       where: { projectKey: normalizedKey, isPreview: true },
@@ -270,7 +284,7 @@ export class VersionsService {
       ],
       include: translationInclude(locale),
     })
-    return latestPreview ? toVersionItem(latestPreview, { locale }) : null
+    return latestPreview ? toVersionItem(latestPreview, { locale, localeMessage }) : null
   }
 
   async findByVersionNumber(
@@ -279,7 +293,10 @@ export class VersionsService {
     wantedLocale?: string,
   ): Promise<VersionItem> {
     const normalizedKey = await this.resolveProjectKey(projectKey)
-    const locale = await this.resolveRegisteredLocale(normalizedKey, wantedLocale)
+    const { locale, message: localeMessage } = await this.resolveRegisteredLocale(
+      normalizedKey,
+      wantedLocale,
+    )
 
     const trimmedVersion = version.trim()
 
@@ -292,7 +309,7 @@ export class VersionsService {
       include: translationInclude(locale),
     })
     if (found) {
-      return toVersionItem(found, { locale })
+      return toVersionItem(found, { locale, localeMessage })
     }
 
     throw new NotFoundException("Version not found")
@@ -558,15 +575,15 @@ export class VersionsService {
   // ── Private helpers ──
 
   /**
-   * 语言偏好 → 项目注册表里的主标签；没注册过就返回 null（等同没提偏好）。
-   * 主标签与同义标签一视同仁地匹配，都忽略大小写，命中同义标签也返回主标签。
+   * 语言偏好 → 项目注册表里的主标签；没命中时 locale 为 null 并带一句提示。
+   * 主标签与同义标签一视同仁地匹配，命中同义标签也返回主标签。
    */
   private async resolveRegisteredLocale(
     projectKey: string,
     locale: string | undefined,
-  ): Promise<string | null> {
+  ): Promise<LocaleResolution> {
     if (!locale?.trim()) {
-      return null
+      return NO_LOCALE
     }
 
     const registered = await this.prisma.projectLocale.findMany({
@@ -574,7 +591,7 @@ export class VersionsService {
       select: { locale: true, aliases: true },
     })
 
-    return matchRegisteredLocale(registered, locale)
+    return resolveLocalePreference(registered, locale)
   }
 
   /**

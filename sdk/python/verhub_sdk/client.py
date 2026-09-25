@@ -39,6 +39,7 @@ class VerhubClient:
         *,
         platform: Any = UNSET,
         platform_version: Any = UNSET,
+        send_client_time: bool = True,
         timeout: Timeout = 15.0,
         retries: int = DEFAULT_RETRIES,
         http_client: Optional[httpx.Client] = None,
@@ -58,10 +59,13 @@ class VerhubClient:
         :param platform_version: 系统版本明细，如 ``11`` / ``ubuntu 24.04``；省略则
             从系统信息自动提取（``platform`` 被显式关成 ``None`` 时除外），传
             ``None`` 则不声明
+        :param send_client_time: 是否在每个请求上带 ``x-verhub-client-time``（设备
+            本地时间与 UTC 偏移），默认 ``True``；服务端用它按用户当地时间统计、校正
+            设备时钟偏差，传 ``False`` 则不发
         :param timeout: 单次请求超时（秒）；传 ``(connect, read)`` 元组可分别指定
             连接与读取超时，也可直接传 ``httpx.Timeout``，传 ``None`` 则不限时
         :param retries: GET / HEAD 在连接失败与 502/503/504 时的自动重试次数，
-            默认 2，传 0 关闭
+            默认 3，传 0 关闭
         :param http_client: 自定义 ``httpx.Client``，可用于配置代理、自定义证书、
             连接池上限；传入后由调用方负责关闭，``close()`` 不动它
         :param user_agent: 覆盖默认 User-Agent，会连带丢掉 SDK 版本信息
@@ -79,6 +83,7 @@ class VerhubClient:
             token=token,
             platform=platform,
             platform_version=platform_version,
+            send_client_time=send_client_time,
             timeout=timeout,
             retries=retries,
             http_client=http_client,

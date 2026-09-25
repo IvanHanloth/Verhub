@@ -393,7 +393,7 @@ model ProjectTranslation {
 }
 
 /// Hourly rollup of public API requests, one row per
-/// (project, endpoint, hour, platform, region, regionCode, cityCode) combination.
+/// (project, endpoint, hour, platform, region, regionCode, cityCode, tzOffset) combination.
 ///
 /// `region` holds the ISO-3166 alpha-2 country code resolved from the caller's
 /// IP, or one of the sentinels `UNKNOWN` (no IP, or every lookup provider
@@ -413,13 +413,17 @@ model ApiRequestStat {
   /// 空串而非 NULL：Postgres unique 视 NULL 互异，会破坏 upsert-increment（同 region/platform 的理由）。
   regionCode String         @default("")
   cityCode   String         @default("")
+  /// 客户端上报的 UTC 偏移（分钟，东正西负），来自 X-Verhub-Client-Time；
+  /// 没上报为哨兵 -32768（见 common/client-clock.ts）。热力图据此按用户当地时间折叠，
+  /// 没上报的行才退回按国家码近似。
+  tzOffset   Int            @default(-32768)
   count      Int            @default(0)
   createdAt  Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   updatedAt  Int            @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
-  @@unique([projectKey, endpoint, hourBucket, platform, region, regionCode, cityCode])
+  @@unique([projectKey, endpoint, hourBucket, platform, region, regionCode, cityCode, tzOffset])
   @@index([projectKey, hourBucket])
   @@index([hourBucket])
 }
@@ -589,7 +593,7 @@ model EventRecord {
 }
 
 /// 事件量的小时汇总，一行一个
-/// (project, eventName, hour, platform, region, regionCode, cityCode)。
+/// (project, eventName, hour, platform, region, regionCode, cityCode, tzOffset)。
 ///
 /// 形状与哨兵值约定照搬 ApiRequestStat：维度列 NOT NULL 且用显式哨兵
 /// （UNKNOWN / LOCAL / 空串），因为 Postgres 的 unique 索引视 NULL 互异，
@@ -607,13 +611,15 @@ model EventStat {
   region     String   @default("UNKNOWN")
   regionCode String   @default("")
   cityCode   String   @default("")
+  /// 同 ApiRequestStat.tzOffset。
+  tzOffset   Int      @default(-32768)
   count      Int      @default(0)
   createdAt  Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
   updatedAt  Int      @default(dbgenerated("CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)"))
 
   project Project @relation(fields: [projectKey], references: [projectKey], onDelete: Cascade)
 
-  @@unique([projectKey, eventName, hourBucket, platform, region, regionCode, cityCode])
+  @@unique([projectKey, eventName, hourBucket, platform, region, regionCode, cityCode, tzOffset])
   @@index([projectKey, hourBucket])
   @@index([hourBucket])
 }

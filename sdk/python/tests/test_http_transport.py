@@ -88,6 +88,45 @@ class TransportTest(unittest.TestCase):
         self.assertEqual(request.headers["content-type"], "application/json")
         self.assertEqual(json.loads(request.content.decode("utf-8"))["content"], "炸了")
 
+    def test_update_project_locale_patches_encoded_path(self) -> None:
+        seen: List[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            return httpx.Response(
+                200, json={"locale": "en-US", "aliases": [], "label": None, "created_at": 1}
+            )
+
+        client = self._client(handler, token="tok")
+        result = client.admin.update_project_locale("en (US)", new_locale="en-US", label=None)
+
+        request = seen[0]
+        self.assertEqual(request.method, "PATCH")
+        self.assertEqual(
+            request.url.raw_path, b"/api/v1/admin/projects/verhub/locales/en%20%28US%29"
+        )
+        # 缺省字段不上送，显式 None 保留（清空展示名）。
+        self.assertEqual(json.loads(request.content), {"locale": "en-US", "label": None})
+        self.assertEqual(result["locale"], "en-US")
+
+    def test_locale_message_only_present_on_fallback(self) -> None:
+        payloads = [
+            {"id": "v1", "locale": None, "locale_message": "not registered"},
+            {"id": "v1", "locale": "en-US"},
+        ]
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=payloads.pop(0))
+
+        client = self._client(handler)
+        missed = client.public.get_latest_version(locale="en_US")
+        self.assertIsNone(missed["locale"])
+        self.assertEqual(missed.get("locale_message"), "not registered")
+
+        matched = client.public.get_latest_version(locale="en(US)")
+        self.assertEqual(matched["locale"], "en-US")
+        self.assertNotIn("locale_message", matched)
+
     def test_missing_token_never_reaches_the_network(self) -> None:
         def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover
             raise AssertionError("不该发出请求")

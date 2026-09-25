@@ -44,8 +44,8 @@ pub use analytics::{
 };
 pub use error::{Error, Result};
 pub use http::{
-    detect_platform, detect_platform_version, VerhubClientBuilder, PLATFORM_HEADER,
-    PLATFORM_VERSION_HEADER,
+    detect_platform, detect_platform_version, VerhubClientBuilder, CLIENT_TIME_HEADER,
+    PLATFORM_HEADER, PLATFORM_VERSION_HEADER,
 };
 // 这两个枚举出现在几乎每个调用点上，提到 crate 根省得调用方到处写 models::。
 pub use models::{LogLevel, Platform, TermsDocumentSlug};

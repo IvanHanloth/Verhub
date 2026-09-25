@@ -16,6 +16,7 @@ import {
   type TimeseriesSeries,
 } from "./bucket-utils"
 import { provinceName } from "./province-names"
+import { UNKNOWN_TZ_OFFSET } from "../common/client-clock"
 import { resolveTzOffset } from "./region-timezone"
 
 // 分桶原语搬到 bucket-utils 与事件统计共用；这里转出去，调用方的导入路径不变。
@@ -43,6 +44,8 @@ export type RecordRequestInput = {
   cityCode?: string
   /** Caller address, used only to derive `region`; never stored on the rollup. */
   ip?: string | null
+  /** 客户端上报的 UTC 偏移（分钟）；没上报传 UNKNOWN_TZ_OFFSET 或省略。 */
+  tzOffset?: number
   occurredAt?: number
 }
 
@@ -112,7 +115,7 @@ export class RequestStatsService {
     }
 
     await this.prisma.$executeRaw`
-      INSERT INTO "ApiRequestStat" ("id", "projectKey", "endpoint", "hourBucket", "platform", "region", "regionCode", "cityCode", "count")
+      INSERT INTO "ApiRequestStat" ("id", "projectKey", "endpoint", "hourBucket", "platform", "region", "regionCode", "cityCode", "tzOffset", "count")
       VALUES (
         gen_random_uuid()::text,
         ${projectKey},
@@ -122,9 +125,10 @@ export class RequestStatsService {
         ${region},
         ${regionCode ?? ""},
         ${cityCode ?? ""},
+        ${input.tzOffset ?? UNKNOWN_TZ_OFFSET},
         1
       )
-      ON CONFLICT ("projectKey", "endpoint", "hourBucket", "platform", "region", "regionCode", "cityCode")
+      ON CONFLICT ("projectKey", "endpoint", "hourBucket", "platform", "region", "regionCode", "cityCode", "tzOffset")
       DO UPDATE SET
         "count" = "ApiRequestStat"."count" + 1,
         "updatedAt" = CAST(EXTRACT(EPOCH FROM now()) AS INTEGER)
@@ -551,16 +555,20 @@ export class RequestStatsService {
     // 当地几点活跃」。这也是热力图与趋势图口径的关键差异——趋势图是给管理员看的
     // 绝对时间轴，统一用查询者时区；热力图是行为节律，按来源时区。
     const rows = await this.prisma.apiRequestStat.groupBy({
-      by: ["hourBucket", "region"],
+      by: ["hourBucket", "region", "tzOffset"],
       _sum: { count: true },
       where: this.rangeWhere(projectKey, range),
     })
 
     const totals = new Map<string, number>()
     for (const row of rows) {
-      // 每行按其来源国家的代表时区平移；无法定位（UNKNOWN/LOCAL/表外）回退到查询者
-      // 时区，避免这类流量凭空聚到 UTC。平移后读 UTC 字段即得来源当地的星期/小时。
-      const offset = resolveTzOffset(row.region, tzOffsetMinutes)
+      // 客户端上报了时区就用它（精确到跨时区国家的具体时区）；否则按来源国家的代表
+      // 时区近似，再无法定位（UNKNOWN/LOCAL/表外）才回退到查询者时区。
+      // 平移后读 UTC 字段即得来源当地的星期/小时。
+      const offset =
+        row.tzOffset !== UNKNOWN_TZ_OFFSET
+          ? row.tzOffset
+          : resolveTzOffset(row.region, tzOffsetMinutes)
       const date = new Date((row.hourBucket + offset * 60) * 1000)
       const key = `${date.getUTCDay()}:${date.getUTCHours()}`
       totals.set(key, (totals.get(key) ?? 0) + (row._sum.count ?? 0))

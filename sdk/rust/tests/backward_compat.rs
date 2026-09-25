@@ -218,3 +218,23 @@ fn current_sdk_reads_version_translations_from_admin_response() {
     assert_eq!(translations[0].locale, "en");
     assert_eq!(translations[0].title.as_deref(), Some("Stable release"));
 }
+
+#[test]
+fn current_sdk_reads_locale_message_only_when_present() {
+    // 没命中注册语言时服务端才带这个键，命中或没提偏好时不带。
+    let mut payload = current_version_response();
+    payload
+        .as_object_mut()
+        .unwrap()
+        .insert("locale_message".to_string(), json!("not registered"));
+    let missed: VersionItem = serde_json::from_value(payload).expect("带提示的响应必须能解析");
+    assert_eq!(missed.locale_message.as_deref(), Some("not registered"));
+
+    let matched: VersionItem =
+        serde_json::from_value(current_version_response()).expect("不带提示的响应必须能解析");
+    assert_eq!(matched.locale_message, None);
+
+    let announcement: AnnouncementItem =
+        serde_json::from_value(current_announcement_response()).expect("公告响应必须能解析");
+    assert_eq!(announcement.locale_message, None);
+}
